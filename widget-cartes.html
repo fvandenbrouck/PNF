@@ -12,6 +12,7 @@
 <!-- Version v65 : correction lisibilité des champs en mode sombre -->
 <!-- Version v66 : ajout du champ Journée IG -->
 <!-- Version v67 : recherche texte Journée IG -->
+<!-- Version v69 : création contact - Structure écrite avec l'id de la table Structures -->
 <!-- Version v68 : filtre cumulatif Journée IG -->
 <!-- Version v66 : ajout Journée IG et styles de vignettes volet -->
 <!-- Version v67 : recherche Journée IG explicite et accent-insensible -->
@@ -849,12 +850,13 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v67 recherche Journée IG + vignettes volet + correction mode sombre chargé');
+console.info('[widget-cartes] v69 structure contact écrite par id + vignettes volet + correction mode sombre chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
 let VOLET_MAP = {}, AXE_MAP = {}, ACTION_AXE_MAP = {}, STRUCT_MAP = {}, MODAL_MAP = {}, CONT_MAP = {}, PUBLIC_MAP = {}, ANNEE_MAP = {}, STATUT_MAP = {}, LIEU_MAP = {};
 let ANNEE_ID_TO_LABEL = {}, ANNEE_LABEL_TO_ID = {}, ANNEE_OPTIONS = [];
+let STRUCT_OPTIONS = [];
 let STATUT_ID_TO_LABEL = {}, STATUT_LABEL_TO_ID = {}, STATUT_OPTIONS = [];
 let DEGRE_ID_TO_LABEL = {}, DEGRE_LABEL_TO_ID = {}, DEGRE_OPTIONS = [];
 let CONTACT_LABEL_TO_ID = {}, CONTACT_ID_BY_NORM_LABEL = {}, CONTACT_OPTIONS = [], RESPONSABLE_SUIVI_OPTIONS = [];
@@ -1372,11 +1374,14 @@ function contactTableFields(contact) {
     if (!key) return;
     fields[key] = value;
   };
+  const structureId = valueIdFromMap(STRUCT_MAP, contact.structure);
+  const structureValue = structureId ? Number(structureId) : null;
   setField(CONTACT_COLS.nomPrenom, contact.nomPrenom);
   setField(CONTACT_COLS.nom, contact.nom);
   setField(CONTACT_COLS.prenom, contact.prenom);
   setField(CONTACT_COLS.email, contact.email);
-  setField(CONTACT_COLS.structure, contact.structure);
+  // Contacts.Structure est une référence vers Structures : écrire l'id de ligne, jamais le libellé.
+  setField(CONTACT_COLS.structure, structureValue);
   return fields;
 }
 
@@ -1420,12 +1425,16 @@ function readNewContactDraft() {
   const nomRaw = String(byId('m-new-contact-nom')?.value || '').trim();
   const prenomRaw = String(byId('m-new-contact-prenom')?.value || '').trim();
   const emailRaw = String(byId('m-new-contact-email')?.value || '').trim();
-  const structure = String(byId('m-new-contact-structure')?.value || '').trim();
-  const hasAny = Boolean(nomRaw || prenomRaw || emailRaw || structure);
+  const structureRaw = String(byId('m-new-contact-structure')?.value || '').trim();
+  const structure = valueIdFromMap(STRUCT_MAP, structureRaw);
+  const hasAny = Boolean(nomRaw || prenomRaw || emailRaw || structureRaw);
   if (!hasAny) return null;
 
-  if (!nomRaw || !prenomRaw || !emailRaw || !structure) {
+  if (!nomRaw || !prenomRaw || !emailRaw || !structureRaw) {
     throw new Error('Pour ajouter un nouveau contact, renseigner le nom, le prénom, l’adresse email et choisir une structure dans la liste.');
+  }
+  if (!structure) {
+    throw new Error('Structure invalide : choisir une structure issue de la table Structures.');
   }
 
   const email = emailRaw.toLowerCase().replace(/\s+/g, '');
@@ -1738,6 +1747,10 @@ grist.onRecords(async (records) => {
       .filter(o => o.value && o.label)
       .sort((a,b) => String(a.value).localeCompare(String(b.value), 'fr', {numeric:true}));
     STRUCT_MAP = Object.fromEntries(sRows.map(r => [String(r.id), tableLabelFromRow(r, 'Structures')]).filter(([,v]) => v));
+    STRUCT_OPTIONS = sRows
+      .map(r => ({value: String(r.id || '').trim(), label: tableLabelFromRow(r, 'Structures')}))
+      .filter(o => o.value && o.label)
+      .sort((a,b)=>a.label.localeCompare(b.label,'fr',{numeric:true}));
     MODAL_MAP  = Object.fromEntries(mRows.map(r => [String(r.id), tableLabelFromRow(r, 'Modalites')]).filter(([,v]) => v));
     ANNEE_ID_TO_LABEL = Object.fromEntries(eRows
       .map(r => [String(r.id), anneeLabelFromRow(r)])
@@ -2314,10 +2327,10 @@ function buildModalForm(a) {
   const modalOptions  = optionValues(window.MODAL_VALUES, 'id_modalite');
   const structOptions = optionValues(window.STRUCT_VALUES, 'id_structure');
   // Structures proposées pour la création d'un nouveau contact :
-  // on utilise prioritairement la table de référence Structures, pas les seules valeurs déjà présentes dans les actions.
-  const contactStructureOptions = (window.STRUCT_VALUES && window.STRUCT_VALUES.length)
-    ? [...new Set(window.STRUCT_VALUES.map(v => String(v || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr', {numeric:true}))
-    : structOptions;
+  // les valeurs du select sont les ids Grist de la table Structures, les libellés ne servent qu'à l'affichage.
+  const contactStructureOptions = (STRUCT_OPTIONS && STRUCT_OPTIONS.length)
+    ? STRUCT_OPTIONS
+    : Object.entries(STRUCT_MAP || {}).map(([value,label]) => ({value, label})).filter(o=>o.value && o.label);
   const contactOptions = (CONTACT_OPTIONS && CONTACT_OPTIONS.length)
     ? CONTACT_OPTIONS
     : (window.CONTACT_VALUES || []).map(v => ({value: CONTACT_LABEL_TO_ID[v] || v, label: v}));
@@ -2452,10 +2465,10 @@ function buildModalForm(a) {
         </div>
         <select id="m-new-contact-structure">
           <option value="">Choisir une structure existante…</option>
-          ${contactStructureOptions.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+          ${contactStructureOptions.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}
         </select>
         <div class="new-contact-help">
-          La structure est choisie dans la table Structures. Si l'adresse existe déjà dans Contacts, le widget la réutilise. Sinon il crée Nom Prénom, NOM, PRENOM, Email et Structure, puis ajoute ce contact à l'action.
+          La structure est choisie dans la table Structures. Le widget enregistre l'id Grist de la structure, pas son libellé. Si l'adresse existe déjà dans Contacts, le widget la réutilise. Sinon il crée Nom Prénom, NOM, PRENOM, Email et Structure, puis ajoute ce contact à l'action.
         </div>
       </div>
     </div>
