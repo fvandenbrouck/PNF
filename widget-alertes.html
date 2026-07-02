@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alertes PNF</title>
+<!-- Version v1 : vue Alertes avec deux onglets Suivi / Données clôturées -->
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+:root {
+  --turquoise:#A8DDD8; --peach:#F9C59A; --strawberry:#F5A0A8; --lilas:#E8E8F5;
+  --navy:#1B3A6B; --navy-l:#e8edf5; --bg:#F7F5F2; --white:#fff;
+  --ink:#1a1208; --ink2:#4a3f2f; --ink3:#8a8070; --border:#E0D8CC;
+  --danger:#8a2030; --danger-l:rgba(245,160,168,.28); --blue-l:rgba(168,200,232,.32);
+}
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); height:100%; overflow:hidden; color-scheme:light; }
+.toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:10px 12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; position:sticky; top:0; z-index:10; }
+.tabs { display:flex; gap:6px; background:var(--bg); padding:4px; border:1px solid var(--border); border-radius:10px; }
+.tab { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; border:0; background:transparent; color:var(--ink3); padding:8px 12px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+.tab.active { background:var(--navy); color:#fff; }
+.tb-search { position:relative; flex:1.4; min-width:220px; }
+.tb-search svg { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--ink3); }
+.tb-search input { width:100%; padding:8px 12px 8px 34px; font-size:12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; outline:none; }
+.tb-sel { min-width:190px; }
+.tb-sel select { width:100%; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--ink); background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px 28px 8px 10px; outline:none; appearance:none; -webkit-appearance:none; cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238a8070' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 9px center; }
+.tb-search input:focus, .tb-sel select:focus { border-color:var(--navy); background:#fff; }
+.btn-reset, .btn-download { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; padding:8px 12px; border-radius:8px; cursor:pointer; white-space:nowrap; }
+.btn-reset { border:1px solid var(--border); background:var(--white); color:var(--ink3); }
+.btn-reset:hover { border-color:var(--strawberry); color:var(--strawberry); }
+.btn-download { border:1.5px solid var(--navy); background:var(--navy); color:#fff; }
+.btn-download:hover { background:#0d2a52; }
+.count { font-family:'DM Mono',monospace; font-size:11px; color:var(--ink3); background:var(--lilas); padding:6px 12px; border-radius:999px; }
+.grid-wrap { height:calc(100vh - 62px); overflow-y:auto; padding:14px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(390px,1fr)); gap:12px; }
+.card { background:var(--white); border:1.5px solid var(--border); border-radius:12px; overflow:hidden; cursor:pointer; transition:.15s; }
+.card:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(27,58,107,.12); border-color:var(--navy); }
+.card-band { height:5px; background:var(--danger); }
+.card.cloturee .card-band { background:var(--navy); }
+.card-body { padding:15px 17px; display:flex; flex-direction:column; gap:10px; }
+.card-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.card-top-left, .card-top-right { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+.chip { font-family:'DM Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }
+.chip-annee { color:#1a6b65; background:rgba(168,221,216,.35); }
+.chip-gaia { color:var(--ink3); background:var(--bg); }
+.chip-status { color:var(--danger); background:var(--danger-l); }
+.chip-status.cloture { color:var(--navy); background:var(--blue-l); }
+.card-title { font-family:'Fraunces',serif; font-size:15px; font-weight:600; line-height:1.35; }
+.card-objectif { font-size:12px; color:var(--ink2); line-height:1.55; }
+.card-sep { height:1px; background:var(--border); margin-top:2px; }
+.meta-row { display:flex; gap:8px; align-items:flex-start; font-size:11px; }
+.meta-label { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; min-width:96px; font-size:9px; padding-top:3px; }
+.tags { display:flex; flex-wrap:wrap; gap:4px; }
+.tag { font-size:10px; font-weight:500; padding:3px 8px; border-radius:4px; }
+.tag-resp { background:var(--lilas); color:var(--navy); }
+.tag-chef { background:rgba(249,197,154,.42); color:#8a4a10; }
+.tag-data { background:var(--danger-l); color:var(--danger); }
+.tag-ok { background:rgba(168,221,216,.35); color:#1a6b65; }
+.history-text { font-size:11.5px; color:var(--ink2); line-height:1.5; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:9px; }
+.empty { grid-column:1/-1; text-align:center; padding:80px 20px; color:var(--ink3); }
+.empty p { font-family:'Fraunces',serif; font-size:22px; margin-bottom:8px; }
+.empty span { font-family:'DM Mono',monospace; font-size:11px; }
+.overlay { position:fixed; inset:0; background:rgba(27,58,107,.45); backdrop-filter:blur(3px); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
+.overlay.hidden { display:none; }
+.modal { background:var(--white); border-radius:15px; width:100%; max-width:860px; max-height:96vh; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(27,58,107,.25); }
+.modal-head { padding:20px 24px 16px; border-bottom:1px solid var(--border); display:flex; gap:14px; align-items:flex-start; }
+.modal-band { width:5px; min-height:48px; border-radius:3px; background:var(--danger); }
+.modal-head h2 { font-family:'Fraunces',serif; font-size:21px; line-height:1.3; }
+.modal-meta { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-top:5px; letter-spacing:.04em; }
+.btn-close { margin-left:auto; border:none; background:transparent; font-size:24px; color:var(--ink3); cursor:pointer; padding:2px 6px; }
+.btn-close:hover { color:var(--ink); }
+.modal-body { overflow-y:auto; padding:18px 24px; display:grid; gap:16px; }
+.section-title { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:10px; font-weight:600; }
+.box { border:1.5px solid var(--border); border-radius:9px; background:var(--bg); padding:12px; }
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.description { font-size:12px; color:var(--ink2); line-height:1.6; }
+#loader { position:fixed; inset:0; background:rgba(247,245,242,.92); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:500; }
+#loader.hidden { display:none; }
+.spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+input, select, button { color-scheme: light; }
+input, select { color:var(--ink)!important; -webkit-text-fill-color:var(--ink)!important; caret-color:var(--ink); }
+input::placeholder { color:var(--ink3)!important; -webkit-text-fill-color:var(--ink3)!important; opacity:1; }
+select option { color:var(--ink); background:var(--white); }
+@media (max-width:760px) { .grid { grid-template-columns:1fr; } .info-grid { grid-template-columns:1fr; } .toolbar { align-items:stretch; } .tabs,.tb-search,.tb-sel,.btn-reset,.btn-download { width:100%; min-width:100%; } }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div class="tabs" role="tablist" aria-label="Onglets Alertes">
+    <button type="button" class="tab active" id="tab-suivi" onclick="setTab('suivi')">Suivi</button>
+    <button type="button" class="tab" id="tab-donnees" onclick="setTab('donnees')">Données clôturées</button>
+  </div>
+  <div class="tb-search">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input type="text" id="f-search" placeholder="Rechercher titre, compte-rendu…" oninput="applyFilters()">
+  </div>
+  <div class="tb-sel"><select id="f-annee" onchange="applyFilters()"><option value="">Années</option></select></div>
+  <div class="tb-sel" id="chefferie-filter-wrap"><select id="f-chefferie" onchange="applyFilters()"><option value="">Chefferie</option></select></div>
+  <div class="tb-sel"><select id="f-responsable" onchange="applyFilters()"><option value="">Responsables de suivi</option></select></div>
+  <button class="btn-reset" onclick="resetFilters()">Réinitialiser</button>
+  <button class="btn-download" onclick="downloadCsv()">Télécharger CSV</button>
+  <span class="count" id="count">–</span>
+</div>
+<div class="grid-wrap"><div class="grid" id="grid"></div></div>
+<div id="loader"><div class="spinner"></div><p>Chargement des alertes…</p></div>
+<div class="overlay hidden" id="overlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-band" id="modal-band"></div>
+      <div>
+        <h2 id="modal-title">–</h2>
+        <div class="modal-meta" id="modal-meta"></div>
+      </div>
+      <button class="btn-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+<script>
+console.info('[widget-alertes] v1 onglets suivi / donnees cloturees chargé');
+
+let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
+let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
+let ANNEE_MAP = {}, CONTACT_MAP = {}, CHEFFERIE_MAP = {}, STATUS_MAP = {};
+let ANNEE_VALUES = [], RESPONSABLE_VALUES = [], CHEFFERIE_VALUES = [];
+const ACTION_TABLE = 'Actions_formation';
+const JOURNAL_TABLE = 'Journal_Actions';
+const SESSION_TABLE = 'Journal_sessions';
+const STATUS_BLOCAGE_ID = '2';
+const STATUS_ARBITRAGE_ID = '3';
+const STATUS_CLOTURE_ID = '5';
+
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function asList(v){ if(v===null||v===undefined||v==='') return []; if(Array.isArray(v)) return v[0]==='L'?v.slice(1):v; return [v]; }
+function toRows(t){ return (t&&t.id||[]).map((id,i)=>{ const r={id}; Object.keys(t||{}).forEach(k=>{ if(k!=='id') r[k]=t[k][i]; }); return r; }); }
+function firstText(row, keys){ for(const k of keys){ const v=row&&row[k]; if(v!==undefined&&v!==null&&String(v).trim()) return String(v).trim(); } return ''; }
+function norm(s){ return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function boolValue(v){ if(v===true) return true; if(v===false||v===null||v===undefined||v==='') return false; if(typeof v==='number') return v!==0; return ['true','1','oui','yes','x'].includes(String(v).trim().toLowerCase()); }
+function isEmpty(v){ return v===null || v===undefined || v==='' || (typeof v==='string' && !v.trim()); }
+
+function refId(v){
+  if(v===null||v===undefined||v==='') return '';
+  if(Array.isArray(v)){
+    const arr = v[0]==='L' ? v.slice(1) : v;
+    if(!arr.length) return '';
+    if(arr[0]==='R'){
+      const nums = arr.map(x=>String(x||'').trim()).filter(x=>/^\d+$/.test(x));
+      return nums.length ? nums[nums.length-1] : '';
+    }
+    const nums = arr.map(x=>String(x||'').trim()).filter(x=>/^\d+$/.test(x));
+    return nums.length ? nums[nums.length-1] : String(arr[arr.length-1]||'');
+  }
+  if(typeof v==='object') return String(v.$id ?? v.id ?? v.rowId ?? v.row_id ?? v.ref ?? v.value ?? '');
+  const s=String(v||'').trim();
+  const m=s.match(/\[(\d+)\]$/) || s.match(/^R,\s*[^,]+,\s*(\d+)$/i);
+  return m ? m[1] : s;
+}
+function labelFor(v,map){ const id=refId(v); return id ? (map[String(id)] || String(v||'').trim()) : ''; }
+function labelsFor(v,map){ return asList(v).map(x=>labelFor(x,map)).filter(Boolean); }
+
+function anneeLabel(r){ return firstText(r,['Annee_scolaire','Année scolaire','Annee scolaire','annee_scolaire','Annee','Année','annee','libelle','Libelle','Libellé','label','Label','nom','Nom']); }
+function contactLabel(r){ const np=firstText(r,['Nom Prénom','Nom Prenom','nom_prenom','NOM_PRENOM']); const nom=firstText(r,['NOM','Nom','nom']); const prenom=firstText(r,['PRENOM','Prénom','Prenom','prenom']); const email=firstText(r,['Email','EMAIL','email','mail']); return np || [nom,prenom].filter(Boolean).join(' ').trim() || [prenom,nom].filter(Boolean).join(' ').trim() || email; }
+function chefferieLabel(r){ return firstText(r,['Nom Prénom','Nom Prenom','nom_prenom','NOM_PRENOM','Nom','nom','Libellé','libelle','Libelle','label','Label']); }
+function statusLabel(r){ return firstText(r,['Statut','statut','STATUT','libelle','Libelle','Libellé','nom','Nom','label','Label']); }
+function getTitre(a){ return firstText(a,['Titre','titre','Intitule','Intitulé','intitule']) || 'Sans titre'; }
+function getObjectif(a){ return firstText(a,['Objectif','objectif']); }
+function getGaia(a){ return firstText(a,['Code_GAIA','Code GAIA','code_gaia','GAIA','Code','code']); }
+function getAnnee(a){ return labelFor(a.Annee_scolaire || a['Année scolaire'] || a['Annee scolaire'] || a.annee_scolaire || a.Annee || a['Année'] || a.annee || a.id_annee || a.id_annees || a.Annees || a['Années'], ANNEE_MAP); }
+function getChefferie(a){ return labelFor(a.Chefferie || a.chefferie || a.id_chefferie, CHEFFERIE_MAP); }
+function getResponsableIds(a){
+  const ids = new Set();
+  const add = x => { const id=refId(x); if(/^\d+$/.test(id) && CONTACT_MAP[id]) ids.add(id); };
+  if(a.Responsable_suivi_ids) asList(a.Responsable_suivi_ids).forEach(add);
+  if(a.Responsable_suivi) asList(a.Responsable_suivi).forEach(add);
+  if(a['Responsable suivi']) asList(a['Responsable suivi']).forEach(add);
+  return [...ids];
+}
+function getResponsables(a){ return getResponsableIds(a).map(id=>CONTACT_MAP[id]).filter(Boolean); }
+function actionIdFromJournal(j){ return refId(j.Action || j.action || j.id_action || j.Action_formation || j.actions_formation); }
+function actionIdFromSession(s){ return refId(s.Action || s.action || s.id_action || s.Action_formation || s.actions_formation); }
+function statusIdFromJournal(j){ return refId(j.Statut_suivi || j.statut_suivi || j.Status_suivi || j.Statut || j.status); }
+function statusTextFromJournal(j){ const id=statusIdFromJournal(j); return id ? (STATUS_MAP[id] || id) : ''; }
+function dateValue(v){
+  if(v===null||v===undefined||v==='') return 0;
+  if(typeof v==='number') return v;
+  const t=Date.parse(String(v));
+  return Number.isFinite(t) ? t/1000 : 0;
+}
+function formatDateValue(v){
+  if(v===null||v===undefined||v==='') return '';
+  if(typeof v==='number'){
+    const ms = v > 20000000000 ? v : v*1000;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('fr-FR');
+  }
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('fr-FR');
+}
+function latestJournal(actionId){
+  const rows = JOURNAL_ROWS.filter(j=>String(actionIdFromJournal(j))===String(actionId));
+  if(!rows.length) return null;
+  return rows.slice().sort((a,b)=> dateValue(b.Date)-dateValue(a.Date) || Number(b.id||0)-Number(a.id||0))[0];
+}
+function sessionForAction(actionId){ return SESSION_ROWS.find(s=>String(actionIdFromSession(s))===String(actionId)) || null; }
+function sessionComputedMissing(s){
+  if(!s) return ['Aucune ligne Journal_sessions'];
+  if(Object.prototype.hasOwnProperty.call(s,'AlerteData') && boolValue(s.AlerteData)) return ['AlerteData = True'];
+  const missing=[];
+  [['Nb_sessions','Nombre de sessions'],['Nombre_COPIL','Nombre COPIL'],['Participants_prevus','Participants prévus'],['Inscrits_GAIA','Inscrits GAIA']].forEach(([k,label])=>{ if(isEmpty(s[k])) missing.push(label); });
+  for(let i=0;i<10;i++){
+    const date = s[`Date${i}`];
+    const presents = s[`Presents${i}`];
+    if(!isEmpty(date) && isEmpty(presents)) missing.push(`Présents session ${i+1}`);
+  }
+  return missing;
+}
+function isDataAlert(actionId, latest){
+  if(!latest || statusIdFromJournal(latest)!==STATUS_CLOTURE_ID) return false;
+  const s = sessionForAction(actionId);
+  if(s && Object.prototype.hasOwnProperty.call(s,'AlerteData')) return boolValue(s.AlerteData);
+  return sessionComputedMissing(s).length > 0;
+}
+function enrichedAction(a){
+  const latest = latestJournal(a.id);
+  const statusId = latest ? statusIdFromJournal(latest) : '';
+  const statusText = latest ? statusTextFromJournal(latest) : '';
+  const missing = sessionComputedMissing(sessionForAction(a.id));
+  return {...a, _latest:latest, _statusId:statusId, _statusText:statusText, _missing:missing};
+}
+function tabItems(tab){
+  const rows = ALL_ACTIONS.map(enrichedAction);
+  if(tab==='suivi') return rows.filter(a=>[STATUS_BLOCAGE_ID, STATUS_ARBITRAGE_ID].includes(String(a._statusId)));
+  return rows.filter(a=>isDataAlert(a.id, a._latest));
+}
+function searchableText(a){
+  const j=a._latest || {};
+  return [getTitre(a),getObjectif(a),getGaia(a),getAnnee(a),getChefferie(a),getResponsables(a).join(' '),a._statusText,j.Compte_rendu,j.Prochaine_etape,a._missing.join(' ')].join(' ');
+}
+function fillSelect(id, values, firstLabel){
+  const sel=document.getElementById(id); if(!sel) return;
+  const cur=sel.value; sel.innerHTML=`<option value="">${esc(firstLabel)}</option>`;
+  [...new Set((values||[]).map(v=>String(v||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr',{numeric:true})).forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+  if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function rebuildFilters(){
+  const items=tabItems(CURRENT_TAB);
+  fillSelect('f-annee', items.map(getAnnee), 'Années');
+  fillSelect('f-chefferie', items.map(getChefferie), 'Chefferie');
+  fillSelect('f-responsable', items.flatMap(getResponsables), 'Responsables de suivi');
+  document.getElementById('chefferie-filter-wrap').style.display = CURRENT_TAB==='suivi' ? '' : 'none';
+}
+function setTab(tab){
+  CURRENT_TAB=tab;
+  document.getElementById('tab-suivi').classList.toggle('active', tab==='suivi');
+  document.getElementById('tab-donnees').classList.toggle('active', tab==='donnees');
+  resetFilters(false);
+  rebuildFilters();
+  applyFilters();
+}
+function resetFilters(renderNow=true){
+  ['f-search','f-annee','f-chefferie','f-responsable'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  if(renderNow) applyFilters();
+}
+function applyFilters(){
+  const q=norm(document.getElementById('f-search').value);
+  const annee=document.getElementById('f-annee').value;
+  const chef=document.getElementById('f-chefferie').value;
+  const resp=document.getElementById('f-responsable').value;
+  FILTERED=tabItems(CURRENT_TAB).filter(a=>{
+    if(annee && getAnnee(a)!==annee) return false;
+    if(CURRENT_TAB==='suivi' && chef && getChefferie(a)!==chef) return false;
+    if(resp && !getResponsables(a).includes(resp)) return false;
+    if(q && !norm(searchableText(a)).includes(q)) return false;
+    return true;
+  });
+  document.getElementById('count').textContent = `${FILTERED.length} alerte${FILTERED.length>1?'s':''}`;
+  render();
+}
+function cardHtml(a){
+  const latest=a._latest || {};
+  const status=a._statusText || 'Sans statut';
+  const date=latest ? formatDateValue(latest.Date) : '';
+  const resp=getResponsables(a);
+  const chef=getChefferie(a);
+  const gaia=getGaia(a);
+  const annee=getAnnee(a);
+  const missing=a._missing || [];
+  const cls=CURRENT_TAB==='donnees' ? ' cloturee' : '';
+  return `<div class="card${cls}" onclick="openModal(${Number(a.id)})">
+    <div class="card-band"></div>
+    <div class="card-body">
+      <div class="card-top"><div class="card-top-left">${annee?`<span class="chip chip-annee">${esc(annee)}</span>`:''}${gaia?`<span class="chip chip-gaia">GAIA ${esc(gaia)}</span>`:''}</div><div class="card-top-right"><span class="chip chip-status ${CURRENT_TAB==='donnees'?'cloture':''}">${esc(status)}</span></div></div>
+      <div class="card-title">${esc(getTitre(a))}</div>
+      ${getObjectif(a)?`<div class="card-objectif">${esc(getObjectif(a))}</div>`:''}
+      <div class="card-sep"></div>
+      ${date?`<div class="meta-row"><span class="meta-label">Dernière entrée</span><div class="tags"><span class="tag tag-ok">${esc(date)}</span></div></div>`:''}
+      ${resp.length?`<div class="meta-row"><span class="meta-label">Responsable</span><div class="tags">${resp.map(r=>`<span class="tag tag-resp">${esc(r)}</span>`).join('')}</div></div>`:''}
+      ${chef?`<div class="meta-row"><span class="meta-label">Chefferie</span><div class="tags"><span class="tag tag-chef">${esc(chef)}</span></div></div>`:''}
+      ${CURRENT_TAB==='donnees' && missing.length?`<div class="meta-row"><span class="meta-label">Données</span><div class="tags">${missing.slice(0,4).map(m=>`<span class="tag tag-data">${esc(m)}</span>`).join('')}${missing.length>4?`<span class="tag tag-data">+${missing.length-4}</span>`:''}</div></div>`:''}
+      ${latest.Compte_rendu?`<div class="history-text">${esc(latest.Compte_rendu)}</div>`:''}
+    </div>
+  </div>`;
+}
+function render(){
+  const grid=document.getElementById('grid');
+  if(!FILTERED.length){ grid.innerHTML=`<div class="empty"><p>Aucune alerte</p><span>${CURRENT_TAB==='suivi'?'Aucun blocage ou arbitrage demandé dans le périmètre filtré.':'Aucune action clôturée avec données manquantes dans le périmètre filtré.'}</span></div>`; return; }
+  grid.innerHTML=FILTERED.map(cardHtml).join('');
+}
+function openModal(id){
+  const a=tabItems(CURRENT_TAB).find(x=>Number(x.id)===Number(id)); if(!a) return;
+  CURRENT_ACTION=a;
+  const latest=a._latest || {};
+  const session=sessionForAction(a.id);
+  const missing=a._missing || [];
+  document.getElementById('modal-title').textContent=getTitre(a);
+  document.getElementById('modal-meta').textContent=[CURRENT_TAB==='suivi'?'Alerte de suivi':'Données clôturées',getAnnee(a),getGaia(a),a._statusText].filter(Boolean).join(' · ');
+  document.getElementById('modal-band').style.background = CURRENT_TAB==='suivi' ? 'var(--danger)' : 'var(--navy)';
+  const resp=getResponsables(a), chef=getChefferie(a);
+  document.getElementById('modal-body').innerHTML=`
+    <div class="info-grid">
+      <div><div class="section-title">Statut de suivi</div><div class="box tags"><span class="tag ${CURRENT_TAB==='suivi'?'tag-data':'tag-ok'}">${esc(a._statusText||'—')}</span></div></div>
+      <div><div class="section-title">Dernière entrée</div><div class="box tags">${latest?`<span class="tag tag-ok">${esc(formatDateValue(latest.Date)||'Sans date')}</span>`:'—'}</div></div>
+      <div><div class="section-title">Responsable de suivi</div><div class="box tags">${resp.length?resp.map(r=>`<span class="tag tag-resp">${esc(r)}</span>`).join(''):'—'}</div></div>
+      <div><div class="section-title">Chefferie</div><div class="box tags">${chef?`<span class="tag tag-chef">${esc(chef)}</span>`:'—'}</div></div>
+    </div>
+    <div><div class="section-title">Objectif</div><div class="box description">${esc(getObjectif(a)||'—')}</div></div>
+    ${latest&&latest.Compte_rendu?`<div><div class="section-title">Dernier compte-rendu</div><div class="box description">${esc(latest.Compte_rendu)}</div></div>`:''}
+    ${latest&&latest.Prochaine_etape?`<div><div class="section-title">Prochaine étape</div><div class="box description">${esc(latest.Prochaine_etape)}</div></div>`:''}
+    ${latest&&latest.Echeance?`<div><div class="section-title">Échéance</div><div class="box tags"><span class="tag tag-ok">${esc(formatDateValue(latest.Echeance))}</span></div></div>`:''}
+    ${CURRENT_TAB==='donnees'?`<div><div class="section-title">Données manquantes ou incomplètes</div><div class="box tags">${missing.length?missing.map(m=>`<span class="tag tag-data">${esc(m)}</span>`).join(''):'—'}</div></div>`:''}
+    ${CURRENT_TAB==='donnees'&&session?`<div><div class="section-title">Synthèse Journal_sessions</div><div class="box description">Nb sessions : ${esc(session.Nb_sessions??'—')} · COPIL : ${esc(session.Nombre_COPIL??'—')} · Participants prévus : ${esc(session.Participants_prevus??'—')} · Inscrits GAIA : ${esc(session.Inscrits_GAIA??'—')}</div></div>`:''}
+  `;
+  document.getElementById('overlay').classList.remove('hidden');
+}
+function closeModal(e){ if(e && e.target!==document.getElementById('overlay')) return; document.getElementById('overlay').classList.add('hidden'); CURRENT_ACTION=null; }
+function csvEscape(v){ const s=String(v??'').replace(/\r?\n/g,' | '); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+function downloadCsv(){
+  const headers=['onglet','titre','annee','code_gaia','statut_suivi','date_derniere_entree','responsables_suivi','chefferie','donnees_manquantes','compte_rendu','prochaine_etape','echeance'];
+  const rows=FILTERED.map(a=>{ const j=a._latest||{}; return { onglet:CURRENT_TAB==='suivi'?'Suivi':'Données clôturées', titre:getTitre(a), annee:getAnnee(a), code_gaia:getGaia(a), statut_suivi:a._statusText||'', date_derniere_entree:formatDateValue(j.Date), responsables_suivi:getResponsables(a).join(', '), chefferie:getChefferie(a), donnees_manquantes:(a._missing||[]).join(' | '), compte_rendu:j.Compte_rendu||'', prochaine_etape:j.Prochaine_etape||'', echeance:formatDateValue(j.Echeance) }; });
+  const csv='\uFEFF'+[headers.join(';'), ...rows.map(r=>headers.map(h=>csvEscape(r[h])).join(';'))].join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`alertes_${CURRENT_TAB}_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function showLoader(v){ document.getElementById('loader').classList.toggle('hidden',!v); }
+
+async function loadData(records){
+  showLoader(true);
+  try{
+    let attempts=0; while(!grist.docApi && attempts<20){ await new Promise(r=>setTimeout(r,100)); attempts++; }
+    const [actionsFull, journal, sessions, contacts, chefferie, annees, statuses] = await Promise.all([
+      grist.docApi.fetchTable(ACTION_TABLE).catch(()=>({id:[]})),
+      grist.docApi.fetchTable(JOURNAL_TABLE).catch(()=>({id:[]})),
+      grist.docApi.fetchTable(SESSION_TABLE).catch(()=>({id:[]})),
+      grist.docApi.fetchTable('Contacts').catch(()=>({id:[]})),
+      grist.docApi.fetchTable('Chefferie').catch(()=>({id:[]})),
+      grist.docApi.fetchTable('Annees').catch(()=>({id:[]})),
+      grist.docApi.fetchTable('Statuts_suivi').catch(()=>({id:[]}))
+    ]);
+    CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); JOURNAL_ROWS=toRows(journal); SESSION_ROWS=toRows(sessions);
+    CONTACT_MAP=Object.fromEntries(CONTACT_ROWS.map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
+    CHEFFERIE_MAP=Object.fromEntries(CHEFFERIE_ROWS.map(r=>[String(r.id),chefferieLabel(r)]).filter(([,v])=>v));
+    ANNEE_MAP=Object.fromEntries(toRows(annees).map(r=>[String(r.id),anneeLabel(r)]).filter(([,v])=>v));
+    STATUS_MAP=Object.fromEntries(toRows(statuses).map(r=>[String(r.id),statusLabel(r)]).filter(([,v])=>v));
+    const actionFullRows=toRows(actionsFull);
+    const fullById=Object.fromEntries(actionFullRows.map(r=>[String(r.id),r]));
+    const incoming=(records||[]).map(r=>({id:r.id,...r}));
+    ALL_ACTIONS = incoming.length ? incoming.map(r=>({ ...(fullById[String(r.id)]||{}), ...r })) : actionFullRows;
+    rebuildFilters(); applyFilters();
+  }catch(e){ console.error(e); document.getElementById('grid').innerHTML=`<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
+  finally{ showLoader(false); }
+}
+
+grist.ready({requiredAccess:'full', columns:[]});
+grist.onRecords(loadData);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+</script>
+</body>
+</html>
