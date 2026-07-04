@@ -35,9 +35,9 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tb-title { display:flex; flex-direction:column; gap:1px; margin-right:6px; }
 .tb-title strong { font-family:'Fraunces',serif; font-size:15px; font-weight:600; }
 .tb-title span { font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; }
-.tb-search { position:relative; flex:1; min-width:180px; max-width:320px; }
-.tb-search select { width:100%; padding:7px 10px; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:7px; outline:none; color:var(--ink); cursor:pointer; }
-.tb-search select:focus { border-color:var(--navy); background:#fff; }
+.tb-search, .tb-filter { position:relative; flex:1; min-width:180px; max-width:320px; }
+.tb-search select, .tb-filter select { width:100%; padding:7px 10px; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:7px; outline:none; color:var(--ink); cursor:pointer; }
+.tb-search select:focus, .tb-filter select:focus { border-color:var(--navy); background:#fff; }
 .count { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); background:var(--lilas); padding:5px 10px; border-radius:999px; white-space:nowrap; }
 .btn { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; padding:8px 13px; border-radius:7px; cursor:pointer; border:1.5px solid var(--border); background:var(--white); color:var(--ink2); white-space:nowrap; }
 .btn:hover { border-color:var(--navy); }
@@ -96,6 +96,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   <div class="toolbar">
     <div class="tb-title"><strong>Utilisateurs</strong><span>Classes & accès — PNF</span></div>
     <div class="tb-search"><select id="search" onchange="onSearchSelect()"><option value="">— Sélectionner un utilisateur —</option></select></div>
+    <div class="tb-filter"><select id="filter-structure" onchange="onStructureFilterChange()"><option value="">Toutes les structures</option></select></div>
     <span class="count" id="count">–</span>
     <button class="btn btn-primary" onclick="openNew()">+ Ajouter un utilisateur</button>
   </div>
@@ -140,6 +141,7 @@ let CLASSES = [];
 let SELECTED_ID = null;
 let PENDING_DELETE_ID = null;
 let IS_NEW = false;
+let FILTER_STRUCTURE = '';
 
 grist.ready({ requiredAccess: 'full', columns: [] });
 
@@ -157,6 +159,7 @@ async function loadAll() {
     console.error(e);
   } finally {
     document.getElementById('loader').classList.add('hidden');
+    populateStructureFilter();
     renderList();
     if (SELECTED_ID) selectUser(SELECTED_ID, true);
   }
@@ -194,9 +197,9 @@ function sortedByNom(list) {
   });
 }
 
-function populateSearchSelect() {
+function populateSearchSelect(list) {
   const select = document.getElementById('search');
-  const sorted = sortedByNom(USERS);
+  const sorted = sortedByNom(list);
   select.innerHTML = `<option value="">— Sélectionner un utilisateur —</option>` +
     sorted.map(u => `<option value="${u.id}" ${u.id === SELECTED_ID ? 'selected' : ''}>${esc(u.NOM_Prenom) || esc(`${u.NOM} ${u.Prenom}`.trim())}</option>`).join('');
 }
@@ -206,10 +209,30 @@ function onSearchSelect() {
   if (val) selectUser(Number(val));
 }
 
+function structFilterLabel(s) {
+  return [s.code, s.libelle].filter(Boolean).join(' - ') || `#${s.id}`;
+}
+
+function populateStructureFilter() {
+  const select = document.getElementById('filter-structure');
+  const sorted = [...STRUCTURES].sort((a, b) => (a.code || '').localeCompare(b.code || '', 'fr', { numeric: true }));
+  const current = FILTER_STRUCTURE;
+  select.innerHTML = `<option value="">Toutes les structures</option>` +
+    sorted.map(s => `<option value="${s.id}" ${String(s.id) === String(current) ? 'selected' : ''}>${esc(structFilterLabel(s))}</option>`).join('');
+}
+
+function onStructureFilterChange() {
+  FILTER_STRUCTURE = document.getElementById('filter-structure').value;
+  renderList();
+}
+
 function renderList() {
-  const sorted = sortedByNom(USERS);
-  document.getElementById('count').textContent = `${USERS.length} utilisateur${USERS.length > 1 ? 's' : ''}`;
-  populateSearchSelect();
+  const filtered = FILTER_STRUCTURE ? USERS.filter(u => String(u.Structure) === String(FILTER_STRUCTURE)) : USERS;
+  const sorted = sortedByNom(filtered);
+  document.getElementById('count').textContent = FILTER_STRUCTURE
+    ? `${filtered.length} / ${USERS.length} utilisateur${USERS.length > 1 ? 's' : ''}`
+    : `${USERS.length} utilisateur${USERS.length > 1 ? 's' : ''}`;
+  populateSearchSelect(filtered);
 
   const pane = document.getElementById('list-pane');
   if (!sorted.length) {
