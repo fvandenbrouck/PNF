@@ -36,8 +36,8 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tb-title strong { font-family:'Fraunces',serif; font-size:15px; font-weight:600; }
 .tb-title span { font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; }
 .tb-search { position:relative; flex:1; min-width:180px; max-width:320px; }
-.tb-search input { width:100%; padding:7px 10px; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:7px; outline:none; }
-.tb-search input:focus { border-color:var(--navy); background:#fff; }
+.tb-search select { width:100%; padding:7px 10px; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:7px; outline:none; color:var(--ink); cursor:pointer; }
+.tb-search select:focus { border-color:var(--navy); background:#fff; }
 .count { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); background:var(--lilas); padding:5px 10px; border-radius:999px; white-space:nowrap; }
 .btn { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; padding:8px 13px; border-radius:7px; cursor:pointer; border:1.5px solid var(--border); background:var(--white); color:var(--ink2); white-space:nowrap; }
 .btn:hover { border-color:var(--navy); }
@@ -95,7 +95,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 <div class="app">
   <div class="toolbar">
     <div class="tb-title"><strong>Utilisateurs</strong><span>Classes & accès — PNF</span></div>
-    <div class="tb-search"><input type="text" id="search" placeholder="Rechercher un nom, un email…" oninput="renderList()"></div>
+    <div class="tb-search"><select id="search" onchange="onSearchSelect()"><option value="">— Sélectionner un utilisateur —</option></select></div>
     <span class="count" id="count">–</span>
     <button class="btn btn-primary" onclick="openNew()">+ Ajouter un utilisateur</button>
   </div>
@@ -186,22 +186,37 @@ function classeDroits(id) {
 
 function esc(s) { return (s ?? '').toString().replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
 
-function renderList() {
-  const q = (document.getElementById('search').value || '').trim().toLowerCase();
-  const filtered = USERS.filter(u => {
-    if (!q) return true;
-    const hay = `${u.NOM_Prenom || ''} ${u.Email || ''}`.toLowerCase();
-    return hay.includes(q);
-  }).sort((a, b) => (a.NOM_Prenom || '').localeCompare(b.NOM_Prenom || '', 'fr'));
+function sortedByNom(list) {
+  return [...list].sort((a, b) => {
+    const nomCmp = (a.NOM || '').localeCompare(b.NOM || '', 'fr');
+    if (nomCmp) return nomCmp;
+    return (a.Prenom || '').localeCompare(b.Prenom || '', 'fr');
+  });
+}
 
-  document.getElementById('count').textContent = `${filtered.length} / ${USERS.length}`;
+function populateSearchSelect() {
+  const select = document.getElementById('search');
+  const sorted = sortedByNom(USERS);
+  select.innerHTML = `<option value="">— Sélectionner un utilisateur —</option>` +
+    sorted.map(u => `<option value="${u.id}" ${u.id === SELECTED_ID ? 'selected' : ''}>${esc(u.NOM_Prenom) || esc(`${u.NOM} ${u.Prenom}`.trim())}</option>`).join('');
+}
+
+function onSearchSelect() {
+  const val = document.getElementById('search').value;
+  if (val) selectUser(Number(val));
+}
+
+function renderList() {
+  const sorted = sortedByNom(USERS);
+  document.getElementById('count').textContent = `${USERS.length} utilisateur${USERS.length > 1 ? 's' : ''}`;
+  populateSearchSelect();
 
   const pane = document.getElementById('list-pane');
-  if (!filtered.length) {
-    pane.innerHTML = `<div style="padding:20px;color:var(--ink3);font-size:12px">Aucun résultat.</div>`;
+  if (!sorted.length) {
+    pane.innerHTML = `<div style="padding:20px;color:var(--ink3);font-size:12px">Aucun utilisateur.</div>`;
     return;
   }
-  pane.innerHTML = filtered.map(u => {
+  pane.innerHTML = sorted.map(u => {
     const classe = classeLabel(u.Classe);
     const struct = structLabel(u.Structure);
     return `<div class="urow ${u.id === SELECTED_ID ? 'selected' : ''}" onclick="selectUser(${u.id})">
