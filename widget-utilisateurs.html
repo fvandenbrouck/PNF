@@ -47,12 +47,11 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .btn-danger:hover { background:rgba(245,160,168,.16); }
 .btn-ghost { background:transparent; color:var(--ink3); border-color:transparent; }
 .btn-ghost:hover { color:var(--navy); }
-.main { flex:1; display:flex; min-height:0; }
-.list-pane { width:340px; min-width:260px; border-right:1px solid var(--border); background:var(--white); overflow-y:auto; }
-.urow { display:flex; flex-direction:column; gap:3px; padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
+.main { flex:1; overflow-y:auto; }
+.list-pane { max-width:640px; margin:0 auto; background:var(--white); }
+.urow { display:flex; flex-direction:column; gap:3px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; }
 .urow:hover { background:var(--bg); }
-.urow.selected { background:var(--navy-l); border-left:3px solid var(--navy); padding-left:11px; }
-.urow-name { font-size:12.5px; font-weight:600; color:var(--ink); }
+.urow-name { font-size:13px; font-weight:600; color:var(--ink); }
 .urow-email { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); }
 .urow-tags { display:flex; gap:5px; margin-top:2px; flex-wrap:wrap; }
 .tag { display:inline-flex; align-items:center; font-size:9.5px; font-weight:600; padding:2px 7px; border-radius:999px; font-family:'DM Mono',monospace; text-transform:uppercase; letter-spacing:.03em; }
@@ -60,9 +59,9 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tag-classe.empty { background:var(--bg); color:var(--ink3); }
 .tag-struct { background:var(--green-bg); color:var(--green); }
 .tag-struct.empty { background:var(--bg); color:var(--ink3); }
-.detail-pane { flex:1; overflow-y:auto; padding:24px 28px; }
-.detail-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--ink3); gap:8px; }
-.detail-empty p { font-family:'Fraunces',serif; font-size:20px; }
+.detail-modal { background:var(--white); border-radius:15px; width:100%; max-width:560px; max-height:92vh; overflow-y:auto; box-shadow:0 24px 64px rgba(27,58,107,.25); padding:24px 28px; position:relative; }
+.detail-close { position:absolute; top:14px; right:14px; border:none; background:transparent; font-size:22px; line-height:1; color:var(--ink3); cursor:pointer; padding:4px 8px; border-radius:6px; }
+.detail-close:hover { background:var(--bg); color:var(--ink); }
 .form-card { max-width:520px; }
 .form-head { font-family:'Fraunces',serif; font-size:19px; font-weight:600; margin-bottom:4px; }
 .form-sub { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-bottom:18px; }
@@ -87,7 +86,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 #loader.hidden { display:none; }
 .spinner { width:26px; height:26px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
-@media (max-width:720px) { .list-pane { width:100%; position:absolute; inset:0; z-index:5; } .main { position:relative; } .form-row { grid-template-columns:1fr; } }
+@media (max-width:720px) { .form-row { grid-template-columns:1fr; } .detail-modal { padding:20px 18px; } }
 </style>
 </head>
 <body>
@@ -103,10 +102,11 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 
   <div class="main">
     <div class="list-pane" id="list-pane"></div>
-    <div class="detail-pane" id="detail-pane">
-      <div class="detail-empty"><p>Aucune sélection</p><span>Choisissez un utilisateur dans la liste, ou ajoutez-en un.</span></div>
-    </div>
   </div>
+</div>
+
+<div class="overlay hidden" id="detail-overlay">
+  <div class="detail-modal" id="detail-modal"></div>
 </div>
 
 <div class="overlay hidden" id="confirm-overlay">
@@ -161,7 +161,7 @@ async function loadAll() {
     document.getElementById('loader').classList.add('hidden');
     populateStructureFilter();
     renderList();
-    if (SELECTED_ID) selectUser(SELECTED_ID, true);
+    if (SELECTED_ID) selectUser(SELECTED_ID);
   }
 }
 
@@ -242,7 +242,7 @@ function renderList() {
   pane.innerHTML = sorted.map(u => {
     const classe = classeLabel(u.Classe);
     const struct = structLabel(u.Structure);
-    return `<div class="urow ${u.id === SELECTED_ID ? 'selected' : ''}" onclick="selectUser(${u.id})">
+    return `<div class="urow" onclick="selectUser(${u.id})">
       <div class="urow-name">${esc(u.NOM_Prenom) || '(sans nom)'}</div>
       <div class="urow-email">${esc(u.Email)}</div>
       <div class="urow-tags">
@@ -253,25 +253,29 @@ function renderList() {
   }).join('');
 }
 
-function selectUser(id, silent) {
+function selectUser(id) {
   SELECTED_ID = id;
   IS_NEW = false;
-  if (!silent) renderList();
   const u = USERS.find(x => x.id === id);
-  if (!u) return renderEmpty();
+  if (!u) return;
   renderForm(u);
+  openDetailModal();
 }
 
 function openNew() {
   SELECTED_ID = null;
   IS_NEW = true;
-  renderList();
   renderForm({ id: null, NOM: '', Prenom: '', Email: '', Structure: null, Classe: null });
+  openDetailModal();
 }
 
-function renderEmpty() {
-  document.getElementById('detail-pane').innerHTML =
-    `<div class="detail-empty"><p>Aucune sélection</p><span>Choisissez un utilisateur dans la liste, ou ajoutez-en un.</span></div>`;
+function openDetailModal() {
+  document.getElementById('detail-overlay').classList.remove('hidden');
+}
+function closeDetailModal() {
+  document.getElementById('detail-overlay').classList.add('hidden');
+  SELECTED_ID = null;
+  IS_NEW = false;
 }
 
 function classeOptions(selected) {
@@ -283,9 +287,10 @@ function structOptions(selected) {
 }
 
 function renderForm(u) {
-  const pane = document.getElementById('detail-pane');
+  const pane = document.getElementById('detail-modal');
   const title = IS_NEW ? 'Nouvel utilisateur' : (u.NOM_Prenom || `${u.NOM || ''} ${u.Prenom || ''}`.trim() || '(sans nom)');
   pane.innerHTML = `
+    <button class="detail-close" onclick="closeDetailModal()" aria-label="Fermer">×</button>
     <div class="form-card">
       <div class="form-head">${esc(title)}</div>
       <div class="form-sub">${IS_NEW ? 'CRÉATION' : `UTILISATEURS #${u.id}`}</div>
@@ -390,9 +395,8 @@ async function confirmDelete() {
   closeConfirm();
   try {
     await grist.docApi.applyUserActions([['RemoveRecord', USERS_TABLE, id]]);
-    SELECTED_ID = null;
+    closeDetailModal();
     await loadAll();
-    renderEmpty();
   } catch (e) {
     console.error(e);
     alert('Erreur lors de la suppression : ' + e.message);
