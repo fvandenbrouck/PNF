@@ -590,6 +590,8 @@ let LIEU_VALUES = [];
 let SESSION_ROWS = [];
 let STATUT_MAP = {};
 let STATUT_VALUES = [];
+let MODALITE_MAP = {};
+let MODALITE_VALUES = [];
 const DEFAULT_DEGRE_ROWS = [
   {id: 1, nom_deg: 'Premier degré'},
   {id: 2, nom_deg: 'Second degré'}
@@ -980,6 +982,75 @@ function statutText(a) {
   return statutValue(get(a, 'statut'));
 }
 
+function modaliteLabelFromRow(r) {
+  return firstRowText(r, [
+    'libelle',
+    'Libelle',
+    'Libellé',
+    'modalite',
+    'Modalite',
+    'Modalité',
+    'label',
+    'Label',
+    'nom',
+    'Nom'
+  ]);
+}
+
+function buildModaliteMap(rows) {
+  const entries = [];
+
+  const add = (k, label) => {
+    const key = String(k ?? '').trim();
+    if (key && label) entries.push([key, label]);
+  };
+
+  rows.forEach(r => {
+    const label = modaliteLabelFromRow(r);
+    if (!label) return;
+
+    add(r.id, label);
+    add(r.$id, label);
+    add(String(r.id), label);
+    add(String(r.$id), label);
+    add(`Modalites[${r.id}]`, label);
+    add(`Modalite[${r.id}]`, label);
+    add(`R,Modalites,${r.id}`, label);
+    add(`R,Modalite,${r.id}`, label);
+    add(label, label);
+  });
+
+  return Object.fromEntries(entries);
+}
+
+function modaliteValue(v) {
+  if (v === null || v === undefined || v === '') return '';
+
+  if (Array.isArray(v)) {
+    return asList(v)
+      .map(modaliteValue)
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  if (typeof v === 'object') {
+    const id = v.id || v.$id || v.rowId || v.row_id || v.ref || v.value;
+    if (id !== undefined && id !== null && MODALITE_MAP[String(id)]) return MODALITE_MAP[String(id)];
+
+    const label = modaliteLabelFromRow(v) || cleanDisplay(v);
+    return MODALITE_MAP[label] || label;
+  }
+
+  const key = String(v || '').trim();
+  if (!key || key === 'L' || key === 'R' || key === 'Modalite' || key === 'Modalites') return '';
+
+  return MODALITE_MAP[key] || key;
+}
+
+function modaliteText(a) {
+  return modaliteValue(get(a, 'id_modalite'));
+}
+
 function firstText(a, key) {
   return cleanDisplay(get(a, key));
 }
@@ -1165,6 +1236,32 @@ async function loadStatutValuesIfAllowed() {
   }
 }
 
+async function loadModaliteValuesIfAllowed() {
+  try {
+    if (!grist.docApi || !grist.docApi.fetchTable) return;
+
+    const table = await grist.docApi.fetchTable('Modalites');
+
+    const rows = (table.id || []).map((id, i) => {
+      const row = { id };
+      Object.keys(table).forEach(k => {
+        if (k !== 'id') row[k] = table[k][i];
+      });
+      return row;
+    }).filter(r => modaliteLabelFromRow(r));
+
+    MODALITE_MAP = buildModaliteMap(rows);
+
+    MODALITE_VALUES = [...new Set(rows.map(modaliteLabelFromRow).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
+
+  } catch(e) {
+    console.warn('Table Modalites non accessible : le filtre Modalités sera construit à partir des actions existantes.', e);
+    MODALITE_MAP = {};
+    MODALITE_VALUES = [];
+  }
+}
+
 function cleanActionAxeKey(raw) {
   if (raw === null || raw === undefined) return '';
   if (Array.isArray(raw)) {
@@ -1256,7 +1353,7 @@ function buildFilters() {
   fillFilterFromValues('f-lieu', LIEU_VALUES.length ? LIEU_VALUES : [...new Set(ALL.flatMap(lieuxForAction))]);
   fillFilterFromValues('f-public', PUBLIC_VALUES.length ? PUBLIC_VALUES : [...new Set(ALL.flatMap(publicList))]);
   fillFilterFromValues('f-degre', DEGRE_VALUES.length ? DEGRE_VALUES : [...new Set(ALL.flatMap(degreList))]);
-  fillFilter('f-modal',  a => [firstText(a, 'id_modalite')]);
+  fillFilterFromValues('f-modal', MODALITE_VALUES.length ? MODALITE_VALUES : [...new Set(ALL.map(modaliteText).filter(Boolean))]);
   fillFilterFromValues('f-statut', STATUT_VALUES.length ? STATUT_VALUES : [...new Set(ALL.map(statutText).filter(Boolean))]);
 }
 
@@ -1324,7 +1421,7 @@ function searchableText(a) {
     firstText(a, 'id_volet'),
     firstText(a, 'id_axe'),
     actionAxeText(a),
-    firstText(a, 'id_modalite'),
+    modaliteText(a),
     firstText(a, 'annee_scolaire'),
     statutText(a),
     getJourneeIG(a) ? 'Journées IG Journee IG inspection générale inspection generale' : '',
@@ -1356,7 +1453,7 @@ function applyFilters() {
     if (!matchList(lieuxForAction(a), lieu)) return false;
     if (!matchList(publicList(a), pub)) return false;
     if (!matchList(degreList(a), degre)) return false;
-    if (!matchText(firstText(a, 'id_modalite'), modal)) return false;
+    if (!matchText(modaliteText(a), modal)) return false;
     if (!matchText(statutText(a), statut)) return false;
     if (journeeIGOnly && !getJourneeIG(a)) return false;
     if (search && !searchableText(a).includes(search)) return false;
@@ -1401,7 +1498,7 @@ function openModal(a) {
   const publics = publicList(a);
   const structs = listText(a, 'id_structure');
   const degres = degreList(a);
-  const modalite = firstText(a, 'id_modalite');
+  const modalite = modaliteText(a);
   const lieux = lieuxForAction(a);
   const statut = statutText(a);
   const actionAxe = actionAxeText(a);
@@ -1445,7 +1542,7 @@ function cardHtml(a, i) {
   const voletLib = firstText(a, 'id_volet');
   const annee = firstText(a, 'annee_scolaire');
   const actionAxe = actionAxeText(a);
-  const modalLib = firstText(a, 'id_modalite');
+  const modalLib = modaliteText(a);
   const lieux = lieuxForAction(a);
   const statut = statutText(a);
   const structs = listText(a, 'id_structure');
@@ -1514,6 +1611,7 @@ grist.onRecords(async (records) => {
       loadPublicValuesIfAllowed(),
       loadDegreValuesIfAllowed(),
       loadStatutValuesIfAllowed(),
+      loadModaliteValuesIfAllowed(),
       loadLieuxSessionsIfAllowed()
     ]);
 
