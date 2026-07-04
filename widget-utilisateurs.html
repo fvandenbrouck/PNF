@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Utilisateurs PNF — Administration</title>
+<!-- Version v1 : gestion des classes d'accès (Utilisateurs / Structure / Classe) -->
+<!-- Accès réservé aux Propriétaires : protégé par une règle ACL sur les tables Utilisateurs et Classe,
+     pas par ce script. Voir onglet Access Rules du document. -->
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy:#1B3A6B;
+  --navy-l:#e8edf5;
+  --bg:#F7F5F2;
+  --white:#fff;
+  --ink:#1a1208;
+  --ink2:#4a3f2f;
+  --ink3:#8a8070;
+  --border:#E0D8CC;
+  --green-bg:rgba(168,221,216,.35);
+  --green:#1a6b65;
+  --orange-bg:rgba(249,197,154,.45);
+  --orange:#8a4a10;
+  --red-bg:rgba(245,160,168,.32);
+  --red:#8a2030;
+  --strawberry:#F5A0A8;
+  --lilas:#E8E8F5;
+}
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); height:100%; overflow:hidden; }
+.app { display:flex; flex-direction:column; height:100vh; }
+.toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:10px 14px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.tb-title { display:flex; flex-direction:column; gap:1px; margin-right:6px; }
+.tb-title strong { font-family:'Fraunces',serif; font-size:15px; font-weight:600; }
+.tb-title span { font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; }
+.tb-search { position:relative; flex:1; min-width:180px; max-width:320px; }
+.tb-search input { width:100%; padding:7px 10px; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:7px; outline:none; }
+.tb-search input:focus { border-color:var(--navy); background:#fff; }
+.count { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); background:var(--lilas); padding:5px 10px; border-radius:999px; white-space:nowrap; }
+.btn { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; padding:8px 13px; border-radius:7px; cursor:pointer; border:1.5px solid var(--border); background:var(--white); color:var(--ink2); white-space:nowrap; }
+.btn:hover { border-color:var(--navy); }
+.btn-primary { background:var(--navy); color:#fff; border-color:var(--navy); }
+.btn-primary:hover { background:#0d2a52; }
+.btn-danger { border-color:var(--strawberry); color:var(--red); background:#fff; }
+.btn-danger:hover { background:rgba(245,160,168,.16); }
+.btn-ghost { background:transparent; color:var(--ink3); border-color:transparent; }
+.btn-ghost:hover { color:var(--navy); }
+.main { flex:1; display:flex; min-height:0; }
+.list-pane { width:340px; min-width:260px; border-right:1px solid var(--border); background:var(--white); overflow-y:auto; }
+.urow { display:flex; flex-direction:column; gap:3px; padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
+.urow:hover { background:var(--bg); }
+.urow.selected { background:var(--navy-l); border-left:3px solid var(--navy); padding-left:11px; }
+.urow-name { font-size:12.5px; font-weight:600; color:var(--ink); }
+.urow-email { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); }
+.urow-tags { display:flex; gap:5px; margin-top:2px; flex-wrap:wrap; }
+.tag { display:inline-flex; align-items:center; font-size:9.5px; font-weight:600; padding:2px 7px; border-radius:999px; font-family:'DM Mono',monospace; text-transform:uppercase; letter-spacing:.03em; }
+.tag-classe { background:var(--navy-l); color:var(--navy); }
+.tag-classe.empty { background:var(--bg); color:var(--ink3); }
+.tag-struct { background:var(--green-bg); color:var(--green); }
+.tag-struct.empty { background:var(--bg); color:var(--ink3); }
+.detail-pane { flex:1; overflow-y:auto; padding:24px 28px; }
+.detail-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--ink3); gap:8px; }
+.detail-empty p { font-family:'Fraunces',serif; font-size:20px; }
+.form-card { max-width:520px; }
+.form-head { font-family:'Fraunces',serif; font-size:19px; font-weight:600; margin-bottom:4px; }
+.form-sub { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-bottom:18px; }
+.mfield { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+.mfield label { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:9px; font-weight:600; }
+.mfield input, .mfield select { font-family:'DM Sans',sans-serif; font-size:13px; padding:9px 11px; border:1.5px solid var(--border); border-radius:7px; background:var(--white); outline:none; color:var(--ink); width:100%; }
+.mfield input:focus, .mfield select:focus { border-color:var(--navy); }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.droits-box { border:1.5px solid var(--border); border-radius:8px; background:var(--bg); padding:10px 12px; font-size:11.5px; color:var(--ink2); line-height:1.5; margin-top:-4px; margin-bottom:14px; min-height:20px; }
+.btn-row { display:flex; gap:10px; align-items:center; margin-top:6px; }
+.msg { font-family:'DM Mono',monospace; font-size:11px; color:var(--ink3); margin-left:auto; }
+.msg.ok { color:var(--green); } .msg.err { color:var(--red); }
+.banner { border:1.5px solid var(--orange); background:var(--orange-bg); color:var(--orange); border-radius:8px; padding:12px 14px; font-size:12px; line-height:1.55; margin-top:18px; }
+.banner strong { display:block; margin-bottom:4px; font-size:12.5px; }
+.overlay { position:fixed; inset:0; background:rgba(27,58,107,.45); backdrop-filter:blur(3px); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
+.overlay.hidden { display:none; }
+.confirm-box { background:var(--white); border-radius:14px; width:100%; max-width:380px; padding:22px 24px; box-shadow:0 24px 64px rgba(27,58,107,.25); }
+.confirm-box h3 { font-family:'Fraunces',serif; font-size:17px; margin-bottom:10px; }
+.confirm-box p { font-size:12.5px; color:var(--ink2); line-height:1.55; margin-bottom:18px; }
+.confirm-actions { display:flex; gap:10px; justify-content:flex-end; }
+#loader { position:fixed; inset:0; background:rgba(247,245,242,.92); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:500; }
+#loader.hidden { display:none; }
+.spinner { width:26px; height:26px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (max-width:720px) { .list-pane { width:100%; position:absolute; inset:0; z-index:5; } .main { position:relative; } .form-row { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="toolbar">
+    <div class="tb-title"><strong>Utilisateurs</strong><span>Classes & accès — PNF</span></div>
+    <div class="tb-search"><input type="text" id="search" placeholder="Rechercher un nom, un email…" oninput="renderList()"></div>
+    <span class="count" id="count">–</span>
+    <button class="btn btn-primary" onclick="openNew()">+ Ajouter un utilisateur</button>
+  </div>
+
+  <div class="main">
+    <div class="list-pane" id="list-pane"></div>
+    <div class="detail-pane" id="detail-pane">
+      <div class="detail-empty"><p>Aucune sélection</p><span>Choisissez un utilisateur dans la liste, ou ajoutez-en un.</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="confirm-overlay">
+  <div class="confirm-box">
+    <h3>Supprimer cet utilisateur ?</h3>
+    <p id="confirm-text"></p>
+    <div class="confirm-actions">
+      <button class="btn" onclick="closeConfirm()">Annuler</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<div id="loader"><div class="spinner"></div><p style="font-family:'DM Mono',monospace;font-size:11px;color:var(--ink3)">Chargement…</p></div>
+
+<script>
+const USERS_TABLE = 'Utilisateurs';
+const STRUCT_TABLE = 'Structures';
+const CLASSE_TABLE = 'Classe';
+
+const ROLE_SUGGESTION = {
+  'Chefferie': 'Editor',
+  'Responsable_suivi': 'Editor',
+  'Referent_IGESR': 'Editor',
+  'Public': 'Viewer',
+  'Proprietaire': 'Owner (à accorder via « Transférer la propriété », pas via un simple partage Editor)'
+};
+
+let USERS = [];
+let STRUCTURES = [];
+let CLASSES = [];
+let SELECTED_ID = null;
+let PENDING_DELETE_ID = null;
+let IS_NEW = false;
+
+grist.ready({ requiredAccess: 'full', columns: [] });
+
+async function loadAll() {
+  try {
+    const [u, s, c] = await Promise.all([
+      grist.docApi.fetchTable(USERS_TABLE),
+      grist.docApi.fetchTable(STRUCT_TABLE).catch(() => ({ id: [] })),
+      grist.docApi.fetchTable(CLASSE_TABLE).catch(() => ({ id: [] })),
+    ]);
+    USERS = rowsFromTable(u);
+    STRUCTURES = rowsFromTable(s);
+    CLASSES = rowsFromTable(c);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    document.getElementById('loader').classList.add('hidden');
+    renderList();
+    if (SELECTED_ID) selectUser(SELECTED_ID, true);
+  }
+}
+
+function rowsFromTable(table) {
+  const ids = table.id || [];
+  return ids.map((id, i) => {
+    const row = { id };
+    Object.keys(table).forEach(k => { if (k !== 'id') row[k] = table[k][i]; });
+    return row;
+  });
+}
+
+function structLabel(id) {
+  const r = STRUCTURES.find(x => x.id === id);
+  return r ? (r.libelle || r.code || `#${id}`) : '';
+}
+function classeLabel(id) {
+  const r = CLASSES.find(x => x.id === id);
+  return r ? r.Type : '';
+}
+function classeDroits(id) {
+  const r = CLASSES.find(x => x.id === id);
+  return r ? r.Droits : '';
+}
+
+function esc(s) { return (s ?? '').toString().replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+function renderList() {
+  const q = (document.getElementById('search').value || '').trim().toLowerCase();
+  const filtered = USERS.filter(u => {
+    if (!q) return true;
+    const hay = `${u.NOM_Prenom || ''} ${u.Email || ''}`.toLowerCase();
+    return hay.includes(q);
+  }).sort((a, b) => (a.NOM_Prenom || '').localeCompare(b.NOM_Prenom || '', 'fr'));
+
+  document.getElementById('count').textContent = `${filtered.length} / ${USERS.length}`;
+
+  const pane = document.getElementById('list-pane');
+  if (!filtered.length) {
+    pane.innerHTML = `<div style="padding:20px;color:var(--ink3);font-size:12px">Aucun résultat.</div>`;
+    return;
+  }
+  pane.innerHTML = filtered.map(u => {
+    const classe = classeLabel(u.Classe);
+    const struct = structLabel(u.Structure);
+    return `<div class="urow ${u.id === SELECTED_ID ? 'selected' : ''}" onclick="selectUser(${u.id})">
+      <div class="urow-name">${esc(u.NOM_Prenom) || '(sans nom)'}</div>
+      <div class="urow-email">${esc(u.Email)}</div>
+      <div class="urow-tags">
+        <span class="tag tag-classe ${classe ? '' : 'empty'}">${esc(classe) || 'sans classe'}</span>
+        <span class="tag tag-struct ${struct ? '' : 'empty'}">${esc(struct) || 'sans structure'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectUser(id, silent) {
+  SELECTED_ID = id;
+  IS_NEW = false;
+  if (!silent) renderList();
+  const u = USERS.find(x => x.id === id);
+  if (!u) return renderEmpty();
+  renderForm(u);
+}
+
+function openNew() {
+  SELECTED_ID = null;
+  IS_NEW = true;
+  renderList();
+  renderForm({ id: null, NOM: '', Prenom: '', Email: '', Structure: null, Classe: null });
+}
+
+function renderEmpty() {
+  document.getElementById('detail-pane').innerHTML =
+    `<div class="detail-empty"><p>Aucune sélection</p><span>Choisissez un utilisateur dans la liste, ou ajoutez-en un.</span></div>`;
+}
+
+function classeOptions(selected) {
+  return CLASSES.map(c => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${esc(c.Type)}</option>`).join('');
+}
+function structOptions(selected) {
+  const sorted = [...STRUCTURES].sort((a, b) => (a.libelle || '').localeCompare(b.libelle || '', 'fr'));
+  return sorted.map(s => `<option value="${s.id}" ${s.id === selected ? 'selected' : ''}>${esc(s.libelle || s.code)}</option>`).join('');
+}
+
+function renderForm(u) {
+  const pane = document.getElementById('detail-pane');
+  const title = IS_NEW ? 'Nouvel utilisateur' : (u.NOM_Prenom || `${u.NOM || ''} ${u.Prenom || ''}`.trim() || '(sans nom)');
+  pane.innerHTML = `
+    <div class="form-card">
+      <div class="form-head">${esc(title)}</div>
+      <div class="form-sub">${IS_NEW ? 'CRÉATION' : `UTILISATEURS #${u.id}`}</div>
+
+      <div class="form-row">
+        <div class="mfield"><label for="f-nom">Nom</label><input id="f-nom" value="${esc(u.NOM)}"></div>
+        <div class="mfield"><label for="f-prenom">Prénom</label><input id="f-prenom" value="${esc(u.Prenom)}"></div>
+      </div>
+      <div class="mfield"><label for="f-email">Email</label><input id="f-email" type="email" value="${esc(u.Email)}" placeholder="prenom.nom@domaine.fr"></div>
+      <div class="form-row">
+        <div class="mfield">
+          <label for="f-structure">Structure de rattachement</label>
+          <select id="f-structure"><option value="">—</option>${structOptions(u.Structure)}</select>
+        </div>
+        <div class="mfield">
+          <label for="f-classe">Classe (droits)</label>
+          <select id="f-classe" onchange="updateDroitsBox()"><option value="">—</option>${classeOptions(u.Classe)}</select>
+        </div>
+      </div>
+      <div class="droits-box" id="droits-box">${esc(classeDroits(u.Classe)) || 'Sélectionnez une classe pour voir les droits associés.'}</div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveUser(${u.id ?? 'null'})">Enregistrer</button>
+        ${!IS_NEW ? `<button class="btn btn-danger" onclick="askDelete(${u.id}, '${esc(title).replace(/'/g, "\\'")}')">Supprimer</button>` : ''}
+        <span class="msg" id="form-msg"></span>
+      </div>
+
+      <div id="access-banner"></div>
+    </div>
+  `;
+}
+
+function updateDroitsBox() {
+  const classeId = Number(document.getElementById('f-classe').value) || null;
+  document.getElementById('droits-box').textContent = classeDroits(classeId) || 'Sélectionnez une classe pour voir les droits associés.';
+}
+
+async function saveUser(id) {
+  const msg = document.getElementById('form-msg');
+  msg.textContent = 'Enregistrement…'; msg.className = 'msg';
+
+  const nom = document.getElementById('f-nom').value.trim();
+  const prenom = document.getElementById('f-prenom').value.trim();
+  const email = document.getElementById('f-email').value.trim();
+  const structureVal = document.getElementById('f-structure').value;
+  const classeVal = document.getElementById('f-classe').value;
+
+  if (!email) { msg.textContent = '✗ L\'email est obligatoire.'; msg.className = 'msg err'; return; }
+
+  const fields = {
+    NOM: nom,
+    Prenom: prenom,
+    NOM_Prenom: `${nom} ${prenom}`.trim(),
+    Email: email,
+    Structure: structureVal ? Number(structureVal) : null,
+    Classe: classeVal ? Number(classeVal) : null,
+  };
+
+  try {
+    let newId = id;
+    if (id) {
+      await grist.docApi.applyUserActions([['UpdateRecord', USERS_TABLE, id, fields]]);
+    } else {
+      const result = await grist.docApi.applyUserActions([['AddRecord', USERS_TABLE, null, fields]]);
+      newId = Array.isArray(result) ? result[0] : result;
+    }
+    await loadAll();
+    IS_NEW = false;
+    selectUser(newId);
+    msg.textContent = '✓ Enregistré'; msg.className = 'msg ok';
+
+    const classeType = classeLabel(fields.Classe);
+    if (classeType) {
+      const role = ROLE_SUGGESTION[classeType] || 'Editor';
+      document.getElementById('access-banner').innerHTML = `
+        <div class="banner">
+          <strong>Accès Grist à accorder manuellement</strong>
+          Cette fiche ne donne aucun accès au document. Pour que ${esc(email)} puisse effectivement se connecter,
+          ajoutez cette adresse dans <em>Partager</em> avec le rôle <strong>${esc(role)}</strong> — les règles ACL
+          se chargeront ensuite de limiter ce qu'elle peut voir et modifier selon sa classe « ${esc(classeType)} ».
+        </div>`;
+    }
+  } catch (e) {
+    console.error(e);
+    msg.textContent = '✗ Erreur : ' + e.message; msg.className = 'msg err';
+  }
+}
+
+function askDelete(id, label) {
+  PENDING_DELETE_ID = id;
+  document.getElementById('confirm-text').textContent =
+    `« ${label} » sera définitivement retiré de la table Utilisateurs. Cela ne supprime pas son éventuel accès de partage Grist (à retirer séparément si besoin). Cette action est irréversible.`;
+  document.getElementById('confirm-overlay').classList.remove('hidden');
+}
+function closeConfirm() {
+  PENDING_DELETE_ID = null;
+  document.getElementById('confirm-overlay').classList.add('hidden');
+}
+async function confirmDelete() {
+  if (!PENDING_DELETE_ID) return;
+  const id = PENDING_DELETE_ID;
+  closeConfirm();
+  try {
+    await grist.docApi.applyUserActions([['RemoveRecord', USERS_TABLE, id]]);
+    SELECTED_ID = null;
+    await loadAll();
+    renderEmpty();
+  } catch (e) {
+    console.error(e);
+    alert('Erreur lors de la suppression : ' + e.message);
+  }
+}
+
+grist.onRecords(() => loadAll());
+loadAll();
+</script>
+</body>
+</html>
