@@ -643,10 +643,35 @@ function updateBilanIndicators(){
 
 
 async function fetchSafe(name){ try { return await grist.docApi.fetchTable(name); } catch(e) { console.warn('[journal] table inaccessible:', name, e); return {id:[]}; } }
+
+// Garde-fou d'affichage : Utilisateurs n'est lisible que sur sa propre ligne (sauf Owner qui voit tout).
+// Plus d'une ligne renvoyée => Owner. Une seule ligne => sa propre classe. Zéro ligne => non classé (Public).
+async function checkAccess(){
+  try {
+    const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
+    if (rows.length > 1) return true;
+    if (rows.length === 1) return ['Chefferie','Responsable_suivi'].includes(rows[0].ClasseNom);
+    return false;
+  } catch(e) {
+    console.warn('[journal] vérification des droits impossible :', e);
+    return false;
+  }
+}
+
 async function loadData(records){
   showLoader(true);
   try{
     let attempts=0; while(!grist.docApi && attempts<20){ await new Promise(r=>setTimeout(r,100)); attempts++; }
+
+    const allowed = await checkAccess();
+    const toolbar = document.querySelector('.toolbar');
+    if (!allowed) {
+      if (toolbar) toolbar.style.display = 'none';
+      document.getElementById('grid').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie et aux Responsables de suivi.</span></div>`;
+      return;
+    }
+    if (toolbar) toolbar.style.display = '';
+
     const [actionsFull, contacts, chefferie, lieux, modalitex, statuts, jsessions, jactions, structs, modals, publics, annees, axes, volets, degres] = await Promise.all([
       fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Chefferie'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Statuts_suivi'), fetchSafe('Journal_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Structures'), fetchSafe('Modalites'), fetchSafe('Publics'), fetchSafe('Annees'), fetchSafe('Axes'), fetchSafe('Volets'), fetchSafe('Degres')
     ]);
