@@ -845,6 +845,9 @@ function clearSessionLine(i){
   if(line && i>0) line.classList.add('hidden');
   const btn=document.getElementById('btn-add-date');
   if(btn){ btn.disabled=false; btn.textContent='+ Ajouter une date'; }
+  let remaining=0;
+  for(let k=0;k<MAX_SESSIONS;k++){ if(document.getElementById(`s-date-${k}`)?.value) remaining++; }
+  if(remaining===0){ const nbInput=document.getElementById('s-nb'); if(nbInput) nbInput.value=''; }
   updateSessionCompatibility();
   updateBilanIndicators();
 }
