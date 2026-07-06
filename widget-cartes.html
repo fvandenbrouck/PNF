@@ -1686,6 +1686,21 @@ function detectExistingColumn(records, candidates, fallback) {
 // ── Init Grist ────────────────────────────────────────────────────────────
 grist.ready({ requiredAccess: 'full', columns: [] });
 
+// Garde-fou d'affichage : Utilisateurs n'est lisible que sur sa propre ligne (sauf Owner qui voit tout).
+// Plus d'une ligne renvoyée => Owner. Une seule ligne => sa propre classe. Zéro ligne => non classé (Public).
+async function checkAccess() {
+  try {
+    const t = await grist.docApi.fetchTable('Utilisateurs');
+    const rows = (t.id || []).map((id, i) => ({ id, ClasseNom: (t.ClasseNom || [])[i] }));
+    if (rows.length > 1) return true;
+    if (rows.length === 1) return ['Chefferie', 'Responsable_suivi'].includes(rows[0].ClasseNom);
+    return false;
+  } catch (e) {
+    console.warn('[widget-cartes] vérification des droits impossible :', e);
+    return false;
+  }
+}
+
 grist.onRecords(async (records) => {
   showLoader(true);
   try {
@@ -1695,6 +1710,16 @@ grist.onRecords(async (records) => {
       await new Promise(r => setTimeout(r, 100));
       attempts++;
     }
+
+    const allowed = await checkAccess();
+    const toolbar = document.querySelector('.toolbar');
+    if (!allowed) {
+      if (toolbar) toolbar.style.display = 'none';
+      document.getElementById('grid').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie et aux Responsables de suivi.</span></div>`;
+      return;
+    }
+    if (toolbar) toolbar.style.display = '';
+
     const [volets, axes, actionsAxes, structs, modals, contacts, publics, degres, annees, statuts, lieux, sessions, actionsFull] = await Promise.all([
       grist.docApi.fetchTable('Volets'),
       grist.docApi.fetchTable('Axes'),
