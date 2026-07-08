@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendrier des COPIL — PNF</title>
+<!-- Version v1 : agenda des COPIL alimenté par Journal_Actions (entrées de type COPIL), modale de rappel en lecture seule -->
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --turquoise:#A8DDD8;
+  --peach:#F9C59A;
+  --strawberry:#F5A0A8;
+  --lilas:#E8E8F5;
+  --navy:#1B3A6B;
+  --navy-l:#e8edf5;
+  --bg:#F7F5F2;
+  --white:#fff;
+  --ink:#1a1208;
+  --ink2:#4a3f2f;
+  --ink3:#8a8070;
+  --border:#E0D8CC;
+  --green-bg:rgba(168,221,216,.35);
+  --green:#1a6b65;
+  --orange-bg:rgba(249,197,154,.45);
+  --orange:#8a4a10;
+  --red-bg:rgba(245,160,168,.32);
+  --red:#8a2030;
+  --purple-bg:rgba(200,180,224,.45);
+  --purple:#4e3370;
+  --grey-bg:rgba(180,180,180,.35);
+  --grey:#555;
+}
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); height:100%; overflow:hidden; color-scheme: light; }
+.toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:8px 12px; display:flex; flex-wrap:wrap; gap:7px; align-items:center; position:sticky; top:0; z-index:10; }
+.tb-title { display:flex; flex-direction:column; gap:1px; min-width:170px; margin-right:4px; }
+.tb-title strong { font-family:'Fraunces',serif; font-size:14px; font-weight:500; line-height:1.1; }
+.tb-title span { font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; }
+.tb-search { position:relative; flex:2; min-width:190px; }
+.tb-search svg { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--ink3); pointer-events:none; }
+.tb-search input { width:100%; padding:7px 10px 7px 32px; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:7px; outline:none; color:var(--ink); }
+.tb-search input:focus { border-color:var(--navy); background:#fff; }
+.tb-sel { position:relative; flex:1; min-width:135px; }
+.tb-sel select { width:100%; font-family:'DM Sans',sans-serif; font-size:11px; color:var(--ink); background:var(--bg); border:1px solid var(--border); border-radius:7px; padding:7px 24px 7px 9px; outline:none; appearance:none; -webkit-appearance:none; cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238a8070' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 7px center; }
+.tb-sel select:focus { border-color:var(--navy); background:#fff; }
+.btn-reset { font-family:'DM Sans',sans-serif; font-size:11px; border:1px solid var(--border); padding:7px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; background:transparent; color:var(--ink3); }
+.btn-reset:hover { border-color:var(--strawberry); color:var(--strawberry); }
+.count { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); background:var(--lilas); padding:5px 10px; border-radius:999px; white-space:nowrap; }
+
+.agenda-wrap { height:calc(100vh - 58px); overflow-y:auto; padding:16px; }
+.agenda-section-title { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:10.5px; font-weight:700; margin:18px 0 9px; }
+.agenda-section-title:first-child { margin-top:0; }
+.agenda-list { display:flex; flex-direction:column; gap:9px; }
+.agenda-item { display:flex; gap:14px; background:var(--white); border:1.5px solid var(--border); border-radius:12px; padding:12px 16px; cursor:pointer; transition:.15s; animation:fadeUp .2s ease both; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+.agenda-item:hover { border-color:var(--navy); box-shadow:0 6px 18px rgba(27,58,107,.10); transform:translateY(-1px); }
+.agenda-date { flex:0 0 78px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; border-right:1px solid var(--border); padding-right:14px; }
+.agenda-day { font-family:'DM Mono',monospace; font-size:13px; font-weight:700; color:var(--navy); text-align:center; line-height:1.25; }
+.agenda-time { font-family:'DM Mono',monospace; font-size:11px; color:var(--purple); font-weight:600; }
+.agenda-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+.agenda-title { font-family:'Fraunces',serif; font-size:14.5px; font-weight:600; line-height:1.3; }
+.agenda-notes { font-size:11.5px; color:var(--ink2); line-height:1.5; }
+.tags { display:flex; flex-wrap:wrap; gap:4px; }
+.tag { display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:500; padding:3px 8px; border-radius:4px; line-height:1.35; }
+.tag-year { background:var(--green-bg); color:var(--green); font-family:'DM Mono',monospace; font-size:9px; }
+.tag-struct { background:rgba(168,221,216,.28); color:#1a6b65; }
+.tag-resp { background:var(--lilas); color:var(--navy); font-family:'DM Mono',monospace; }
+.tag-code { background:rgba(27,58,107,.10); color:var(--navy); font-family:'DM Mono',monospace; font-size:9px; font-weight:700; }
+.tag-copil { background:var(--purple-bg); color:var(--purple); font-family:'DM Mono',monospace; font-weight:700; }
+.tag-date { background:rgba(249,197,154,.35); color:#8a4a10; }
+.chip-volet { font-family:'DM Mono',monospace; font-size:9px; font-weight:600; padding:3px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; background:var(--navy-l); color:var(--navy); }
+.chip-volet-1 { color:#4e3370; background:rgba(200,180,224,.45); }
+.chip-volet-21 { color:#8a4a10; background:rgba(249,197,154,.45); }
+.chip-volet-22 { color:#1B3A6B; background:rgba(249,197,154,.45); }
+.chip-volet-23 { color:#4a4a4a; background:rgba(249,197,154,.45); }
+.chip-ig { font-family:'DM Mono',monospace; font-size:9px; font-weight:700; color:#8a2030; background:rgba(245,160,168,.32); padding:3px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+.status { font-family:'DM Mono',monospace; font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+.status-green { background:var(--green-bg); color:var(--green); }
+.status-orange { background:var(--orange-bg); color:var(--orange); }
+.status-red { background:var(--red-bg); color:var(--red); }
+.status-purple { background:var(--purple-bg); color:var(--purple); }
+.status-grey { background:var(--grey-bg); color:var(--grey); }
+.status-neutral { background:var(--navy-l); color:var(--navy); }
+
+.empty { text-align:center; padding:80px 20px; color:var(--ink3); }
+.empty p { font-family:'Fraunces',serif; font-size:22px; margin-bottom:8px; }
+.empty span { font-family:'DM Mono',monospace; font-size:11px; }
+
+details.agenda-past { border:1.5px dashed var(--border); border-radius:12px; padding:10px 14px; background:rgba(255,255,255,.5); }
+details.agenda-past > summary { cursor:pointer; font-family:'DM Mono',monospace; font-size:10.5px; font-weight:700; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; list-style:none; }
+details.agenda-past > summary::-webkit-details-marker { display:none; }
+details.agenda-past > summary::before { content:'▸ '; }
+details.agenda-past[open] > summary::before { content:'▾ '; }
+details.agenda-past .agenda-list { margin-top:12px; }
+
+.overlay { position:fixed; inset:0; background:rgba(27,58,107,.45); backdrop-filter:blur(3px); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
+.overlay.hidden { display:none; }
+.modal { background:var(--white); border-radius:15px; width:100%; max-width:820px; max-height:96vh; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(27,58,107,.25); }
+.modal-head { padding:20px 24px 16px; border-bottom:1px solid var(--border); display:flex; gap:14px; align-items:flex-start; }
+.modal-band { width:5px; min-height:52px; border-radius:3px; background:var(--navy); flex-shrink:0; }
+.modal-head-text { flex:1; }
+.modal-head h2 { font-family:'Fraunces',serif; font-size:21px; line-height:1.3; font-weight:600; }
+.modal-meta { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-top:7px; letter-spacing:.04em; }
+.modal-meta-line { display:flex; flex-wrap:wrap; align-items:center; gap:4px; width:100%; }
+.btn-close { margin-left:auto; border:none; background:transparent; font-size:24px; color:var(--ink3); cursor:pointer; padding:2px 6px; }
+.btn-close:hover { color:var(--ink); background:var(--bg); border-radius:6px; }
+.modal-body { overflow-y:auto; padding:18px 24px; display:grid; gap:16px; }
+.section-title { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:10px; font-weight:600; margin-bottom:7px; }
+.box { border:1.5px solid var(--border); border-radius:10px; background:var(--bg); padding:12px; }
+.description { font-size:12px; color:var(--ink2); line-height:1.6; white-space:pre-wrap; }
+.identity-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
+.identity-item { border:1.5px solid var(--border); border-radius:8px; background:#fff; padding:10px; display:flex; flex-direction:column; gap:4px; }
+.identity-label { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:8.5px; font-weight:600; }
+.identity-value { font-size:12px; color:var(--ink2); line-height:1.35; }
+.help { font-size:11px; color:var(--ink3); line-height:1.5; }
+.history { display:flex; flex-direction:column; gap:10px; }
+.history-item { background:#fff; border:1.5px solid var(--border); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+.history-head { display:flex; flex-wrap:wrap; gap:5px; align-items:center; justify-content:space-between; }
+.history-head-left { display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+.history-date { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); }
+.history-text { font-size:12px; color:var(--ink2); line-height:1.55; white-space:pre-wrap; }
+.history-next { border-top:1px solid var(--border); padding-top:8px; }
+.avancement-card { display:flex; flex-direction:column; gap:5px; }
+.avancement-bar { display:grid; grid-template-columns:repeat(5,1fr); gap:3px; height:11px; border-radius:999px; overflow:hidden; }
+.avancement-step { background:rgba(27,58,107,.10); min-width:0; }
+.avancement-step:first-child { border-top-left-radius:999px; border-bottom-left-radius:999px; }
+.avancement-step:last-child { border-top-right-radius:999px; border-bottom-right-radius:999px; }
+.avancement-step.done { background:#43a047; }
+.avancement-step.na { background:repeating-linear-gradient(135deg, rgba(138,128,112,.45) 0, rgba(138,128,112,.45) 5px, rgba(224,216,204,.75) 5px, rgba(224,216,204,.75) 10px); }
+.avancement-labels { display:grid; grid-template-columns:repeat(5,1fr); gap:3px; font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-align:center; line-height:1.2; }
+.avancement-labels span { overflow-wrap:anywhere; }
+.avancement-summary { font-family:'DM Mono',monospace; font-size:9px; color:var(--ink3); }
+.bilan-indicators { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+.bilan-indicator { border:1.5px solid var(--border); border-radius:8px; background:#fff; padding:10px; display:flex; flex-direction:column; gap:4px; }
+.bilan-indicator .value { font-family:'DM Mono',monospace; font-size:15px; color:var(--navy); font-weight:600; }
+.bilan-indicator .label { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:8.5px; font-weight:600; }
+.bilan-sessions { margin-top:12px; font-size:12px; color:var(--ink2); line-height:1.7; }
+.bilan-sessions-label, .bilan-notes-label { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:9px; font-weight:600; display:block; margin-bottom:6px; }
+.bilan-notes { margin-top:12px; }
+
+#loader { position:fixed; inset:0; background:rgba(247,245,242,.92); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:500; }
+#loader.hidden { display:none; }
+.spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (max-width:820px) {
+  .modal { max-height:98vh; }
+  .agenda-item { flex-direction:column; gap:8px; }
+  .agenda-date { flex-direction:row; border-right:none; border-bottom:1px solid var(--border); padding:0 0 8px; justify-content:flex-start; gap:8px; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div class="tb-title"><strong>Calendrier des COPIL</strong><span>Pilotage PNF</span></div>
+  <div class="tb-search">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input type="text" id="f-search" placeholder="Rechercher une action, une note…" oninput="applyFilters()">
+  </div>
+  <div class="tb-sel"><select id="f-annee" onchange="applyFilters()"><option value="">Années</option></select></div>
+  <div class="tb-sel"><select id="f-volet" onchange="applyFilters()"><option value="">Volets</option></select></div>
+  <div class="tb-sel"><select id="f-struct" onchange="applyFilters()"><option value="">Structures</option></select></div>
+  <div class="tb-sel"><select id="f-responsable-suivi" onchange="applyFilters()"><option value="">Responsables de suivi</option></select></div>
+  <button class="btn-reset" onclick="resetFilters()">✕</button>
+  <span class="count" id="count">–</span>
+</div>
+<div class="agenda-wrap" id="agenda-wrap"></div>
+<div id="loader"><div class="spinner"></div><p>Chargement du calendrier…</p></div>
+
+<div class="overlay hidden" id="overlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-band"></div>
+      <div class="modal-head-text">
+        <h2 id="modal-title">–</h2>
+        <div class="modal-meta" id="modal-meta"></div>
+      </div>
+      <button class="btn-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+console.info('[widget-copil-calendrier] v1 agenda des COPIL chargé');
+let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
+let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
+let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};
+let AXE_MAP = {}, VOLET_MAP = {}, STRUCT_MAP = {}, MODAL_MAP = {}, PUBLIC_MAP = {}, DEGRE_MAP = {}, ANNEE_MAP = {};
+const ACTION_TABLE = 'Actions_formation';
+const JOURNAL_TABLE = 'Journal_Actions';
+const AVANCEMENT_STEPS = [
+  { key:'COPIL', label:'COPIL', naLabel:'Aucun COPIL', done:'Avancement_COPIL', na:'NA_COPIL' },
+  { key:'Elise', label:'Élise', naLabel:'Aucun passage Élise', done:'Avancement_Elise', na:'NA_Elise' },
+  { key:'Courrier_EAFC', label:'Courrier EAFC', naLabel:'Aucun courrier EAFC', done:'Avancement_Courrier_EAFC', na:'NA_Courrier_EAFC' },
+  { key:'Emargement', label:'Émargement', naLabel:'Aucun émargement', done:'Avancement_Emargement', na:'NA_Emargement' },
+  { key:'Evaluation', label:'Évaluation', naLabel:'Aucune évaluation', done:'Avancement_Evaluation', na:'NA_Evaluation' }
+];
+const MAX_SESSIONS = 10;
+
+// ---- Fonctions utilitaires (reprises de widget-journal_actions.html) ----
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function asList(v){ if(v===null||v===undefined||v==='') return []; if(Array.isArray(v)) return v[0]==='L'?v.slice(1):v; return [v]; }
+function toRows(t){ return (t&&t.id||[]).map((id,i)=>{ const r={id}; Object.keys(t||{}).forEach(k=>{ if(k!=='id') r[k]=t[k][i]; }); return r; }); }
+function firstText(row, keys){ for(const k of keys){ const v=row&&row[k]; if(v!==undefined&&v!==null&&String(v).trim()) return String(v).trim(); } return ''; }
+function norm(s){ return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function formatDateValue(v){ if(!v) return ''; try{ if(typeof v==='number'){ const ms=v<1000000000000?v*1000:v; return new Intl.DateTimeFormat('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(ms)); } const d=new Date(v); if(isNaN(d)) return String(v); return new Intl.DateTimeFormat('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(d); }catch(e){return String(v||'');} }
+function dateSortValue(v){ if(!v) return 0; if(typeof v==='number') return v<1000000000000?v*1000:v; const d=new Date(v); return isNaN(d)?0:d.getTime(); }
+function stripEmail(s){ return String(s||'').replace(/\s*<[^>]*>\s*/g,' ').replace(/\s+/g,' ').trim(); }
+function refIds(raw, table){
+  const out=[];
+  const push=id=>{ if(id!==undefined && id!==null && /^\d+$/.test(String(id))) out.push(String(id)); };
+  const walk=v=>{
+    if(v===null||v===undefined||v==='') return;
+    if(Array.isArray(v)){
+      if(v[0]==='L'){ v.slice(1).forEach(walk); return; }
+      if(v[0]==='R'){ const candidates=v.slice(1).filter(x=>/^\d+$/.test(String(x))); if(candidates.length) push(candidates[candidates.length-1]); return; }
+      v.forEach(walk); return;
+    }
+    if(typeof v==='object'){ const row=v.rowId??v.row_id??v.recordId??v.record_id??v.ref??v.id; if(row!==undefined && row!==null){ push(row); return; } if(v.value!==undefined){ walk(v.value); return; } return; }
+    if(typeof v==='number'){ push(v); return; }
+    const s=String(v).trim();
+    if(/^\d+$/.test(s)){ push(s); return; }
+    const m=s.match(/\[(\d+)\]$/) || s.match(/(?:^|[,;:])\s*(\d+)\s*$/);
+    if(m) push(m[1]);
+  };
+  walk(raw);
+  return [...new Set(out)];
+}
+function refId(raw, expectedTable){ return refIds(raw, expectedTable)[0] || ''; }
+function labelFor(v,map){ const id=refId(v)||String(v||'').trim(); const raw=String(v||'').trim(); const clean=stripEmail(raw); return map[id] || map[raw] || map[clean] || clean; }
+function labelsFor(v,map){
+  const ids=refIds(v);
+  const byIds=ids.map(id=>map[id]).filter(Boolean);
+  if(byIds.length) return byIds;
+  return asList(v).map(x=>{
+    if(x===null||x===undefined||x===''||x==='L'||x==='R') return '';
+    if(Array.isArray(x) || typeof x==='object'){ const id=refId(x); return id && map[id] ? map[id] : ''; }
+    const raw=String(x).trim();
+    return map[raw] || map[stripEmail(raw)] || stripEmail(raw);
+  }).filter(Boolean).filter(x=>x!=='L'&&x!=='R');
+}
+function simpleLabel(r){ return firstText(r,['libelle','Libelle','Libellé','label','Label','nom','Nom','code','Code']); }
+function degreLabel(r){ return firstText(r,['nom_deg','Nom_deg','NOM_DEG','Degré','Degre','Degrés','Degres','libelle','Libelle','Libellé','label','Label','nom','Nom']); }
+function contactLabel(r){ const np=stripEmail(firstText(r,['Nom Prénom','Nom Prenom','nom_prenom','NOM_PRENOM','Nom_prenom'])); const nom=stripEmail(firstText(r,['NOM','Nom','nom'])); const prenom=stripEmail(firstText(r,['PRENOM','Prénom','Prenom','prenom'])); return np || [nom,prenom].filter(Boolean).join(' ').trim() || [prenom,nom].filter(Boolean).join(' ').trim() || `Contact ${r&&r.id?('#'+r.id):''}`.trim(); }
+function chefferieLabel(r){ return contactLabel(r).replace(/^Contact /, 'Chefferie '); }
+function lieuLabel(r){ return firstText(r,['Site','site','SITE','lieu','Lieu','Lieux','nom','Nom','libelle','Libelle','Libellé']); }
+function statusLabel(r){ return firstText(r,['statut_suivi','Statut_suivi','statut','Statut','label','Label']); }
+function modaliteXLabel(r){ return firstText(r,['modalite','Modalite','Modalité','libelle','Libelle','Libellé','label','Label','nom','Nom']); }
+function getTitre(a){ return firstText(a,['Titre','titre','title']) || 'Sans titre'; }
+function getCodeGaia(a){ return firstText(a,['Code_GAIA','Code GAIA','code_gaia','GAIA','Code']); }
+function getObjectif(a){ return firstText(a,['Objectif','objectif']); }
+function getAnnee(a){ const raw = a.Annee_scolaire ?? a['Année scolaire'] ?? a.annee_scolaire ?? a.Annee ?? a['Année'] ?? a.id_annee; const label=labelFor(raw, ANNEE_MAP); if(label && !/^\d+$/.test(String(label).trim())) return label; const txt=firstText(a,['Annee_scolaire','Année scolaire','annee_scolaire','Annee','Année']); return txt && !/^\d+$/.test(String(txt).trim()) ? txt : (label || txt || ''); }
+function getVolet(a){ return labelFor(a.id_volet || a.Volet || a.volet, VOLET_MAP); }
+function boolValue(v){ if(v===true) return true; if(v===false || v===null || v===undefined || v==='') return false; if(typeof v==='number') return v!==0; const s=String(v).trim().toLowerCase(); return ['true','1','oui','yes','x','checked'].includes(s); }
+function getJourneeIG(a){ if(!a) return false; const keys=['JourneeIG','JournéeIG','Journee_IG','Journée_IG','Journee IG','Journée IG','journeeIG','journee_ig']; for(const k of keys){ if(Object.prototype.hasOwnProperty.call(a,k)) return boolValue(a[k]); } return false; }
+function voletChipClass(label){ const s=String(label||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/,/g,'.').replace(/\s+/g,' ').trim(); if(/\b2\s*\.\s*1\b/.test(s) || /volet\s*2\s*\.\s*1/.test(s)) return 'chip-volet-21'; if(/\b2\s*\.\s*2\b/.test(s) || /volet\s*2\s*\.\s*2/.test(s)) return 'chip-volet-22'; if(/\b2\s*\.\s*3\b/.test(s) || /volet\s*2\s*\.\s*3/.test(s)) return 'chip-volet-23'; if(/\b1\b/.test(s) || /volet\s*1\b/.test(s)) return 'chip-volet-1'; return ''; }
+function voletChipHtml(label){ const lib=String(label||'').trim(); return lib ? `<span class="chip-volet ${voletChipClass(lib)}">${esc(lib)}</span>` : ''; }
+function journeeIGChipHtml(a){ return getJourneeIG(a) ? '<span class="chip-ig">Journées IG</span>' : ''; }
+function searchNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function getDegre(a){ return labelsFor(a.Degre || a.Degres || a.id_degre || a.id_degres, DEGRE_MAP); }
+function getStructures(a){ return labelsFor(a.id_structure || a.Structure || a.Structures, STRUCT_MAP); }
+function getModalite(a){ return labelFor(a.id_modalite || a.Modalite || a.modalite, MODAL_MAP); }
+function getPublics(a){ return labelsFor(a.id_publics || a.Publics || a.publics_cibles, PUBLIC_MAP); }
+function getResponsablesAction(a){ return labelsFor(a.Responsable_suivi || a.responsable_suivi || a.Responsable || a.responsable, CONTACT_MAP); }
+function getChefferieLabel(a){ return labelFor(a.Chefferie || a.chefferie, CHEFFERIE_MAP); }
+function truthy(v){ return v===true || v===1 || String(v||'').toLowerCase()==='true'; }
+function avancementState(a, step){ if(truthy(a&&a[step.na])) return 'na'; if(truthy(a&&a[step.done])) return 'done'; return 'todo'; }
+function avancementCounts(a){ const applicable=AVANCEMENT_STEPS.filter(s=>avancementState(a,s)!=='na'); const done=applicable.filter(s=>avancementState(a,s)==='done').length; return {done, total:applicable.length}; }
+function avancementText(a){ return AVANCEMENT_STEPS.map(s=>`${s.label}: ${avancementState(a,s)==='done'?'réalisé':avancementState(a,s)==='na'?'non applicable':'à faire'}`).join(' | '); }
+function avancementBarHtml(a){ const counts=avancementCounts(a); const summary=counts.total?`${counts.done}/${counts.total} étape${counts.total>1?'s':''} applicable${counts.total>1?'s':''} réalisée${counts.done>1?'s':''}`:'Aucune étape applicable'; return `<div class="avancement-card" title="${esc(avancementText(a))}"><div class="avancement-bar">${AVANCEMENT_STEPS.map(s=>`<span class="avancement-step ${avancementState(a,s)}"></span>`).join('')}</div><div class="avancement-labels">${AVANCEMENT_STEPS.map(s=>`<span>${esc(s.label)}</span>`).join('')}</div><div class="avancement-summary">${esc(summary)}</div></div>`; }
+function getActionRef(row){ return refId(row.Action); }
+function getSessionForAction(actionId){ return SESSION_ROWS.find(s=>String(getActionRef(s))===String(actionId)); }
+function isCopilEntry(j){ return String((j && j.Type_entree) || '').trim()==='COPIL'; }
+function statusTextFromEntry(j){ return j ? labelFor(j.Statut_suivi, STATUS_MAP) : ''; }
+function statusClass(label){ const s=norm(label); if(s.includes('en cours')) return 'status-green'; if(s.includes('blocage')) return 'status-orange'; if(s.includes('arbitrage')) return 'status-red'; if(s.includes('report')) return 'status-purple'; if(s.includes('cloture')) return 'status-grey'; return 'status-neutral'; }
+function getJournalForAction(actionId){ return JOURNAL_ROWS.filter(j=>String(getActionRef(j))===String(actionId)).sort((a,b)=>dateSortValue(b.Date)-dateSortValue(a.Date)); }
+function getStatutSuivi(a){ const cr=getJournalForAction(a.id).filter(j=>!isCopilEntry(j))[0]; return cr ? statusTextFromEntry(cr) : ''; }
+function statutSuiviChipHtml(a){ const stat=getStatutSuivi(a); return stat ? `<span class="tag status ${statusClass(stat)}">${esc(stat)}</span>` : ''; }
+
+function sessionNb(session){ const n=session && session.Nb_sessions; if(n===null||n===undefined||n==='') return ''; return String(n).replace('.',','); }
+function sessionComment(session){ return firstText(session,['Commentaire_logistique','commentaire_logistique','Commentaire logistique']); }
+function sessionDateValue(session,i){ return session ? session[`Date${i}`] : ''; }
+function sessionModaliteLabel(session,i){ return session ? labelFor(session[`Modalite${i}`], MODALITEX_MAP) : ''; }
+function sessionLieuLabel(session,i){ return session ? labelFor(session[`Lieu${i}`], LIEU_MAP) : ''; }
+function sessionFilledDateCount(session){ let n=0; for(let i=0;i<MAX_SESSIONS;i++){ if(sessionDateValue(session,i)) n++; } return n; }
+function sessionStructuredDates(session){ const out=[]; for(let i=0;i<MAX_SESSIONS;i++){ const d=formatDateValue(sessionDateValue(session,i)); const m=sessionModaliteLabel(session,i); const l=sessionLieuLabel(session,i); if(d||m||l) out.push([`Session ${i+1}`,d,m,l].filter(Boolean).join(' · ')); } return out; }
+function sessionStructuredLieux(session){ const out=[]; for(let i=0;i<MAX_SESSIONS;i++){ const l=sessionLieuLabel(session,i); if(l) out.push(l); } return [...new Set(out)]; }
+function sessionPresentsValue(session,i){ return session ? session[`Presents${i}`] : ''; }
+function modaliteCoefficient(label){ const s=norm(label); if(s.includes('journee entiere')) return 1; if(s.includes('webinaire') || s.includes('1/2') || s.includes('demi')) return 0.5; return 0; }
+function parseNum(v){ if(v===null||v===undefined||v==='') return null; if(typeof v==='number') return Number.isFinite(v)?v:null; const n=Number(String(v).replace(/\s/g,'').replace(',','.')); return Number.isFinite(n)?n:null; }
+function formatNumber(v, digits=0){ const n=parseNum(v); return n===null?'—':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:digits, minimumFractionDigits:digits?0:0}).format(n); }
+function formatPercentValue(v){ const n=parseNum(v); if(n===null) return '—'; const pct=Math.abs(n)<=1?n*100:n; return new Intl.NumberFormat('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1}).format(pct)+' %'; }
+function getSessionComputed(session){
+  const filledDates=sessionFilledDateCount(session);
+  let totalPresents=0, journeesStagiaires=0;
+  for(let i=0;i<MAX_SESSIONS;i++){ const p=parseNum(sessionPresentsValue(session,i)) || 0; totalPresents += p; journeesStagiaires += p * modaliteCoefficient(sessionModaliteLabel(session,i)); }
+  const participantsPrevus=parseNum(session&&session.Participants_prevus);
+  const inscritsGaia=parseNum(session&&session.Inscrits_GAIA);
+  const presentsMoyen=filledDates ? totalPresents / filledDates : null;
+  return {
+    nombreCopil: parseNum(session&&session.Nombre_COPIL),
+    participantsPrevus, inscritsGaia, filledDates,
+    totalPresents: parseNum(session&&session.Total_presents) ?? totalPresents,
+    presentsMoyen: parseNum(session&&session.Presents_moyen) ?? presentsMoyen,
+    journeesStagiaires: parseNum(session&&session.Journees_stagiaires) ?? journeesStagiaires,
+    tauxGaia: parseNum(session&&session.Taux_presence_GAIA) ?? (inscritsGaia ? presentsMoyen / inscritsGaia : null),
+    tauxPrevu: parseNum(session&&session.Taux_presence_prevu) ?? (participantsPrevus ? presentsMoyen / participantsPrevus : null)
+  };
+}
+function bilanIndicatorsHtml(session){
+  const c=getSessionComputed(session);
+  return `<div class="bilan-indicators">
+    <div class="bilan-indicator"><span class="label">Total présents</span><span class="value">${esc(formatNumber(c.totalPresents))}</span></div>
+    <div class="bilan-indicator"><span class="label">Présents moyens</span><span class="value">${esc(formatNumber(c.presentsMoyen,1))}</span></div>
+    <div class="bilan-indicator"><span class="label">Journées stagiaires</span><span class="value">${esc(formatNumber(c.journeesStagiaires,1))}</span></div>
+    <div class="bilan-indicator"><span class="label">Taux présence GAIA</span><span class="value">${esc(formatPercentValue(c.tauxGaia))}</span></div>
+    <div class="bilan-indicator"><span class="label">Taux présence / prévus</span><span class="value">${esc(formatPercentValue(c.tauxPrevu))}</span></div>
+  </div>`;
+}
+function historyItemReadOnlyHtml(j){
+  if(isCopilEntry(j)){
+    const date=formatDateValue(j.Date); const heure=j.Heure_copil||'';
+    return `<div class="history-item history-item-copil"><div class="history-head"><div class="history-head-left"><span class="tag tag-copil">📅 COPIL</span><span class="history-date">${esc(date||'Sans date')}${heure?' · '+esc(heure):''}</span></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}</div>`;
+  }
+  const status=statusTextFromEntry(j); const resp=labelFor(j.Responsable,CONTACT_MAP); const date=formatDateValue(j.Date); const ech=formatDateValue(j.Echeance);
+  return `<div class="history-item"><div class="history-head"><div class="history-head-left"><span class="history-date">${esc(date||'Sans date')}</span>${status?`<span class="tag status ${statusClass(status)}">${esc(status)}</span>`:''}${resp?`<span class="tag tag-resp">${esc(resp)}</span>`:''}</div><div class="history-head-left">${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}</div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Prochaine_etape?`<div class="history-text history-next"><strong>Prochaine étape</strong><br>${esc(j.Prochaine_etape)}</div>`:''}</div>`;
+}
+
+// ---- Garde-fou d'accès : Chefferie / Responsable_suivi / Owner uniquement ----
+async function checkAccess(){
+  try {
+    const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
+    if (rows.length > 1) return true;
+    if (rows.length === 1) return ['Chefferie','Responsable_suivi'].includes(rows[0].ClasseNom);
+    return false;
+  } catch(e) {
+    console.warn('[copil-calendrier] vérification des droits impossible :', e);
+    return false;
+  }
+}
+async function fetchSafe(name){ try { return await grist.docApi.fetchTable(name); } catch(e) { console.warn('[copil-calendrier] table inaccessible:', name, e); return {id:[]}; } }
+
+async function loadData(){
+  showLoader(true);
+  try{
+    let attempts=0; while(!grist.docApi && attempts<20){ await new Promise(r=>setTimeout(r,100)); attempts++; }
+
+    const allowed = await checkAccess();
+    const toolbar = document.querySelector('.toolbar');
+    if (!allowed) {
+      if (toolbar) toolbar.style.display = 'none';
+      document.getElementById('agenda-wrap').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie et aux Responsables de suivi.</span></div>`;
+      return;
+    }
+    if (toolbar) toolbar.style.display = '';
+
+    const [actionsFull, contacts, chefferie, lieux, modalitex, statuts, jsessions, jactions, structs, modals, publics, annees, axes, volets, degres] = await Promise.all([
+      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Chefferie'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Statuts_suivi'), fetchSafe('Journal_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Structures'), fetchSafe('Modalites'), fetchSafe('Publics'), fetchSafe('Annees'), fetchSafe('Axes'), fetchSafe('Volets'), fetchSafe('Degres')
+    ]);
+    CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); LIEU_ROWS=toRows(lieux); MODALITEX_ROWS=toRows(modalitex); STATUS_ROWS=toRows(statuts); SESSION_ROWS=toRows(jsessions); JOURNAL_ROWS=toRows(jactions);
+    CONTACT_MAP=Object.fromEntries(CONTACT_ROWS.map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
+    CHEFFERIE_MAP=Object.fromEntries(CHEFFERIE_ROWS.map(r=>[String(r.id),chefferieLabel(r)]).filter(([,v])=>v));
+    LIEU_MAP=Object.fromEntries(LIEU_ROWS.map(r=>[String(r.id),lieuLabel(r)]).filter(([,v])=>v));
+    MODALITEX_MAP=Object.fromEntries(MODALITEX_ROWS.map(r=>[String(r.id),modaliteXLabel(r)]).filter(([,v])=>v));
+    STATUS_MAP=Object.fromEntries(STATUS_ROWS.map(r=>[String(r.id),statusLabel(r)]).filter(([,v])=>v));
+    if(!Object.keys(STATUS_MAP).length){ ['En cours','Blocage','Arbitrage nécessaire','Report','Clôturé'].forEach((s,i)=>{ STATUS_MAP[String(i+1)]=s; }); }
+    const STRUCT_ROWS=toRows(structs);
+    STRUCT_MAP=Object.fromEntries(STRUCT_ROWS.map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    AXE_MAP=Object.fromEntries(toRows(axes).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    VOLET_MAP=Object.fromEntries(toRows(volets).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    DEGRE_MAP=Object.fromEntries(toRows(degres).map(r=>[String(r.id),degreLabel(r)]).filter(([,v])=>v));
+    MODAL_MAP=Object.fromEntries(toRows(modals).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    PUBLIC_MAP=Object.fromEntries(toRows(publics).map(r=>[String(r.id),firstText(r,['Libellé','libelle','Libelle','label','Label','nom','Nom'])]).filter(([,v])=>v));
+    const ANNEE_ROWS=toRows(annees);
+    ANNEE_MAP=Object.fromEntries(ANNEE_ROWS.map(r=>[String(r.id), firstText(r,['Annee_scolaire','annee','Annee','Année','nom','Nom','libelle','Libelle'])]).filter(([,v])=>v));
+
+    ALL_ACTIONS = toRows(actionsFull);
+    const actionsById = Object.fromEntries(ALL_ACTIONS.map(a=>[String(a.id), a]));
+    ENTRIES = JOURNAL_ROWS.filter(isCopilEntry).map(j=>({ journal:j, action: actionsById[String(getActionRef(j))] })).filter(e=>e.action);
+
+    fillFilters(); applyFilters();
+  }catch(e){ console.error(e); document.getElementById('agenda-wrap').innerHTML=`<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
+  finally{ showLoader(false); }
+}
+function fillSelect(id, values){ const sel=document.getElementById(id); const cur=sel.value; while(sel.options.length>1) sel.remove(1); [...new Set(values.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'fr',{numeric:true})).forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); }); if([...sel.options].some(o=>o.value===cur)) sel.value=cur; }
+function fillFilters(){
+  fillSelect('f-annee', ENTRIES.map(e=>getAnnee(e.action)));
+  fillSelect('f-volet', ENTRIES.map(e=>getVolet(e.action)));
+  fillSelect('f-struct', ENTRIES.flatMap(e=>getStructures(e.action)));
+  fillSelect('f-responsable-suivi', ENTRIES.flatMap(e=>getResponsablesAction(e.action)));
+}
+function entrySearchableText(e){
+  return searchNorm([getTitre(e.action), getCodeGaia(e.action), getAnnee(e.action), getVolet(e.action), ...getStructures(e.action), ...getResponsablesAction(e.action), e.journal.Heure_copil, e.journal.Compte_rendu].join(' '));
+}
+function applyFilters(){
+  const q=searchNorm(document.getElementById('f-search').value).trim();
+  const annee=document.getElementById('f-annee').value;
+  const volet=document.getElementById('f-volet').value;
+  const struct=document.getElementById('f-struct').value;
+  const resp=document.getElementById('f-responsable-suivi').value;
+  FILTERED=ENTRIES.filter(e=>{
+    if(annee && getAnnee(e.action)!==annee) return false;
+    if(volet && getVolet(e.action)!==volet) return false;
+    if(struct && !getStructures(e.action).includes(struct)) return false;
+    if(resp && !getResponsablesAction(e.action).includes(resp)) return false;
+    if(q && !entrySearchableText(e).includes(q)) return false;
+    return true;
+  });
+  document.getElementById('count').textContent=`${FILTERED.length} COPIL`;
+  render();
+}
+function resetFilters(){ ['f-annee','f-volet','f-struct','f-responsable-suivi'].forEach(id=>document.getElementById(id).value=''); document.getElementById('f-search').value=''; applyFilters(); }
+
+function entrySortTs(e){
+  const base=dateSortValue(e.journal.Date);
+  const m=String(e.journal.Heure_copil||'').match(/^(\d{1,2}):(\d{2})/);
+  const minutes=m?(Number(m[1])*60+Number(m[2])):0;
+  return base + minutes*60000;
+}
+function agendaItemHtml(e){
+  const a=e.action, j=e.journal;
+  const date=formatDateValue(j.Date); const heure=j.Heure_copil||'';
+  const annee=getAnnee(a); const volet=getVolet(a); const structs=getStructures(a); const resp=getResponsablesAction(a); const code=getCodeGaia(a);
+  const notesRaw=j.Compte_rendu?String(j.Compte_rendu):'';
+  const notes=notesRaw.slice(0,140);
+  return `<div class="agenda-item" onclick="openCopilModal(${j.id})">
+    <div class="agenda-date"><span class="agenda-day">${esc(date||'Sans date')}</span>${heure?`<span class="agenda-time">${esc(heure)}</span>`:''}</div>
+    <div class="agenda-body">
+      <div class="agenda-title">${esc(getTitre(a))}</div>
+      <div class="tags">${annee?`<span class="tag tag-year">${esc(annee)}</span>`:''}${voletChipHtml(volet)}${journeeIGChipHtml(a)}${statutSuiviChipHtml(a)}${structs.map(s=>`<span class="tag tag-struct">${esc(s)}</span>`).join('')}${resp.map(r=>`<span class="tag tag-resp">${esc(r)}</span>`).join('')}${code?`<span class="tag tag-code">${esc(code)}</span>`:''}</div>
+      ${notes?`<div class="agenda-notes">${esc(notes)}${notesRaw.length>140?'…':''}</div>`:''}
+    </div>
+  </div>`;
+}
+function render(){
+  const wrap=document.getElementById('agenda-wrap');
+  if(!FILTERED.length){ wrap.innerHTML='<div class="empty"><p>Aucun COPIL trouvé</p><span>Modifiez les filtres ou ajoutez des entrées COPIL depuis le Journal de bord</span></div>'; return; }
+  const startOfToday=new Date(); startOfToday.setHours(0,0,0,0);
+  const upcoming=FILTERED.filter(e=>dateSortValue(e.journal.Date)>=startOfToday.getTime()).sort((a,b)=>entrySortTs(a)-entrySortTs(b));
+  const past=FILTERED.filter(e=>dateSortValue(e.journal.Date)<startOfToday.getTime()).sort((a,b)=>entrySortTs(b)-entrySortTs(a));
+  let html='';
+  html += `<div class="agenda-section-title">À venir (${upcoming.length})</div>`;
+  html += upcoming.length ? `<div class="agenda-list">${upcoming.map(agendaItemHtml).join('')}</div>` : `<div class="empty" style="padding:24px 0;"><span>Aucun COPIL à venir</span></div>`;
+  if(past.length){
+    html += `<details class="agenda-past" style="margin-top:18px;"><summary>Passés (${past.length})</summary><div class="agenda-list">${past.map(agendaItemHtml).join('')}</div></details>`;
+  }
+  wrap.innerHTML=html;
+}
+
+function openCopilModal(journalId){
+  const entry=ENTRIES.find(e=>String(e.journal.id)===String(journalId));
+  if(!entry) return;
+  const a=entry.action;
+  document.getElementById('modal-title').textContent=getTitre(a);
+  const annee=getAnnee(a); const volet=getVolet(a); const code=getCodeGaia(a);
+  document.getElementById('modal-meta').innerHTML=`<div class="modal-meta-line">${annee?`<span class="tag tag-year">${esc(annee)}</span>`:''}${voletChipHtml(volet)}${journeeIGChipHtml(a)}${statutSuiviChipHtml(a)}${code?`<span class="tag tag-code">${esc(code)}</span>`:''}</div>`;
+  document.getElementById('modal-body').innerHTML=buildModalBody(a);
+  document.getElementById('overlay').classList.remove('hidden');
+}
+function closeModal(e){ if(e && e.target!==document.getElementById('overlay')) return; document.getElementById('overlay').classList.add('hidden'); }
+function buildModalBody(a){
+  const session=getSessionForAction(a.id);
+  const entries=getJournalForAction(a.id);
+  const structs=getStructures(a).join(', ')||'—';
+  const resp=getResponsablesAction(a).join(', ')||'—';
+  const chefferie=getChefferieLabel(a)||'—';
+  const modal=getModalite(a)||'—';
+  const publics=getPublics(a).join(', ')||'—';
+  const code=getCodeGaia(a)||'—';
+  const annee=getAnnee(a)||'—';
+  const dates=sessionStructuredDates(session);
+  const notes=sessionComment(session);
+  return `
+  <div><div class="section-title">Identité et responsabilité</div><div class="box"><div class="identity-grid">
+    <div class="identity-item"><span class="identity-label">Année</span><span class="identity-value">${esc(annee)}</span></div>
+    <div class="identity-item"><span class="identity-label">Code GAIA</span><span class="identity-value">${esc(code)}</span></div>
+    <div class="identity-item"><span class="identity-label">Structure</span><span class="identity-value">${esc(structs)}</span></div>
+    <div class="identity-item"><span class="identity-label">Modalité</span><span class="identity-value">${esc(modal)}</span></div>
+    <div class="identity-item"><span class="identity-label">Publics</span><span class="identity-value">${esc(publics)}</span></div>
+    <div class="identity-item"><span class="identity-label">Responsable(s) du suivi</span><span class="identity-value">${esc(resp)}</span></div>
+    <div class="identity-item"><span class="identity-label">Chefferie</span><span class="identity-value">${esc(chefferie)}</span></div>
+  </div></div></div>
+  <div><div class="section-title">Objectif</div><div class="box description">${esc(getObjectif(a)||'—')}</div></div>
+  <div><div class="section-title">État d’avancement</div><div class="box">${avancementBarHtml(a)}</div></div>
+  <div><div class="section-title">Historique du journal</div><div class="history">${entries.length?entries.map(historyItemReadOnlyHtml).join(''):'<div class="box help">Aucune entrée de journal pour cette action.</div>'}</div></div>
+  <div><div class="section-title">Bilan</div><div class="box">
+    ${bilanIndicatorsHtml(session)}
+    ${dates.length?`<div class="bilan-sessions"><span class="bilan-sessions-label">Sessions de formation</span>${dates.map(esc).join('<br>')}</div>`:''}
+    ${notes?`<div class="bilan-notes"><span class="bilan-notes-label">Notes</span><div class="description">${esc(notes)}</div></div>`:''}
+  </div></div>`;
+}
+
+function showLoader(v){ document.getElementById('loader').classList.toggle('hidden',!v); }
+grist.ready({requiredAccess:'full', columns:[]});
+grist.onRecords(()=>loadData());
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+</script>
+</body>
+</html>
