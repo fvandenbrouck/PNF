@@ -13,6 +13,7 @@
 <!-- Version v40 : correction premier clic "Ajouter"/"Enregistrer le bilan" ignorant un champ date/heure natif encore focus -->
 <!-- Version v41 : les messages de confirmation d'enregistrement (journal, pilotage, bilan) restent visibles après le rafraîchissement de la modale -->
 <!-- Version v42 : modification d'une entrée de journal existante (compte-rendu ou COPIL) depuis l'historique -->
+<!-- Version v43 : interrupteur "Référent IGÉSR (Oui/Non) ?" (is_copil) dans l'onglet Pilotage -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -175,6 +176,13 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .identity-label { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:8.5px; font-weight:600; }
 .identity-value { font-size:12px; color:var(--ink2); line-height:1.35; }
 .pilotage-form { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+.switch-row { display:flex; align-items:center; gap:8px; height:37px; }
+.switch { position:relative; width:38px; height:21px; border-radius:999px; border:1.5px solid var(--border); background:#fff; cursor:pointer; padding:0; flex-shrink:0; transition:.15s; }
+.switch.on { background:var(--navy); border-color:var(--navy); }
+.switch:disabled { opacity:.55; cursor:not-allowed; }
+.switch-thumb { position:absolute; top:1.5px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); transition:.15s; }
+.switch.on .switch-thumb { left:19px; }
+.switch-label { font-family:'DM Mono',monospace; font-size:11px; font-weight:600; color:var(--ink2); min-width:24px; }
 .responsable-checks { display:flex; flex-wrap:wrap; gap:8px; border:1.5px solid var(--border); border-radius:10px; background:#fff; padding:10px; }
 .responsable-check { display:inline-flex; align-items:center; gap:7px; padding:7px 11px; border:1.5px solid var(--border); border-radius:999px; background:var(--bg); font-family:'DM Mono',monospace; font-size:10px; color:var(--ink2); cursor:pointer; user-select:none; transition:.12s; }
 .responsable-check:hover { border-color:var(--navy); color:var(--navy); background:var(--navy-l); }
@@ -312,7 +320,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 </div>
 
 <script>
-console.info('[widget-journal-actions] v42 modification d’une entrée de journal existante chargé');
+console.info('[widget-journal-actions] v43 interrupteur Référent IGÉSR chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null, EDITING_JOURNAL_ID = null;
 let CONTACT_ROWS = [], CONTACT_SUIVI_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], JOURNAL_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_NORM_LABEL = {}, CHEFFERIE_MAP = {}, CHEFFERIE_ID_BY_LABEL = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {}, STATUS_ID_BY_LABEL = {};
@@ -851,7 +859,28 @@ function showTabMessage(tabName, msgId, text, variant){
   if(el){ el.textContent=text; el.className = variant ? `msg ${variant}` : 'msg'; }
 }
 function pilotageIdentityHtml(a){ const code=getCodeGaia(a)||'—'; const annee=getAnnee(a)||'—'; const volet=getVolet(a)||'—'; const struct=getStructures(a).join(', ')||'—'; const modal=getModalite(a)||'—'; const publics=getPublics(a).join(', ')||'—'; return `<div class="identity-grid"><div class="identity-item"><span class="identity-label">Année</span><span class="identity-value">${esc(annee)}</span></div><div class="identity-item"><span class="identity-label">Volet</span><span class="identity-value">${volet==='—'?esc(volet):voletChipHtml(volet)} ${journeeIGChipHtml(a)}</span></div><div class="identity-item"><span class="identity-label">Code GAIA</span><span class="identity-value">${esc(code)}</span></div><div class="identity-item"><span class="identity-label">Structure</span><span class="identity-value">${esc(struct)}</span></div><div class="identity-item"><span class="identity-label">Modalité</span><span class="identity-value">${esc(modal)}</span></div><div class="identity-item"><span class="identity-label">Publics</span><span class="identity-value">${esc(publics)}</span></div></div>`; }
-function pilotageRefsFormHtml(a){ const respIds=getResponsableSuiviIds(a); const chef=getChefferieId(a); return `<div class="pilotage-form"><div class="mfield full"><label>Responsables du suivi</label><div class="responsable-checks" id="p-responsable-suivi-list">${optionsResponsablesSuivi(respIds)}</div></div><div class="mfield"><label>Chefferie</label><select id="p-chefferie"><option value="">—</option>${optionsChefferie(chef)}</select></div></div><div class="btn-row"><span class="msg" id="msg-pilotage-refs"></span><button class="btn btn-primary" onclick="savePilotageRefs()">Enregistrer les responsabilités</button></div>`; }
+function pilotageRefsFormHtml(a){ const respIds=getResponsableSuiviIds(a); const chef=getChefferieId(a); const isCopil=boolValue(a.is_copil); return `<div class="pilotage-form"><div class="mfield full"><label>Responsables du suivi</label><div class="responsable-checks" id="p-responsable-suivi-list">${optionsResponsablesSuivi(respIds)}</div></div><div class="mfield"><label>Chefferie</label><select id="p-chefferie"><option value="">—</option>${optionsChefferie(chef)}</select></div><div class="mfield"><label>Référent IGÉSR (Oui/Non) ?</label><div class="switch-row"><button type="button" class="switch${isCopil?' on':''}" id="p-is-copil-switch" role="switch" aria-checked="${isCopil?'true':'false'}" onclick="toggleIsCopil(${a.id})"><span class="switch-thumb"></span></button><span class="switch-label" id="p-is-copil-label">${isCopil?'Oui':'Non'}</span></div></div></div><div class="btn-row"><span class="msg" id="msg-pilotage-refs"></span><button class="btn btn-primary" onclick="savePilotageRefs()">Enregistrer les responsabilités</button></div>`; }
+async function toggleIsCopil(actionId){
+  const btn=document.getElementById('p-is-copil-switch');
+  const label=document.getElementById('p-is-copil-label');
+  if(!btn) return;
+  const next=!btn.classList.contains('on');
+  btn.disabled=true;
+  try{
+    await grist.docApi.applyUserActions([['UpdateRecord', ACTION_TABLE, actionId, {is_copil: next}]]);
+    if(CURRENT_ACTION && String(CURRENT_ACTION.id)===String(actionId)) CURRENT_ACTION.is_copil=next;
+    const idx=ALL.findIndex(x=>String(x.id)===String(actionId));
+    if(idx>=0) ALL[idx].is_copil=next;
+    btn.classList.toggle('on', next);
+    btn.setAttribute('aria-checked', String(next));
+    if(label) label.textContent = next ? 'Oui' : 'Non';
+  } catch(e){
+    console.error(e);
+    window.alert('Erreur lors de la mise à jour du référent IGÉSR : ' + (e && e.message ? e.message : e));
+  } finally {
+    btn.disabled=false;
+  }
+}
 function optionsResponsablesSuivi(selectedIds=[]){ const selectedSet=new Set((selectedIds||[]).map(String)); return suiviContactRows(selectedIds).map(r=>{ const active=selectedSet.has(String(r.id)); return `<label class="responsable-check${active?' active':''}" title="${esc(contactLabel(r))}"><input type="checkbox" class="p-responsable-suivi" value="${r.id}"${active?' checked':''} onchange="this.closest('.responsable-check')?.classList.toggle('active', this.checked)">${esc(contactLabel(r))}</label>`; }).join('') || '<div class="help">Aucun contact Dgesco A3-1 trouvé.</div>'; }
 function optionsContacts(selected){ return CONTACT_ROWS.map(r=>`<option value="${r.id}"${String(r.id)===String(selected)?' selected':''}>${esc(contactLabel(r))}</option>`).join(''); }
 function optionsChefferie(selected){ return CHEFFERIE_ROWS.map(r=>`<option value="${r.id}"${String(r.id)===String(selected)?' selected':''}>${esc(chefferieLabel(r))}</option>`).join(''); }
