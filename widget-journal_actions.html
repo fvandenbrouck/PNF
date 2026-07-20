@@ -15,6 +15,7 @@
 <!-- Version v42 : modification d'une entrée de journal existante (compte-rendu ou COPIL) depuis l'historique -->
 <!-- Version v43 : interrupteur "Référent IGÉSR (Oui/Non) ?" (is_copil) dans l'onglet Pilotage -->
 <!-- Version v44 : liste des Référents IGÉSR désignés affichée sous l'interrupteur quand is_copil = Oui -->
+<!-- Version v45 : modalité "Plusieurs journées" avec modale de saisie du nombre de journées (coefficient variable) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -114,7 +115,12 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .empty span { font-family:'DM Mono',monospace; font-size:11px; }
 .overlay { position:fixed; inset:0; background:rgba(27,58,107,.45); backdrop-filter:blur(3px); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
 .overlay.hidden { display:none; }
+.overlay.nested { z-index:300; }
 .modal { background:var(--white); border-radius:15px; width:100%; max-width:920px; max-height:96vh; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(27,58,107,.25); }
+.nbjours-modal { max-width:360px; }
+.nbjours-modal .modal-head { padding:16px 20px 12px; }
+.nbjours-modal .modal-head h2 { font-family:'Fraunces',serif; font-size:16px; font-weight:600; }
+.nbjours-modal .modal-body { padding:16px 20px 20px; display:grid; gap:12px; }
 .modal-head { padding:20px 24px 16px; border-bottom:1px solid var(--border); display:flex; gap:14px; align-items:flex-start; }
 .modal-band { width:5px; min-height:52px; border-radius:3px; background:var(--navy); flex-shrink:0; }
 .modal-head-text { flex:1; }
@@ -213,6 +219,10 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 
 .session-lines { display:flex; flex-direction:column; gap:8px; }
 .session-line { display:grid; grid-template-columns:82px 1fr 1fr 1fr 110px auto; gap:8px; align-items:end; padding:9px; border:1px solid var(--border); border-radius:8px; background:#fff; }
+.session-modalite-wrap { display:flex; align-items:center; gap:5px; min-width:0; }
+.session-modalite-wrap select { flex:1; min-width:0; }
+.chip-nbjours { font-family:'DM Mono',monospace; font-size:9px; font-weight:700; padding:3px 7px; border-radius:999px; border:1.5px solid var(--purple-bg); background:var(--purple-bg); color:var(--purple); cursor:pointer; white-space:nowrap; flex-shrink:0; }
+.chip-nbjours:hover { border-color:var(--purple); }
 .bilan-indicators { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin:10px 0; }
 .bilan-indicator { border:1.5px solid var(--border); border-radius:8px; background:#fff; padding:10px; display:flex; flex-direction:column; gap:4px; }
 .bilan-indicator .value { font-family:'DM Mono',monospace; font-size:15px; color:var(--navy); font-weight:600; }
@@ -320,8 +330,28 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   </div>
 </div>
 
+<div class="overlay nested hidden" id="nbjours-overlay" onclick="cancelNbJoursModal(event)">
+  <div class="modal nbjours-modal">
+    <div class="modal-head">
+      <div class="modal-head-text"><h2>Nombre de journées</h2></div>
+      <button class="btn-close" onclick="cancelNbJoursModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="mfield full">
+        <label>Nombre de journées prévues pour cette session</label>
+        <input id="nbjours-input" type="number" min="1" step="1" placeholder="Ex. 2" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmNbJoursModal();}">
+      </div>
+      <div class="btn-row">
+        <span class="msg" id="nbjours-msg"></span>
+        <button type="button" class="btn" onclick="cancelNbJoursModal()">Annuler</button>
+        <button type="button" class="btn btn-primary" onclick="confirmNbJoursModal()">Valider</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-console.info('[widget-journal-actions] v44 liste des référents IGÉSR chargée');
+console.info('[widget-journal-actions] v45 modalité Plusieurs journées chargée');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null, EDITING_JOURNAL_ID = null;
 let CONTACT_ROWS = [], CONTACT_SUIVI_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], JOURNAL_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_NORM_LABEL = {}, CHEFFERIE_MAP = {}, CHEFFERIE_ID_BY_LABEL = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {}, STATUS_ID_BY_LABEL = {};
@@ -597,7 +627,7 @@ function sessionModaliteLabel(session,i){ return session ? labelFor(session[`Mod
 function sessionLieuLabel(session,i){ return session ? labelFor(session[`Lieu${i}`], LIEU_MAP) : ''; }
 function sessionFilledDateCount(session){ let n=0; for(let i=0;i<MAX_SESSIONS;i++){ if(sessionDateValue(session,i)) n++; } return n; }
 function sessionUsedRowsCount(session){ let last=-1; for(let i=0;i<MAX_SESSIONS;i++){ if(sessionDateValue(session,i) || (session&&session[`Modalite${i}`]) || (session&&session[`Lieu${i}`])) last=i; } return Math.min(MAX_SESSIONS, Math.max(1,last+2)); }
-function sessionStructuredDates(session){ const out=[]; for(let i=0;i<MAX_SESSIONS;i++){ const d=formatDateValue(sessionDateValue(session,i)); const m=sessionModaliteLabel(session,i); const l=sessionLieuLabel(session,i); if(d||m||l) out.push([`Session ${i+1}`,d,m,l].filter(Boolean).join(' · ')); } return out; }
+function sessionStructuredDates(session){ const out=[]; for(let i=0;i<MAX_SESSIONS;i++){ const d=formatDateValue(sessionDateValue(session,i)); let m=sessionModaliteLabel(session,i); const l=sessionLieuLabel(session,i); if(m && isPlusieursJourneesLabel(m)){ const n=session && session[`NbJours${i}`]; m=`${m} (${n||'?'} j.)`; } if(d||m||l) out.push([`Session ${i+1}`,d,m,l].filter(Boolean).join(' · ')); } return out; }
 function sessionStructuredLieux(session){ const out=[]; for(let i=0;i<MAX_SESSIONS;i++){ const l=sessionLieuLabel(session,i); if(l) out.push(l); } return [...new Set(out)]; }
 function sessionStructuredModalites(session){ const out=[]; for(let i=0;i<MAX_SESSIONS;i++){ const m=sessionModaliteLabel(session,i); if(m) out.push(m); } return [...new Set(out)]; }
 function compatibilityMessage(nb, dateCount){ if(!nb && !dateCount) return ''; if(!nb) return `${dateCount} date${dateCount>1?'s':''} renseignée${dateCount>1?'s':''}.`; if(Number(nb)===dateCount) return `✓ ${nb} session${Number(nb)>1?'s':''} prévue${Number(nb)>1?'s':''}, ${dateCount} date${dateCount>1?'s':''} renseignée${dateCount>1?'s':''}.`; return `⚠ ${nb} session${Number(nb)>1?'s':''} prévue${Number(nb)>1?'s':''}, ${dateCount} date${dateCount>1?'s':''} renseignée${dateCount>1?'s':''}.`; }
@@ -612,7 +642,9 @@ function toGristNumberOrNull(v){ const n=parseNum(v); return n===null?null:n; }
 function formatNumber(v, digits=0){ const n=parseNum(v); return n===null?'—':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:digits, minimumFractionDigits:digits?0:0}).format(n); }
 function formatPercentValue(v){ const n=parseNum(v); if(n===null) return '—'; const pct=Math.abs(n)<=1?n*100:n; return new Intl.NumberFormat('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1}).format(pct)+' %'; }
 function sessionPresentsValue(session,i){ return session ? session[`Presents${i}`] : ''; }
-function modaliteCoefficient(label){ const s=norm(label); if(s.includes('journee entiere')) return 1; if(s.includes('webinaire') || s.includes('1/2') || s.includes('demi')) return 0.5; return 0; }
+function isPlusieursJourneesLabel(label){ return norm(label).includes('plusieurs'); }
+function modaliteCoefficient(label){ const s=norm(label); if(!s) return 0; if(s.includes('journee entiere')) return 1; if(s.includes('webinaire') || s.includes('1/2') || s.includes('demi')) return 0.5; if(isPlusieursJourneesLabel(label)) return 0; return 1; }
+function sessionLineCoefficient(label, nbJoursRaw){ if(isPlusieursJourneesLabel(label)){ const n=parseNum(nbJoursRaw); return n && n>0 ? n : 0; } return modaliteCoefficient(label); }
 function getSessionFormSnapshot(){
   const out={ nb:null, nombreCopil:null, participantsPrevus:null, inscritsGaia:null, totalPresents:0, filledDates:0, journeesStagiaires:0 };
   out.nb=parseNum(document.getElementById('s-nb')?.value);
@@ -624,9 +656,10 @@ function getSessionFormSnapshot(){
     const p=parseNum(document.getElementById(`s-presents-${i}`)?.value) || 0;
     const modaliteId=document.getElementById(`s-modalite-${i}`)?.value || '';
     const modaliteLabel=modaliteId ? (MODALITEX_MAP[String(modaliteId)] || '') : '';
+    const nbJoursRaw=document.getElementById(`s-nbjours-${i}`)?.value;
     if(hasDate) out.filledDates += 1;
     out.totalPresents += p;
-    out.journeesStagiaires += p * modaliteCoefficient(modaliteLabel);
+    out.journeesStagiaires += p * sessionLineCoefficient(modaliteLabel, nbJoursRaw);
   }
   out.presentsMoyen = out.filledDates ? out.totalPresents / out.filledDates : null;
   out.tauxGaia = out.inscritsGaia ? out.presentsMoyen / out.inscritsGaia : null;
@@ -639,7 +672,7 @@ function getSessionComputed(session){
   for(let i=0;i<MAX_SESSIONS;i++){
     const p=parseNum(sessionPresentsValue(session,i)) || 0;
     totalPresents += p;
-    journeesStagiaires += p * modaliteCoefficient(sessionModaliteLabel(session,i));
+    journeesStagiaires += p * sessionLineCoefficient(sessionModaliteLabel(session,i), session && session[`NbJours${i}`]);
   }
   const participantsPrevus=parseNum(session&&session.Participants_prevus);
   const inscritsGaia=parseNum(session&&session.Inscrits_GAIA);
@@ -892,15 +925,83 @@ function optionsChefferie(selected){ return CHEFFERIE_ROWS.map(r=>`<option value
 function optionsStatus(selectedLabel){ return Object.entries(STATUS_MAP).map(([id,label])=>`<option value="${esc(label)}"${label===selectedLabel?' selected':''}>${esc(label)}</option>`).join(''); }
 function optionsModaliteX(selected){ return MODALITEX_ROWS.map(r=>`<option value="${r.id}"${String(r.id)===String(selected)?' selected':''}>${esc(modaliteXLabel(r))}</option>`).join(''); }
 function optionsLieux(selected){ return LIEU_ROWS.map(r=>`<option value="${r.id}"${String(r.id)===String(selected)?' selected':''}>${esc(lieuLabel(r))}</option>`).join(''); }
-function sessionLineHtml(session,i,visibleCount){ const d=toInputDate(sessionDateValue(session,i)); const m=refId(session&&session[`Modalite${i}`],'ModaliteX'); const l=refId(session&&session[`Lieu${i}`],'Lieux'); const p=sessionPresentsValue(session,i); return `<div class="session-line${i<visibleCount?'':' hidden'}" data-session-index="${i}">
+function sessionLineHtml(session,i,visibleCount){ const d=toInputDate(sessionDateValue(session,i)); const m=refId(session&&session[`Modalite${i}`],'ModaliteX'); const l=refId(session&&session[`Lieu${i}`],'Lieux'); const p=sessionPresentsValue(session,i); const nbJours=session && session[`NbJours${i}`]; const modaliteLabel=m ? (MODALITEX_MAP[String(m)]||'') : ''; const showChip=isPlusieursJourneesLabel(modaliteLabel); return `<div class="session-line${i<visibleCount?'':' hidden'}" data-session-index="${i}">
     <div class="session-label">Session ${i+1}</div>
     <input id="s-date-${i}" type="date" value="${esc(d)}" onchange="updateSessionCompatibility();updateBilanIndicators()">
-    <select id="s-modalite-${i}" onchange="updateBilanIndicators()"><option value="">Modalité</option>${optionsModaliteX(m)}</select>
+    <div class="session-modalite-wrap">
+      <select id="s-modalite-${i}" onchange="onSessionModaliteChange(${i})"><option value="">Modalité</option>${optionsModaliteX(m)}</select>
+      <button type="button" class="chip-nbjours" id="s-nbjours-chip-${i}" style="${showChip?'':'display:none'}" onclick="openNbJoursModal(${i})">${showChip?esc(nbJours||'?')+' j.':''}</button>
+    </div>
+    <input type="hidden" id="s-nbjours-${i}" value="${esc(nbJours??'')}">
     <select id="s-lieu-${i}"><option value="">Lieu</option>${optionsLieux(l)}</select>
     <input id="s-presents-${i}" type="number" min="0" step="1" value="${esc(p??'')}" placeholder="Présents" oninput="updateBilanIndicators()">
     <button type="button" class="btn-clear-session" onclick="clearSessionLine(${i})">Supprimer</button>
   </div>`; }
 function revealNextSessionLine(){ const hidden=document.querySelector('#session-lines .session-line.hidden'); if(hidden){ hidden.classList.remove('hidden'); } updateSessionCompatibility(); const remaining=document.querySelector('#session-lines .session-line.hidden'); const btn=document.getElementById('btn-add-date'); if(btn && !remaining){ btn.disabled=true; btn.textContent='10 sessions maximum'; } }
+
+let NBJOURS_TARGET_INDEX=null;
+function onSessionModaliteChange(i){
+  const sel=document.getElementById(`s-modalite-${i}`);
+  const modaliteId=sel?.value || '';
+  const label=modaliteId ? (MODALITEX_MAP[String(modaliteId)] || '') : '';
+  if(isPlusieursJourneesLabel(label)){
+    openNbJoursModal(i);
+  } else {
+    const hidden=document.getElementById(`s-nbjours-${i}`); if(hidden) hidden.value='';
+    updateSessionNbJoursChip(i);
+    updateBilanIndicators();
+  }
+}
+function updateSessionNbJoursChip(i){
+  const sel=document.getElementById(`s-modalite-${i}`);
+  const modaliteId=sel?.value || '';
+  const label=modaliteId ? (MODALITEX_MAP[String(modaliteId)] || '') : '';
+  const chip=document.getElementById(`s-nbjours-chip-${i}`);
+  if(!chip) return;
+  if(isPlusieursJourneesLabel(label)){
+    const hidden=document.getElementById(`s-nbjours-${i}`);
+    chip.style.display='';
+    chip.textContent=`${hidden && hidden.value ? hidden.value : '?'} j.`;
+  } else {
+    chip.style.display='none';
+    chip.textContent='';
+  }
+}
+function openNbJoursModal(i){
+  NBJOURS_TARGET_INDEX=i;
+  const hidden=document.getElementById(`s-nbjours-${i}`);
+  const input=document.getElementById('nbjours-input');
+  input.value = hidden && hidden.value ? hidden.value : '';
+  const msg=document.getElementById('nbjours-msg'); if(msg){ msg.textContent=''; msg.className='msg'; }
+  document.getElementById('nbjours-overlay').classList.remove('hidden');
+  setTimeout(()=>input.focus(), 50);
+}
+function cancelNbJoursModal(event){
+  if(event && event.target!==document.getElementById('nbjours-overlay')) return;
+  const i=NBJOURS_TARGET_INDEX;
+  document.getElementById('nbjours-overlay').classList.add('hidden');
+  if(i!==null && i!==undefined){
+    const hidden=document.getElementById(`s-nbjours-${i}`);
+    const sel=document.getElementById(`s-modalite-${i}`);
+    if(sel && (!hidden || !hidden.value)) sel.value='';
+    updateSessionNbJoursChip(i);
+    updateBilanIndicators();
+  }
+  NBJOURS_TARGET_INDEX=null;
+}
+function confirmNbJoursModal(){
+  const i=NBJOURS_TARGET_INDEX;
+  const input=document.getElementById('nbjours-input');
+  const msg=document.getElementById('nbjours-msg');
+  const n=Number(input.value);
+  if(!Number.isInteger(n) || n<1){ msg.textContent='✗ Indiquer un nombre entier de journées (≥ 1).'; msg.className='msg err'; return; }
+  const hidden=document.getElementById(`s-nbjours-${i}`);
+  if(hidden) hidden.value=String(n);
+  document.getElementById('nbjours-overlay').classList.add('hidden');
+  updateSessionNbJoursChip(i);
+  updateBilanIndicators();
+  NBJOURS_TARGET_INDEX=null;
+}
 function clearSessionLine(i){
   const ok = window.confirm(`Supprimer la session ${i+1} ?\n\nLa date, la modalité, le lieu et le nombre de présents seront vidés. Cliquez ensuite sur « Enregistrer le bilan » pour valider la suppression dans Grist.`);
   if(!ok) return;
@@ -912,6 +1013,8 @@ function clearSessionLine(i){
   if(modalite) modalite.value='';
   if(lieu) lieu.value='';
   if(presents) presents.value='';
+  const nbJoursHidden=document.getElementById(`s-nbjours-${i}`); if(nbJoursHidden) nbJoursHidden.value='';
+  updateSessionNbJoursChip(i);
   const line=document.querySelector(`#session-lines .session-line[data-session-index="${i}"]`);
   if(line && i>0) line.classList.add('hidden');
   const btn=document.getElementById('btn-add-date');
@@ -1140,7 +1243,7 @@ async function refreshSessionRows(){
 }
 async function saveSession(){
   if(document.activeElement && typeof document.activeElement.blur==='function') document.activeElement.blur();
-  const msg=document.getElementById('msg-session'); msg.textContent='Enregistrement…'; msg.className='msg'; const raw=document.getElementById('s-nb').value.trim(); let nb=null; if(raw){ nb=Number(raw); if(!Number.isInteger(nb)||nb<=0){ msg.textContent='✗ Le nombre de sessions doit être un entier positif.'; msg.className='msg err'; return; } } const fields={ Action: CURRENT_ACTION.id, Nb_sessions: nb, Nombre_COPIL: toGristNumberOrNull(document.getElementById('s-nb-copil')?.value), Participants_prevus: toGristNumberOrNull(document.getElementById('s-participants-prevus')?.value), Inscrits_GAIA: toGristNumberOrNull(document.getElementById('s-inscrits-gaia')?.value), Commentaire_logistique: document.getElementById('s-comment').value.trim() }; for(let i=0;i<MAX_SESSIONS;i++){ const date=document.getElementById(`s-date-${i}`)?.value || ''; const modalite=document.getElementById(`s-modalite-${i}`)?.value || ''; const lieu=document.getElementById(`s-lieu-${i}`)?.value || ''; const presents=document.getElementById(`s-presents-${i}`)?.value || ''; fields[`Date${i}`]=dateToTs(date); fields[`Modalite${i}`]=modalite?Number(modalite):null; fields[`Lieu${i}`]=lieu?Number(lieu):null; fields[`Presents${i}`]=toGristNumberOrNull(presents); } const existing=getSessionForAction(CURRENT_ACTION.id); try{ if(existing){ await grist.docApi.applyUserActions([['UpdateRecord', SESSION_TABLE, existing.id, fields]]); Object.assign(existing, fields); } else { const result=await grist.docApi.applyUserActions([['AddRecord', SESSION_TABLE, null, fields]]); const id=Array.isArray(result)?result[0]:result; SESSION_ROWS.push({id, ...fields}); } await refreshSessionRows(); const dateCount=Object.keys(fields).filter(k=>/^Date\d+$/.test(k)&&fields[k]).length; const mismatch=nb && dateCount && nb!==dateCount; const successText=mismatch ? `✓ Logistique enregistrée — ${compatibilityMessage(nb,dateCount)}` : '✓ Logistique enregistrée'; applyFilters(); buildModal(); showTabMessage('bilan','msg-session',successText,mismatch?'warn':'ok'); } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; console.error(e); } }
+  const msg=document.getElementById('msg-session'); msg.textContent='Enregistrement…'; msg.className='msg'; const raw=document.getElementById('s-nb').value.trim(); let nb=null; if(raw){ nb=Number(raw); if(!Number.isInteger(nb)||nb<=0){ msg.textContent='✗ Le nombre de sessions doit être un entier positif.'; msg.className='msg err'; return; } } const fields={ Action: CURRENT_ACTION.id, Nb_sessions: nb, Nombre_COPIL: toGristNumberOrNull(document.getElementById('s-nb-copil')?.value), Participants_prevus: toGristNumberOrNull(document.getElementById('s-participants-prevus')?.value), Inscrits_GAIA: toGristNumberOrNull(document.getElementById('s-inscrits-gaia')?.value), Commentaire_logistique: document.getElementById('s-comment').value.trim() }; for(let i=0;i<MAX_SESSIONS;i++){ const date=document.getElementById(`s-date-${i}`)?.value || ''; const modalite=document.getElementById(`s-modalite-${i}`)?.value || ''; const lieu=document.getElementById(`s-lieu-${i}`)?.value || ''; const presents=document.getElementById(`s-presents-${i}`)?.value || ''; const nbJours=document.getElementById(`s-nbjours-${i}`)?.value || ''; fields[`Date${i}`]=dateToTs(date); fields[`Modalite${i}`]=modalite?Number(modalite):null; fields[`Lieu${i}`]=lieu?Number(lieu):null; fields[`Presents${i}`]=toGristNumberOrNull(presents); fields[`NbJours${i}`]=toGristNumberOrNull(nbJours); } const existing=getSessionForAction(CURRENT_ACTION.id); try{ if(existing){ await grist.docApi.applyUserActions([['UpdateRecord', SESSION_TABLE, existing.id, fields]]); Object.assign(existing, fields); } else { const result=await grist.docApi.applyUserActions([['AddRecord', SESSION_TABLE, null, fields]]); const id=Array.isArray(result)?result[0]:result; SESSION_ROWS.push({id, ...fields}); } await refreshSessionRows(); const dateCount=Object.keys(fields).filter(k=>/^Date\d+$/.test(k)&&fields[k]).length; const mismatch=nb && dateCount && nb!==dateCount; const successText=mismatch ? `✓ Logistique enregistrée — ${compatibilityMessage(nb,dateCount)}` : '✓ Logistique enregistrée'; applyFilters(); buildModal(); showTabMessage('bilan','msg-session',successText,mismatch?'warn':'ok'); } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; console.error(e); } }
 async function addJournalEntry(){
   // Force la validation d'un champ date/heure natif encore en cours de saisie (certains
   // navigateurs ne synchronisent pas immédiatement .value tant que le champ garde le focus).
@@ -1191,7 +1294,12 @@ document.addEventListener('click', e=>{
   if(!btn) return;
   startEditJournalEntry(btn.dataset.journalEntryId);
 });
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape') return;
+  const nbOverlay=document.getElementById('nbjours-overlay');
+  if(nbOverlay && !nbOverlay.classList.contains('hidden')){ cancelNbJoursModal(); return; }
+  closeModal();
+});
 </script>
 </body>
 </html>
