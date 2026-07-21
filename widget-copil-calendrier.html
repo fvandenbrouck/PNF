@@ -8,6 +8,7 @@
 <!-- Version v2 : accès étendu aux Référents IGESR (agenda seul, fiche détaillée non cliquable) -->
 <!-- Version v3 : affichage du lien de document cliquable dans l'historique du journal -->
 <!-- Version v4 : titre personnalisable pour le lien du document -->
+<!-- Version v5 : étape d'avancement "Programme" ajoutée + renommage "Courrier EAFC" -> "Courrier recteur" (alignement avec le Journal de bord) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -130,13 +131,13 @@ details.agenda-past .agenda-list { margin-top:12px; }
 .history-text { font-size:12px; color:var(--ink2); line-height:1.55; white-space:pre-wrap; }
 .history-next { border-top:1px solid var(--border); padding-top:8px; }
 .avancement-card { display:flex; flex-direction:column; gap:5px; }
-.avancement-bar { display:grid; grid-template-columns:repeat(5,1fr); gap:3px; height:11px; border-radius:999px; overflow:hidden; }
+.avancement-bar { display:grid; grid-template-columns:repeat(6,1fr); gap:3px; height:11px; border-radius:999px; overflow:hidden; }
 .avancement-step { background:rgba(27,58,107,.10); min-width:0; }
 .avancement-step:first-child { border-top-left-radius:999px; border-bottom-left-radius:999px; }
 .avancement-step:last-child { border-top-right-radius:999px; border-bottom-right-radius:999px; }
 .avancement-step.done { background:#43a047; }
 .avancement-step.na { background:repeating-linear-gradient(135deg, rgba(138,128,112,.45) 0, rgba(138,128,112,.45) 5px, rgba(224,216,204,.75) 5px, rgba(224,216,204,.75) 10px); }
-.avancement-labels { display:grid; grid-template-columns:repeat(5,1fr); gap:3px; font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-align:center; line-height:1.2; }
+.avancement-labels { display:grid; grid-template-columns:repeat(6,1fr); gap:3px; font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-align:center; line-height:1.2; }
 .avancement-labels span { overflow-wrap:anywhere; }
 .avancement-summary { font-family:'DM Mono',monospace; font-size:9px; color:var(--ink3); }
 .bilan-indicators { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
@@ -190,7 +191,7 @@ details.agenda-past .agenda-list { margin-top:12px; }
 </div>
 
 <script>
-console.info('[widget-copil-calendrier] v4 titre de lien personnalisable chargé');
+console.info('[widget-copil-calendrier] v5 étape Programme + renommage Courrier recteur chargé');
 let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
 let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};
@@ -200,7 +201,8 @@ const JOURNAL_TABLE = 'Journal_Actions';
 const AVANCEMENT_STEPS = [
   { key:'COPIL', label:'COPIL', naLabel:'Aucun COPIL', done:'Avancement_COPIL', na:'NA_COPIL' },
   { key:'Elise', label:'Élise', naLabel:'Aucun passage Élise', done:'Avancement_Elise', na:'NA_Elise' },
-  { key:'Courrier_EAFC', label:'Courrier EAFC', naLabel:'Aucun courrier EAFC', done:'Avancement_Courrier_EAFC', na:'NA_Courrier_EAFC' },
+  { key:'Courrier_EAFC', label:'Courrier recteur', naLabel:'Aucun courrier recteur', done:'Avancement_Courrier_EAFC', na:'NA_Courrier_EAFC' },
+  { key:'Programme', label:'Programme', naLabel:'Aucun programme', done:'Avancement_Programme', na:'NA_Programme' },
   { key:'Emargement', label:'Émargement', naLabel:'Aucun émargement', done:'Avancement_Emargement', na:'NA_Emargement' },
   { key:'Evaluation', label:'Évaluation', naLabel:'Aucune évaluation', done:'Avancement_Evaluation', na:'NA_Evaluation' }
 ];
