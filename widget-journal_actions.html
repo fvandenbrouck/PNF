@@ -17,6 +17,7 @@
 <!-- Version v44 : liste des Référents IGÉSR désignés affichée sous l'interrupteur quand is_copil = Oui -->
 <!-- Version v45 : modalité "Plusieurs journées" avec modale de saisie du nombre de journées (coefficient variable) -->
 <!-- Version v46 : champ "Lien du document" cliquable sur les entrées de journal -->
+<!-- Version v47 : titre personnalisable pour le lien du document -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -98,6 +99,10 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tag-copil { background:var(--purple-bg); color:var(--purple); font-family:'DM Mono',monospace; font-weight:700; }
 .tag-link { background:var(--navy-l); color:var(--navy); font-weight:600; text-decoration:none; cursor:pointer; align-self:flex-start; }
 .tag-link:hover { text-decoration:underline; }
+.link-field-row { display:flex; gap:8px; }
+.link-field-row input:first-child { flex:0 0 38%; }
+.link-field-row input:last-child { flex:1; min-width:0; }
+@media (max-width:820px) { .link-field-row { flex-direction:column; } .link-field-row input:first-child { flex:1; } }
 .tag-alert-data { background:rgba(245,160,168,.32); color:#8a2030; font-family:'DM Mono',monospace; font-size:11px; font-weight:800; padding:3px 7px; border-radius:4px; line-height:1; }
 
 .chip-volet { font-family:'DM Mono',monospace; font-size:9px; font-weight:600; padding:3px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; background:var(--navy-l); color:var(--navy); }
@@ -354,7 +359,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 </div>
 
 <script>
-console.info('[widget-journal-actions] v46 lien de document cliquable chargé');
+console.info('[widget-journal-actions] v47 titre de lien personnalisable chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null, EDITING_JOURNAL_ID = null;
 let CONTACT_ROWS = [], CONTACT_SUIVI_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], JOURNAL_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_NORM_LABEL = {}, CHEFFERIE_MAP = {}, CHEFFERIE_ID_BY_LABEL = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {}, STATUS_ID_BY_LABEL = {};
@@ -1054,10 +1059,11 @@ function journalFormHtml(){ const today=new Date().toISOString().slice(0,10); re
   <div class="mfield full" id="j-field-cr"><label>Compte rendu</label><textarea id="j-cr" placeholder="Compte rendu de l’activité du jour…"></textarea></div>
   <div class="mfield full" id="j-field-notes" style="display:none"><label>Notes / ordre du jour</label><textarea id="j-notes" placeholder="Ordre du jour, points à aborder… (optionnel)"></textarea></div>
   <div class="mfield full" id="j-field-next"><label>Prochaine étape</label><textarea id="j-next" placeholder="Prochaine action à mener…"></textarea></div>
-  <div class="mfield full"><label>Lien du document (optionnel)</label><input id="j-lien" type="url" placeholder="https://docs.numerique.gouv.fr/…"></div>
+  <div class="mfield full"><label>Lien du document (optionnel)</label><div class="link-field-row"><input id="j-lien-titre" type="text" placeholder="Titre du lien (ex. Diaporama COPIL)"><input id="j-lien" type="url" placeholder="https://docs.numerique.gouv.fr/…"></div></div>
   <div class="mfield full"><div class="btn-row"><span class="msg" id="msg-journal"></span><button type="button" class="btn" id="j-cancel-edit" style="display:none" onclick="cancelEditJournalEntry()">Annuler</button><button class="btn btn-primary" id="j-submit-btn" onclick="addJournalEntry()">Ajouter l’entrée</button></div></div>
   </div>`; }
 function normalizeUrl(v){ const s=String(v||'').trim(); if(!s) return ''; if(/^https?:\/\//i.test(s)) return s; return 'https://'+s; }
+function linkTagHtml(lien, titre){ if(!lien) return ''; const label=String(titre||'').trim() || 'Document'; return `<a class="tag tag-link" href="${esc(normalizeUrl(lien))}" target="_blank" rel="noopener noreferrer">🔗 ${esc(label)}</a>`; }
 function startEditJournalEntry(id){
   const rowId=Number(String(id||'').trim());
   const entry=JOURNAL_ROWS.find(j=>String(j.id)===String(rowId));
@@ -1077,6 +1083,7 @@ function startEditJournalEntry(id){
     document.getElementById('j-next').value=entry.Prochaine_etape||'';
   }
   document.getElementById('j-lien').value=entry.Lien||'';
+  document.getElementById('j-lien-titre').value=entry.Lien_titre||'';
   const submitBtn=document.getElementById('j-submit-btn'); if(submitBtn) submitBtn.textContent='Enregistrer les modifications';
   const cancelBtn=document.getElementById('j-cancel-edit'); if(cancelBtn) cancelBtn.style.display='';
   const msg=document.getElementById('msg-journal'); if(msg){ msg.textContent=''; msg.className='msg'; }
@@ -1093,6 +1100,7 @@ function cancelEditJournalEntry(){
   document.getElementById('j-cr').value='';
   document.getElementById('j-next').value='';
   document.getElementById('j-lien').value='';
+  document.getElementById('j-lien-titre').value='';
   const submitBtn=document.getElementById('j-submit-btn'); if(submitBtn) submitBtn.textContent='Ajouter l’entrée';
   const cancelBtn=document.getElementById('j-cancel-edit'); if(cancelBtn) cancelBtn.style.display='none';
   const msg=document.getElementById('msg-journal'); if(msg){ msg.textContent=''; msg.className='msg'; }
@@ -1115,13 +1123,13 @@ function historyItemHtml(j){
   if(isCopilEntry(j)){
     const date=formatDateValue(j.Date);
     const heure=j.Heure_copil||'';
-    return `<div class="history-item history-item-copil" data-journal-entry-id="${esc(entryId)}"><div class="history-head"><div class="history-head-left"><span class="tag tag-copil">📅 COPIL</span><span class="history-date">${esc(date||'Sans date')}${heure?' · '+esc(heure):''}</span></div><div class="history-head-left"><button type="button" class="btn-edit-entry" data-journal-entry-id="${esc(entryId)}">Modifier</button><button type="button" class="btn-delete-entry" data-journal-entry-id="${esc(entryId)}">Supprimer</button></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Lien?`<a class="tag tag-link" href="${esc(normalizeUrl(j.Lien))}" target="_blank" rel="noopener noreferrer">🔗 Document</a>`:''}</div>`;
+    return `<div class="history-item history-item-copil" data-journal-entry-id="${esc(entryId)}"><div class="history-head"><div class="history-head-left"><span class="tag tag-copil">📅 COPIL</span><span class="history-date">${esc(date||'Sans date')}${heure?' · '+esc(heure):''}</span></div><div class="history-head-left"><button type="button" class="btn-edit-entry" data-journal-entry-id="${esc(entryId)}">Modifier</button><button type="button" class="btn-delete-entry" data-journal-entry-id="${esc(entryId)}">Supprimer</button></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${linkTagHtml(j.Lien, j.Lien_titre)}</div>`;
   }
   const status=statusTextFromEntry(j);
   const resp=labelFor(j.Responsable,CONTACT_MAP);
   const date=formatDateValue(j.Date);
   const ech=formatDateValue(j.Echeance);
-  return `<div class="history-item" data-journal-entry-id="${esc(entryId)}"><div class="history-head"><div class="history-head-left"><span class="history-date">${esc(date||'Sans date')}</span>${status?`<span class="tag status ${statusClass(status)}">${esc(status)}</span>`:''}${resp?`<span class="tag tag-resp">${esc(resp)}</span>`:''}</div><div class="history-head-left">${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}<button type="button" class="btn-edit-entry" data-journal-entry-id="${esc(entryId)}">Modifier</button><button type="button" class="btn-delete-entry" data-journal-entry-id="${esc(entryId)}">Supprimer</button></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Prochaine_etape?`<div class="history-text history-next"><strong>Prochaine étape</strong><br>${esc(j.Prochaine_etape)}</div>`:''}${j.Lien?`<a class="tag tag-link" href="${esc(normalizeUrl(j.Lien))}" target="_blank" rel="noopener noreferrer">🔗 Document</a>`:''}</div>`;
+  return `<div class="history-item" data-journal-entry-id="${esc(entryId)}"><div class="history-head"><div class="history-head-left"><span class="history-date">${esc(date||'Sans date')}</span>${status?`<span class="tag status ${statusClass(status)}">${esc(status)}</span>`:''}${resp?`<span class="tag tag-resp">${esc(resp)}</span>`:''}</div><div class="history-head-left">${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}<button type="button" class="btn-edit-entry" data-journal-entry-id="${esc(entryId)}">Modifier</button><button type="button" class="btn-delete-entry" data-journal-entry-id="${esc(entryId)}">Supprimer</button></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Prochaine_etape?`<div class="history-text history-next"><strong>Prochaine étape</strong><br>${esc(j.Prochaine_etape)}</div>`:''}${linkTagHtml(j.Lien, j.Lien_titre)}</div>`;
 }
 function toggleLieu(id){ id=String(id); if(SELECTED_LIEUX.has(id)) SELECTED_LIEUX.delete(id); else SELECTED_LIEUX.add(id); document.querySelectorAll('#s-lieux .chip').forEach(chip=>{ const text=chip.textContent.trim(); const row=LIEU_ROWS.find(r=>lieuLabel(r)===text); if(row) chip.classList.toggle('selected', SELECTED_LIEUX.has(String(row.id))); }); }
 
@@ -1261,11 +1269,12 @@ async function addJournalEntry(){
   const date=document.getElementById('j-date').value;
   const resp=getDefaultJournalResponsableId();
   const lien=normalizeUrl(document.getElementById('j-lien').value);
+  const lienTitre=document.getElementById('j-lien-titre').value.trim();
   if(type==='COPIL'){
     const heure=document.getElementById('j-heure').value;
     const notes=document.getElementById('j-notes').value.trim();
     if(!date || !heure){ msg.textContent='✗ Renseigner la date et l’heure du COPIL.'; msg.className='msg err'; return; }
-    const fields={ Action: CURRENT_ACTION.id, Date: dateToTs(date), Type_entree: 'COPIL', Heure_copil: heure, Compte_rendu: notes, Statut_suivi: null, Prochaine_etape: '', Echeance: null, Lien: lien };
+    const fields={ Action: CURRENT_ACTION.id, Date: dateToTs(date), Type_entree: 'COPIL', Heure_copil: heure, Compte_rendu: notes, Statut_suivi: null, Prochaine_etape: '', Echeance: null, Lien: lien, Lien_titre: lienTitre };
     if(!editingId && resp) fields.Responsable = Number(resp);
     try{
       if(editingId){
@@ -1285,7 +1294,7 @@ async function addJournalEntry(){
     } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; console.error(e); }
     return;
   }
-  const statusLabel=document.getElementById('j-status').value; const statusId=STATUS_ID_BY_LABEL[statusLabel] || ''; const cr=document.getElementById('j-cr').value.trim(); const next=document.getElementById('j-next').value.trim(); const ech=document.getElementById('j-echeance').value; if(!date || !statusId){ msg.textContent='✗ Renseigner date et statut.'; msg.className='msg err'; return; } if(!cr && !next){ msg.textContent='✗ Renseigner au moins un compte rendu ou une prochaine étape.'; msg.className='msg err'; return; } const fields={ Action: CURRENT_ACTION.id, Date: dateToTs(date), Type_entree: 'Compte-rendu', Statut_suivi: Number(statusId), Compte_rendu: cr, Prochaine_etape: next, Echeance: dateToTs(ech), Lien: lien }; if(!editingId && resp) fields.Responsable = Number(resp); try{ if(editingId){ await grist.docApi.applyUserActions([['UpdateRecord', JOURNAL_TABLE, editingId, fields]]); const row=JOURNAL_ROWS.find(r=>String(r.id)===String(editingId)); if(row) Object.assign(row, fields); EDITING_JOURNAL_ID=null; applyFilters(); buildModal(); showTabMessage('journal','msg-journal','✓ Entrée modifiée','ok'); } else { const result=await grist.docApi.applyUserActions([['AddRecord', JOURNAL_TABLE, null, fields]]); const id=Array.isArray(result)?result[0]:result; JOURNAL_ROWS.push({id, ...fields}); applyFilters(); buildModal(); showTabMessage('journal','msg-journal','✓ Entrée ajoutée','ok'); } } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; console.error(e); } }
+  const statusLabel=document.getElementById('j-status').value; const statusId=STATUS_ID_BY_LABEL[statusLabel] || ''; const cr=document.getElementById('j-cr').value.trim(); const next=document.getElementById('j-next').value.trim(); const ech=document.getElementById('j-echeance').value; if(!date || !statusId){ msg.textContent='✗ Renseigner date et statut.'; msg.className='msg err'; return; } if(!cr && !next){ msg.textContent='✗ Renseigner au moins un compte rendu ou une prochaine étape.'; msg.className='msg err'; return; } const fields={ Action: CURRENT_ACTION.id, Date: dateToTs(date), Type_entree: 'Compte-rendu', Statut_suivi: Number(statusId), Compte_rendu: cr, Prochaine_etape: next, Echeance: dateToTs(ech), Lien: lien, Lien_titre: lienTitre }; if(!editingId && resp) fields.Responsable = Number(resp); try{ if(editingId){ await grist.docApi.applyUserActions([['UpdateRecord', JOURNAL_TABLE, editingId, fields]]); const row=JOURNAL_ROWS.find(r=>String(r.id)===String(editingId)); if(row) Object.assign(row, fields); EDITING_JOURNAL_ID=null; applyFilters(); buildModal(); showTabMessage('journal','msg-journal','✓ Entrée modifiée','ok'); } else { const result=await grist.docApi.applyUserActions([['AddRecord', JOURNAL_TABLE, null, fields]]); const id=Array.isArray(result)?result[0]:result; JOURNAL_ROWS.push({id, ...fields}); applyFilters(); buildModal(); showTabMessage('journal','msg-journal','✓ Entrée ajoutée','ok'); } } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; console.error(e); } }
 function csvEscape(v){ const s=String(v??'').replace(/\r?\n/g,' | '); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function downloadCsv(){ const rows=FILTERED.map(a=>{ const session=getSessionForAction(a.id); const latest=latestJournal(a.id); return { titre:getTitre(a), annee:getAnnee(a), responsable:getResponsablesAction(a).join(', '), chefferie:getChefferieLabel(a), structure:getStructures(a).join(', '), modalite:getModalite(a), nb_sessions:sessionNb(session), nombre_copil:getSessionComputed(session).nombreCopil??'', participants_prevus:getSessionComputed(session).participantsPrevus??'', inscrits_gaia:getSessionComputed(session).inscritsGaia??'', sessions:sessionStructuredDates(session).join(' | '), lieux:sessionStructuredLieux(session).join(', '), modalites_sessions:sessionStructuredModalites(session).join(', '), total_presents:getSessionComputed(session).totalPresents??'', journees_stagiaires:getSessionComputed(session).journeesStagiaires??'', taux_presence_gaia:formatPercentValue(getSessionComputed(session).tauxGaia), taux_presence_prevu:formatPercentValue(getSessionComputed(session).tauxPrevu), notes:sessionComment(session), avancement:avancementText(a), dernier_statut:statusTextFromEntry(latest), derniere_entree:latest?formatDateValue(latest.Date):'', compte_rendu:latest&&latest.Compte_rendu||'', prochaine_etape:latest&&latest.Prochaine_etape||'', echeance:latest?formatDateValue(latest.Echeance):'' }; }); const headers=['titre','annee','responsable','chefferie','structure','modalite','nb_sessions','nombre_copil','participants_prevus','inscrits_gaia','sessions','lieux','modalites_sessions','total_presents','journees_stagiaires','taux_presence_gaia','taux_presence_prevu','notes','avancement','dernier_statut','derniere_entree','compte_rendu','prochaine_etape','echeance']; const csv='﻿'+[headers.join(';'),...rows.map(r=>headers.map(h=>csvEscape(r[h])).join(';'))].join('\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='journal_actions_selection_'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
 function showLoader(v){ document.getElementById('loader').classList.toggle('hidden',!v); }

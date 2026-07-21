@@ -7,6 +7,7 @@
 <!-- Version v1 : agenda des COPIL alimenté par Journal_Actions (entrées de type COPIL), modale de rappel en lecture seule -->
 <!-- Version v2 : accès étendu aux Référents IGESR (agenda seul, fiche détaillée non cliquable) -->
 <!-- Version v3 : affichage du lien de document cliquable dans l'historique du journal -->
+<!-- Version v4 : titre personnalisable pour le lien du document -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -189,7 +190,7 @@ details.agenda-past .agenda-list { margin-top:12px; }
 </div>
 
 <script>
-console.info('[widget-copil-calendrier] v3 lien de document cliquable chargé');
+console.info('[widget-copil-calendrier] v4 titre de lien personnalisable chargé');
 let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
 let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};
@@ -326,13 +327,14 @@ function bilanIndicatorsHtml(session){
   </div>`;
 }
 function normalizeUrl(v){ const s=String(v||'').trim(); if(!s) return ''; if(/^https?:\/\//i.test(s)) return s; return 'https://'+s; }
+function linkTagHtml(lien, titre){ if(!lien) return ''; const label=String(titre||'').trim() || 'Document'; return `<a class="tag tag-link" href="${esc(normalizeUrl(lien))}" target="_blank" rel="noopener noreferrer">🔗 ${esc(label)}</a>`; }
 function historyItemReadOnlyHtml(j){
   if(isCopilEntry(j)){
     const date=formatDateValue(j.Date); const heure=j.Heure_copil||'';
-    return `<div class="history-item history-item-copil"><div class="history-head"><div class="history-head-left"><span class="tag tag-copil">📅 COPIL</span><span class="history-date">${esc(date||'Sans date')}${heure?' · '+esc(heure):''}</span></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Lien?`<a class="tag tag-link" href="${esc(normalizeUrl(j.Lien))}" target="_blank" rel="noopener noreferrer">🔗 Document</a>`:''}</div>`;
+    return `<div class="history-item history-item-copil"><div class="history-head"><div class="history-head-left"><span class="tag tag-copil">📅 COPIL</span><span class="history-date">${esc(date||'Sans date')}${heure?' · '+esc(heure):''}</span></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${linkTagHtml(j.Lien, j.Lien_titre)}</div>`;
   }
   const status=statusTextFromEntry(j); const resp=labelFor(j.Responsable,CONTACT_MAP); const date=formatDateValue(j.Date); const ech=formatDateValue(j.Echeance);
-  return `<div class="history-item"><div class="history-head"><div class="history-head-left"><span class="history-date">${esc(date||'Sans date')}</span>${status?`<span class="tag status ${statusClass(status)}">${esc(status)}</span>`:''}${resp?`<span class="tag tag-resp">${esc(resp)}</span>`:''}</div><div class="history-head-left">${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}</div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Prochaine_etape?`<div class="history-text history-next"><strong>Prochaine étape</strong><br>${esc(j.Prochaine_etape)}</div>`:''}${j.Lien?`<a class="tag tag-link" href="${esc(normalizeUrl(j.Lien))}" target="_blank" rel="noopener noreferrer">🔗 Document</a>`:''}</div>`;
+  return `<div class="history-item"><div class="history-head"><div class="history-head-left"><span class="history-date">${esc(date||'Sans date')}</span>${status?`<span class="tag status ${statusClass(status)}">${esc(status)}</span>`:''}${resp?`<span class="tag tag-resp">${esc(resp)}</span>`:''}</div><div class="history-head-left">${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}</div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Prochaine_etape?`<div class="history-text history-next"><strong>Prochaine étape</strong><br>${esc(j.Prochaine_etape)}</div>`:''}${linkTagHtml(j.Lien, j.Lien_titre)}</div>`;
 }
 
 // ---- Garde-fou d'accès : Chefferie / Responsable_suivi / Referent_IGESR / Owner ----
