@@ -6,6 +6,7 @@
 <title>Calendrier des COPIL — PNF</title>
 <!-- Version v1 : agenda des COPIL alimenté par Journal_Actions (entrées de type COPIL), modale de rappel en lecture seule -->
 <!-- Version v2 : accès étendu aux Référents IGESR (agenda seul, fiche détaillée non cliquable) -->
+<!-- Version v3 : affichage du lien de document cliquable dans l'historique du journal -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -72,6 +73,8 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tag-resp { background:var(--lilas); color:var(--navy); font-family:'DM Mono',monospace; }
 .tag-code { background:rgba(27,58,107,.10); color:var(--navy); font-family:'DM Mono',monospace; font-size:9px; font-weight:700; }
 .tag-copil { background:var(--purple-bg); color:var(--purple); font-family:'DM Mono',monospace; font-weight:700; }
+.tag-link { background:var(--navy-l); color:var(--navy); font-weight:600; text-decoration:none; cursor:pointer; align-self:flex-start; }
+.tag-link:hover { text-decoration:underline; }
 .tag-date { background:rgba(249,197,154,.35); color:#8a4a10; }
 .chip-volet { font-family:'DM Mono',monospace; font-size:9px; font-weight:600; padding:3px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; background:var(--navy-l); color:var(--navy); }
 .chip-volet-1 { color:#4e3370; background:rgba(200,180,224,.45); }
@@ -186,7 +189,7 @@ details.agenda-past .agenda-list { margin-top:12px; }
 </div>
 
 <script>
-console.info('[widget-copil-calendrier] v2 accès Référent IGESR (lecture seule) chargé');
+console.info('[widget-copil-calendrier] v3 lien de document cliquable chargé');
 let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
 let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};
@@ -322,13 +325,14 @@ function bilanIndicatorsHtml(session){
     <div class="bilan-indicator"><span class="label">Taux présence / prévus</span><span class="value">${esc(formatPercentValue(c.tauxPrevu))}</span></div>
   </div>`;
 }
+function normalizeUrl(v){ const s=String(v||'').trim(); if(!s) return ''; if(/^https?:\/\//i.test(s)) return s; return 'https://'+s; }
 function historyItemReadOnlyHtml(j){
   if(isCopilEntry(j)){
     const date=formatDateValue(j.Date); const heure=j.Heure_copil||'';
-    return `<div class="history-item history-item-copil"><div class="history-head"><div class="history-head-left"><span class="tag tag-copil">📅 COPIL</span><span class="history-date">${esc(date||'Sans date')}${heure?' · '+esc(heure):''}</span></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}</div>`;
+    return `<div class="history-item history-item-copil"><div class="history-head"><div class="history-head-left"><span class="tag tag-copil">📅 COPIL</span><span class="history-date">${esc(date||'Sans date')}${heure?' · '+esc(heure):''}</span></div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Lien?`<a class="tag tag-link" href="${esc(normalizeUrl(j.Lien))}" target="_blank" rel="noopener noreferrer">🔗 Document</a>`:''}</div>`;
   }
   const status=statusTextFromEntry(j); const resp=labelFor(j.Responsable,CONTACT_MAP); const date=formatDateValue(j.Date); const ech=formatDateValue(j.Echeance);
-  return `<div class="history-item"><div class="history-head"><div class="history-head-left"><span class="history-date">${esc(date||'Sans date')}</span>${status?`<span class="tag status ${statusClass(status)}">${esc(status)}</span>`:''}${resp?`<span class="tag tag-resp">${esc(resp)}</span>`:''}</div><div class="history-head-left">${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}</div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Prochaine_etape?`<div class="history-text history-next"><strong>Prochaine étape</strong><br>${esc(j.Prochaine_etape)}</div>`:''}</div>`;
+  return `<div class="history-item"><div class="history-head"><div class="history-head-left"><span class="history-date">${esc(date||'Sans date')}</span>${status?`<span class="tag status ${statusClass(status)}">${esc(status)}</span>`:''}${resp?`<span class="tag tag-resp">${esc(resp)}</span>`:''}</div><div class="history-head-left">${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}</div></div>${j.Compte_rendu?`<div class="history-text">${esc(j.Compte_rendu)}</div>`:''}${j.Prochaine_etape?`<div class="history-text history-next"><strong>Prochaine étape</strong><br>${esc(j.Prochaine_etape)}</div>`:''}${j.Lien?`<a class="tag tag-link" href="${esc(normalizeUrl(j.Lien))}" target="_blank" rel="noopener noreferrer">🔗 Document</a>`:''}</div>`;
 }
 
 // ---- Garde-fou d'accès : Chefferie / Responsable_suivi / Referent_IGESR / Owner ----
