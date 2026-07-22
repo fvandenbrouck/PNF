@@ -20,6 +20,7 @@
 <!-- Version v47 : titre personnalisable pour le lien du document -->
 <!-- Version v48 : onglets "Courrier recteurs" et "Programme" + étape d'avancement "Programme" (et renommage "Courrier EAFC" -> "Courrier recteur") -->
 <!-- Version v49 : onglet "Journal de bord / COPIL" avec formulaire unique (sélecteur COPIL/Autre, statut/échéance, compte-rendu, lien de document) remplaçant les entrées "Compte-rendu"/"COPIL" séparées ; historique existant conservé -->
+<!-- Version v50 : ordre des onglets de la fiche action = Pilotage - Journal de bord / COPIL - Courrier recteurs - Programme - Bilan (chronologie de mise en œuvre) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -361,7 +362,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 </div>
 
 <script>
-console.info('[widget-journal-actions] v49 sélecteur COPIL/Autre + compte-rendu unique chargé');
+console.info('[widget-journal-actions] v50 ordre des onglets de la fiche action chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null, EDITING_JOURNAL_ID = null;
 let CONTACT_ROWS = [], CONTACT_SUIVI_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], JOURNAL_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_NORM_LABEL = {}, CHEFFERIE_MAP = {}, CHEFFERIE_ID_BY_LABEL = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {}, STATUS_ID_BY_LABEL = {};
@@ -890,12 +891,12 @@ function cardHtml(a,i){
 function openModal(id){ const a=ALL.find(x=>x.id===id); if(!a) return; CURRENT_ACTION=a; selectedId=id; document.querySelectorAll('.card').forEach(el=>el.classList.toggle('selected',+el.dataset.id===id)); document.getElementById('modal-title').textContent=getTitre(a); const annee=getAnnee(a); const volet=getVolet(a); const code=getCodeGaia(a); document.getElementById('modal-meta').innerHTML=`<div class="modal-meta-line"><div class="modal-meta-left">${annee?`<span class="tag tag-year">${esc(annee)}</span>`:''}${voletChipHtml(volet)}${journeeIGChipHtml(a)}</div><div class="modal-meta-center">${statutSuiviChipHtml(a)}${alerteDataChipHtml(a)}</div><div class="modal-meta-right">${code?`<span class="tag tag-code">${esc(code)}</span>`:''}${nextCopilChipHtml(a)}</div></div>`; buildModal(); document.getElementById('overlay').classList.remove('hidden'); }
 function closeModal(e){ if(e && e.target!==document.getElementById('overlay')) return; document.getElementById('overlay').classList.add('hidden'); CURRENT_ACTION=null; }
 function buildModal(){ const a=CURRENT_ACTION; const session=getSessionForAction(a.id); const entries=getJournalForAction(a.id); document.getElementById('modal-body').innerHTML=`
-  <div class="tabs"><button class="tab-btn active" onclick="showTab('pilotage')" id="tab-btn-pilotage">Pilotage</button><button class="tab-btn" onclick="showTab('journal')" id="tab-btn-journal">Journal de bord / COPIL</button><button class="tab-btn" onclick="showTab('bilan')" id="tab-btn-bilan">Bilan</button><button class="tab-btn" onclick="showTab('courrier')" id="tab-btn-courrier">Courrier recteurs</button><button class="tab-btn" onclick="showTab('programme')" id="tab-btn-programme">Programme</button></div>
+  <div class="tabs"><button class="tab-btn active" onclick="showTab('pilotage')" id="tab-btn-pilotage">Pilotage</button><button class="tab-btn" onclick="showTab('journal')" id="tab-btn-journal">Journal de bord / COPIL</button><button class="tab-btn" onclick="showTab('courrier')" id="tab-btn-courrier">Courrier recteurs</button><button class="tab-btn" onclick="showTab('programme')" id="tab-btn-programme">Programme</button><button class="tab-btn" onclick="showTab('bilan')" id="tab-btn-bilan">Bilan</button></div>
   <div class="tab-panel active" id="tab-pilotage"><div><div class="section-title">Identité et responsabilité</div><div class="box">${pilotageIdentityHtml(a)}${pilotageRefsFormHtml(a)}</div></div><div><div class="section-title">Objectif</div><div class="box description">${esc(getObjectif(a)||'—')}</div></div><div><div class="section-title">État d’avancement</div><div class="box">${avancementFormHtml(a)}</div></div></div>
   <div class="tab-panel" id="tab-journal"><div><div class="section-title">Nouvelle entrée de journal</div><div class="box">${journalFormHtml()}</div></div><div><div class="section-title">Historique du suivi</div><div class="history">${entries.length?entries.map(historyItemHtml).join(''):'<div class="box help">Aucune entrée de journal pour cette action.</div>'}</div></div></div>
-  <div class="tab-panel" id="tab-bilan"><div><div class="section-title">Fiche logistique</div><div class="box">${logistiqueFormHtml(session)}</div></div></div>
   <div class="tab-panel" id="tab-courrier">${linkTabPanelHtml('courrier','Version définitive du courrier recteur', a)}</div>
-  <div class="tab-panel" id="tab-programme">${linkTabPanelHtml('programme','Programme', a)}</div>`; }
+  <div class="tab-panel" id="tab-programme">${linkTabPanelHtml('programme','Programme', a)}</div>
+  <div class="tab-panel" id="tab-bilan"><div><div class="section-title">Fiche logistique</div><div class="box">${logistiqueFormHtml(session)}</div></div></div>`; }
 function showTab(name){ ['pilotage','journal','bilan','courrier','programme'].forEach(t=>{ const panel=document.getElementById(`tab-${t}`); const btn=document.getElementById(`tab-btn-${t}`); if(panel) panel.classList.toggle('active',t===name); if(btn) btn.classList.toggle('active',t===name); }); }
 // buildModal() régénère tout le HTML de la modale (donc un nouvel élément de message vide,
 // et l'onglet "Pilotage" redevient actif par défaut) : on ne peut donc pas se contenter de
