@@ -11,6 +11,7 @@
 <!-- Version v19 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) -->
 <!-- Version v20 : filtre "Journées IG" ajouté dans la barre de filtres -->
 <!-- Version v21 : Période (dates début/fin) affichée sur la carte et la fiche détail, mise en valeur (gras, bleu marine, icône 📅) -->
+<!-- Version v22 : volume de formation prévu (JS prévision, heures prévues) et dates COPIL déjà définies (Journal_Actions) ajoutés sur la carte et la fiche détail -->
 <!-- Version v14 : tri alphabétique des contacts IGÉSR par NOM dans la modale -->
 <!-- Version v13 : filtre Référents limité aux contacts IGÉSR dans la barre des filtres -->
 <!-- Version v12 : filtres public + référents IGÉSR + normalisation nouveau référent -->
@@ -82,6 +83,8 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tag-public { background:rgba(168,221,216,.25); color:#205450; }
 .tag-ref { background:var(--lilas); color:var(--navy); font-family:'DM Mono',monospace; }
 .tag-periode { background:rgba(27,58,107,.10); color:var(--navy); font-weight:700; font-family:'DM Mono',monospace; }
+.tag-days { background:rgba(168,221,216,.3); color:#1a6b65; font-family:'DM Mono',monospace; }
+.tag-copil-date { background:rgba(200,180,224,.45); color:#4e3370; font-weight:700; font-family:'DM Mono',monospace; }
 .empty { grid-column:1/-1; text-align:center; padding:80px 20px; color:var(--ink3); }
 .empty p { font-family:'Fraunces',serif; font-size:22px; margin-bottom:8px; }
 .empty span { font-family:'DM Mono',monospace; font-size:11px; }
@@ -230,13 +233,14 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v21 tag Période affiché chargé');
+console.info('[widget-cartes-copil] v22 volume prévu et dates COPIL chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
 let STRUCT_VALUES = [], ANNEE_VALUES = [], ANNEE_MAP = {}, PUBLIC_MAP = {}, MODAL_MAP = {}, STRUCT_MAP = {};
 let AXE_MAP = {}, VOLET_MAP = {}, STATUT_MAP = {}, DEGRE_MAP = {}, LIEU_MAP = {}, ACTION_AXE_MAP = {};
 let AXE_VALUES = [], VOLET_VALUES = [], STATUT_VALUES = [], DEGRE_VALUES = [], LIEU_VALUES = [], SESSION_ROWS = [];
+let JOURNAL_ROWS = [];
 let SELECTED_REFERENT_IDS = new Set();
 const ACTION_TABLE = 'Actions_formation';
 const CONTACT_TABLE = 'Contacts';
@@ -584,6 +588,15 @@ function getPeriode(a){
   if(deb && fin) return `${deb} → ${fin}`;
   return deb || fin || '';
 }
+function isCopilJournalEntry(j){ return String((j && j.Type_entree) || '').trim()==='COPIL'; }
+function getCopilDates(actionId){
+  return JOURNAL_ROWS
+    .filter(j=>isCopilJournalEntry(j) && String(refId(j.Action))===String(actionId))
+    .map(j=>({ ts: (typeof j.Date==='number' ? (j.Date<1000000000000?j.Date*1000:j.Date) : new Date(j.Date).getTime()) || 0, label: fmtDate(j.Date) }))
+    .filter(d=>d.label)
+    .sort((a,b)=>a.ts-b.ts)
+    .map(d=>d.label);
+}
 function getModalite(a){ return labelForRef(a.id_modalite || a.Modalite || a['Modalité'], MODAL_MAP); }
 function getStructures(a){ return labelsForList(a.id_structure || a.Structure || a['Structure porteuse'], STRUCT_MAP); }
 function getPublics(a){ return labelsForList(a.id_publics || a.Publics || a['Publics cibles'], PUBLIC_MAP); }
@@ -619,7 +632,7 @@ async function loadData(records){
     if (toolbar) toolbar.style.display = '';
     if (referentPanel) referentPanel.style.display = '';
 
-    const [contacts, structures, publics, modalites, referents, annees, axes, volets, statuts, degres, lieux, sessions, actionsAxes] = await Promise.all([
+    const [contacts, structures, publics, modalites, referents, annees, axes, volets, statuts, degres, lieux, sessions, actionsAxes, journalActions] = await Promise.all([
       grist.docApi.fetchTable('Contacts').catch(()=>({id:[]})),
       grist.docApi.fetchTable('Structures').catch(()=>({id:[]})),
       grist.docApi.fetchTable('Publics').catch(()=>({id:[]})),
@@ -633,6 +646,7 @@ async function loadData(records){
       grist.docApi.fetchTable('Lieux').catch(()=>({id:[], Site:[]})),
       grist.docApi.fetchTable('Journal_sessions').catch(()=>({id:[]})),
       grist.docApi.fetchTable('Actions_axes').catch(()=>({id:[], 'N° action':[], libelle:[], Libelle:[], 'Libellé':[]})),
+      grist.docApi.fetchTable('Journal_Actions').catch(()=>({id:[]})),
     ]);
     CONTACT_ROWS = toRows(contacts); STRUCT_ROWS = toRows(structures); REFERENT_ROWS = toRows(referents); ANNEE_ROWS = toRows(annees);
     rebuildContactIndexes();
@@ -655,6 +669,7 @@ async function loadData(records){
     DEGRE_VALUES = [...new Set(DEGRE_ROWS.map(degreLabelFromRow).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr',{numeric:true}));
     LIEU_VALUES = [...new Set(LIEU_ROWS.map(lieuLabelFromRow).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr',{numeric:true}));
     SESSION_ROWS = toRows(sessions);
+    JOURNAL_ROWS = toRows(journalActions);
     ALL = (records||[]).map(r=>({id:r.id,...r})).filter(isCopilEnabled);
     buildFilterControls();
     applyFilters();
@@ -894,6 +909,7 @@ function render(){
     const statut = getStatut(a);
     const actionAxe = getActionAxe(a);
     const periode = getPeriode(a);
+    const copilDates = getCopilDates(a.id);
     const gaia = a.code_gaia || a.Code_GAIA || a['Code GAIA'] || a.GAIA || a.Code || '';
     return `<div class="card${a.id===selectedId?' selected':''}" data-id="${a.id}" onclick="openModal(${a.id})">
       <div class="card-band"></div><div class="card-body">
@@ -908,6 +924,8 @@ function render(){
       ${axe?`<div class="meta-row"><span class="meta-label">Axe</span><div class="tags"><span class="tag tag-ref">${esc(axe)}</span></div></div>`:''}
       ${actionAxe?`<div class="meta-row"><span class="meta-label">Action</span><div class="tags"><span class="tag tag-ref">${esc(actionAxe)}</span></div></div>`:''}
       ${periode?`<div class="meta-row"><span class="meta-label">Période</span><div class="tags"><span class="tag tag-periode">📅 ${esc(periode)}</span></div></div>`:''}
+      ${(a.JS_prevision || a.heures_formation)?`<div class="meta-row"><span class="meta-label">Volume prévu</span><div class="tags">${a.JS_prevision?`<span class="tag tag-days">JS&nbsp;: ${esc(String(a.JS_prevision).replace('.', ','))}</span>`:''}${a.heures_formation?`<span class="tag tag-days">Heures&nbsp;: ${esc(String(a.heures_formation).replace('.', ','))}</span>`:''}</div></div>`:''}
+      ${copilDates.length?`<div class="meta-row"><span class="meta-label">Dates COPIL</span><div class="tags">${copilDates.map(d=>`<span class="tag tag-copil-date">📅 ${esc(d)}</span>`).join('')}</div></div>`:''}
       ${degres.length?`<div class="meta-row"><span class="meta-label">Degrés</span><div class="tags">${degres.map(d=>`<span class="tag tag-ref">${esc(d)}</span>`).join('')}</div></div>`:''}
       ${modal?`<div class="meta-row"><span class="meta-label">Modalité</span><div class="tags"><span class="tag tag-modal">${esc(modal)}</span></div></div>`:''}
       ${statut?`<div class="meta-row"><span class="meta-label">Statut</span><div class="tags"><span class="tag tag-ref">${esc(statut)}</span></div></div>`:''}
@@ -929,12 +947,17 @@ function openModal(id){
 }
 function closeModal(e){ if(e && e.target!==document.getElementById('overlay')) return; document.getElementById('overlay').classList.add('hidden'); CURRENT_ACTION=null; }
 function buildModalBody(){
-  const a=CURRENT_ACTION; const modal=getModalite(a); const structs=getStructures(a); const publics=getPublics(a); const refs=[...SELECTED_REFERENT_IDS].map(id=>({id,label:CONTACT_MAP[id]})).filter(x=>x.label); const annee=getAnnee(a), axe=getAxe(a), volet=getVolet(a), statut=getStatut(a), actionAxe=getActionAxe(a), lieux=getLieux(a), degres=getDegres(a), periode=getPeriode(a);
+  const a=CURRENT_ACTION; const modal=getModalite(a); const structs=getStructures(a); const publics=getPublics(a); const refs=[...SELECTED_REFERENT_IDS].map(id=>({id,label:CONTACT_MAP[id]})).filter(x=>x.label); const annee=getAnnee(a), axe=getAxe(a), volet=getVolet(a), statut=getStatut(a), actionAxe=getActionAxe(a), lieux=getLieux(a), degres=getDegres(a), periode=getPeriode(a), copilDates=getCopilDates(a.id);
+  const volumeTags = [
+    a.JS_prevision ? `<span class="tag tag-days">JS&nbsp;: ${esc(String(a.JS_prevision).replace('.', ','))}</span>` : '',
+    a.heures_formation ? `<span class="tag tag-days">Heures&nbsp;: ${esc(String(a.heures_formation).replace('.', ','))}</span>` : ''
+  ].filter(Boolean).join('');
   document.getElementById('modal-body').innerHTML = `
     <div><div class="section-title">Objectif</div><div class="box description">${esc(a.objectif||a.Objectif||'')}</div></div>
     <div class="info-grid">
       <div><div class="section-title">Année</div><div class="box tags">${annee?`<span class="tag tag-ref">${esc(annee)}</span>`:'—'}</div></div>
       <div><div class="section-title">Période</div><div class="box tags">${periode?`<span class="tag tag-periode">📅 ${esc(periode)}</span>`:'—'}</div></div>
+      <div><div class="section-title">Volume prévu</div><div class="box tags">${volumeTags||'—'}</div></div>
       <div><div class="section-title">Volet</div><div class="box tags">${volet?`<span class="tag tag-ref">${esc(volet)}</span>`:'—'}</div></div>
       <div><div class="section-title">Axe</div><div class="box tags">${axe?`<span class="tag tag-ref">${esc(axe)}</span>`:'—'}</div></div>
       <div><div class="section-title">Degrés</div><div class="box tags">${degres.map(d=>`<span class="tag tag-ref">${esc(d)}</span>`).join('')||'—'}</div></div>
@@ -943,6 +966,7 @@ function buildModalBody(){
       <div><div class="section-title">Structure porteuse</div><div class="box tags">${structs.map(s=>`<span class="tag tag-struct">${esc(s)}</span>`).join('')||'—'}</div></div>
       <div><div class="section-title">Lieux</div><div class="box tags">${lieux.map(l=>`<span class="tag tag-public">${esc(l)}</span>`).join('')||'—'}</div></div>
     </div>
+    <div><div class="section-title">Dates COPIL déjà définies</div><div class="box tags">${copilDates.length?copilDates.map(d=>`<span class="tag tag-copil-date">📅 ${esc(d)}</span>`).join(''):'—'}</div></div>
     <div><div class="section-title">Action du schéma directeur</div><div class="box description">${esc(actionAxe||'—')}</div></div>
     <div><div class="section-title">Publics cibles</div><div class="box tags">${publics.map(p=>`<span class="tag tag-public">${esc(p)}</span>`).join('')||'—'}</div></div>
     <div>
