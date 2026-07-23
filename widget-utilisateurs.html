@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Utilisateurs PNF — Administration</title>
 <!-- Version v1 : gestion des classes d'accès (Utilisateurs / Structure / Classe) -->
+<!-- Version v2 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .main) -->
 <!-- Accès réservé aux Propriétaires : protégé par une règle ACL sur les tables Utilisateurs et Classe,
      pas par ce script. Voir onglet Access Rules du document. -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
@@ -29,9 +30,12 @@
   --strawberry:#F5A0A8;
   --lilas:#E8E8F5;
 }
-html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); height:100%; overflow:hidden; }
-.app { display:flex; flex-direction:column; height:100vh; }
-.toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:10px 14px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+/* Défilement naturel de la page (plutôt qu'une hauteur calculée fixe pour .main) :
+   robuste quelle que soit la hauteur réelle de la barre d'outils, notamment sur mobile
+   où elle s'étale sur beaucoup plus de lignes. La barre d'outils reste visible en haut
+   grâce à position:sticky. */
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); }
+.toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:10px 14px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; position:sticky; top:0; z-index:10; }
 .tb-title { display:flex; flex-direction:column; gap:1px; margin-right:6px; }
 .tb-title strong { font-family:'Fraunces',serif; font-size:15px; font-weight:600; }
 .tb-title span { font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; }
@@ -47,7 +51,6 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .btn-danger:hover { background:rgba(245,160,168,.16); }
 .btn-ghost { background:transparent; color:var(--ink3); border-color:transparent; }
 .btn-ghost:hover { color:var(--navy); }
-.main { flex:1; overflow-y:auto; }
 .list-pane { max-width:640px; margin:0 auto; background:var(--white); }
 .urow { display:flex; flex-direction:column; gap:3px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; }
 .urow:hover { background:var(--bg); }

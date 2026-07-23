@@ -10,6 +10,7 @@
 <!-- Version v4 : titre personnalisable pour le lien du document -->
 <!-- Version v5 : étape d'avancement "Programme" ajoutée + renommage "Courrier EAFC" -> "Courrier recteur" (alignement avec le Journal de bord) -->
 <!-- Version v6 : statut de suivi lu sur la dernière entrée du journal (COPIL ou non), suite à la fusion des entrées côté Journal de bord -->
+<!-- Version v7 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .agenda-wrap) + césure lisible des libellés d'avancement -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -38,7 +39,11 @@
   --grey-bg:rgba(180,180,180,.35);
   --grey:#555;
 }
-html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); height:100%; overflow:hidden; color-scheme: light; }
+/* Défilement naturel de la page (plutôt qu'une hauteur calculée fixe pour .agenda-wrap) :
+   robuste quelle que soit la hauteur réelle de la barre d'outils, notamment sur mobile
+   où elle s'étale sur beaucoup plus de lignes. La barre d'outils reste visible en haut
+   grâce à position:sticky. */
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); color-scheme: light; }
 .toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:8px 12px; display:flex; flex-wrap:wrap; gap:7px; align-items:center; position:sticky; top:0; z-index:10; }
 .tb-title { display:flex; flex-direction:column; gap:1px; min-width:170px; margin-right:4px; }
 .tb-title strong { font-family:'Fraunces',serif; font-size:14px; font-weight:500; line-height:1.1; }
@@ -54,7 +59,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .btn-reset:hover { border-color:var(--strawberry); color:var(--strawberry); }
 .count { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); background:var(--lilas); padding:5px 10px; border-radius:999px; white-space:nowrap; }
 
-.agenda-wrap { height:calc(100vh - 58px); overflow-y:auto; padding:16px; }
+.agenda-wrap { padding:16px; }
 .agenda-section-title { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:10.5px; font-weight:700; margin:18px 0 9px; }
 .agenda-section-title:first-child { margin-top:0; }
 .agenda-list { display:flex; flex-direction:column; gap:9px; }
@@ -139,7 +144,7 @@ details.agenda-past .agenda-list { margin-top:12px; }
 .avancement-step.done { background:#43a047; }
 .avancement-step.na { background:repeating-linear-gradient(135deg, rgba(138,128,112,.45) 0, rgba(138,128,112,.45) 5px, rgba(224,216,204,.75) 5px, rgba(224,216,204,.75) 10px); }
 .avancement-labels { display:grid; grid-template-columns:repeat(6,1fr); gap:3px; font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-align:center; line-height:1.2; }
-.avancement-labels span { overflow-wrap:anywhere; }
+.avancement-labels span { overflow-wrap:break-word; hyphens:auto; }
 .avancement-summary { font-family:'DM Mono',monospace; font-size:9px; color:var(--ink3); }
 .bilan-indicators { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
 .bilan-indicator { border:1.5px solid var(--border); border-radius:8px; background:#fff; padding:10px; display:flex; flex-direction:column; gap:4px; }
@@ -192,7 +197,7 @@ details.agenda-past .agenda-list { margin-top:12px; }
 </div>
 
 <script>
-console.info('[widget-copil-calendrier] v6 statut de suivi sur dernière entrée du journal chargé');
+console.info('[widget-copil-calendrier] v7 défilement mobile corrigé chargé');
 let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
 let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};

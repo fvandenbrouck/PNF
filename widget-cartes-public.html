@@ -10,6 +10,7 @@
 <!-- Version v49 : filtre Journées IG + vignettes Volet/Journées IG -->
 <!-- Version v52 : libellé Statut résolu depuis la table Statut + filtre Journées IG robuste -->
 <!-- Version v53 : fusion Actions_formation corrigée pour préserver les libellés de la vue -->
+<!-- Version v54 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) -->
 <!-- Version v51 : filtre Journées IG corrigé par fusion complète Actions_formation + lecture booléenne robuste -->
 <!-- Version v50 : lecture robuste du booléen Actions_formation.JourneeIG -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
@@ -32,13 +33,15 @@
   --border:     #E0D8CC;
 }
 
+/* Défilement naturel de la page (plutôt qu'une hauteur calculée fixe pour .grid-wrap) :
+   robuste quelle que soit la hauteur réelle de la barre d'outils, notamment sur mobile
+   où elle s'étale sur beaucoup plus de lignes. La barre d'outils reste visible en haut
+   grâce à position:sticky. */
 html, body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg);
   color: var(--ink);
   min-height: 100%;
-  height: 100%;
-  overflow: hidden;
 }
 
 .toolbar {
@@ -175,8 +178,6 @@ html, body, input, select, textarea, button {
 }
 
 .grid-wrap {
-  height: calc(100vh - 56px);
-  overflow-y: auto;
   padding: 12px;
 }
 .grid {
@@ -573,7 +574,7 @@ html, body, input, select, textarea, button {
 </div>
 
 <script>
-console.info('[widget-cartes-public] v52 Statut résolu depuis la table Statut + filtre Journées IG robuste chargé');
+console.info('[widget-cartes-public] v54 défilement mobile corrigé chargé');
 
 // Widget public — lecture seule.
 // Important : ce widget ne demande que l'accès « read table » et ne contient aucune action AddRecord/UpdateRecord.

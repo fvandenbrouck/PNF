@@ -18,6 +18,7 @@
 <!-- Version v67 : recherche Journée IG explicite et accent-insensible -->
 <!-- Version v70 : ajout du champ Année dans la modale (création et édition d'une action) -->
 <!-- Version v71 : ajout d'un champ de recherche dédié au Code GAIA dans la barre d'outils -->
+<!-- Version v72 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe) + modale en une colonne sous 640px -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -38,12 +39,14 @@
   --border:     #E0D8CC;
 }
 
+/* Défilement naturel de la page (plutôt qu'une hauteur calculée fixe pour .grid-wrap) :
+   robuste quelle que soit la hauteur réelle de la barre d'outils, notamment sur mobile
+   où elle s'étale sur beaucoup plus de lignes. La barre d'outils reste visible en haut
+   grâce à position:sticky. */
 html, body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg);
   color: var(--ink);
-  height: 100%;
-  overflow: hidden;
 }
 
 /* ── TOOLBAR ──────────────────────────────────────── */
@@ -303,8 +306,6 @@ html, body {
 
 /* ── GRILLE ───────────────────────────────────────── */
 .grid-wrap {
-  height: calc(100vh - 52px);
-  overflow-y: auto;
   padding: 12px;
 }
 .grid {
@@ -676,6 +677,7 @@ html, body {
 @media (max-width: 640px) {
   .new-contact-line { grid-template-columns: 1fr; }
   .new-contact-sep { display: none; }
+  .modal-row { grid-template-columns: 1fr; }
 }
 
 .check-field {
@@ -875,7 +877,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v71 recherche par Code GAIA chargé');
+console.info('[widget-cartes] v72 défilement mobile corrigé chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
