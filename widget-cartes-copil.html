@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cartes PNF — Comité de pilotage</title>
 <!-- Version v15 : email référent imposé au domaine @igesr.gouv.fr et structure IGÉSR masquée/imposée -->
+<!-- Version v16 : panneau de gestion des référents IGÉSR sous les filtres (inscription, modification, suppression) -->
 <!-- Version v14 : tri alphabétique des contacts IGÉSR par NOM dans la modale -->
 <!-- Version v13 : filtre Référents limité aux contacts IGÉSR dans la barre des filtres -->
 <!-- Version v12 : filtres public + référents IGÉSR + normalisation nouveau référent -->
@@ -44,6 +45,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   background-position:right 9px center;
 }
 .tb-sel select:focus { border-color:var(--navy); background:#fff; }
+.referent-panel { background:var(--white); border-bottom:1px solid var(--border); padding:14px 12px; display:grid; grid-template-columns:1fr 1fr; gap:18px; }
 .count { font-family:'DM Mono',monospace; font-size:11px; color:var(--ink3); background:var(--lilas); padding:6px 12px; border-radius:999px; }
 .btn-download { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; padding:8px 14px; border-radius:8px; cursor:pointer; border:1.5px solid var(--navy); background:var(--navy); color:#fff; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; min-height:36px; }
 .btn-download:hover { background:#0d2a52; border-color:#0d2a52; }
@@ -113,7 +115,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 #loader.hidden { display:none; }
 .spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
-@media (max-width:760px) { .info-grid,.new-contact-grid { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } .modal { max-height:98vh; } }
+@media (max-width:760px) { .info-grid,.new-contact-grid { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } .modal { max-height:98vh; } .referent-panel { grid-template-columns:1fr; } }
 
 /* ── CORRECTION MODE SOMBRE / SAFARI ──────────────────────────────── */
 html, body, input, select, textarea, button {
@@ -159,6 +161,36 @@ html, body, input, select, textarea, button {
   <button class="btn-download" onclick="downloadSelectionCsv()" title="Télécharger les actions affichées au format CSV">Télécharger CSV</button>
   <span class="count" id="count">–</span>
 </div>
+<div class="referent-panel" id="referent-panel">
+  <div>
+    <div class="section-title">Inscrire un nouveau référent IGÉSR</div>
+    <div class="box">
+      <div class="new-contact-grid">
+        <div class="mfield"><label>Nom</label><input id="rp-new-nom" type="text" placeholder="DUPONT"></div>
+        <div class="mfield"><label>Prénom</label><input id="rp-new-prenom" type="text" placeholder="Marie"></div>
+        <div class="mfield"><label>Email IGÉSR</label><div class="email-local-wrap"><input id="rp-new-email" type="text" inputmode="email" autocomplete="off" placeholder="prenom.nom"><span class="email-fixed-domain">@igesr.gouv.fr</span></div></div>
+        <button class="btn btn-primary" onclick="addGlobalReferent()">Ajouter</button>
+      </div>
+      <div class="help" id="rp-new-msg" style="margin-top:8px"></div>
+    </div>
+  </div>
+  <div>
+    <div class="section-title">Modifier ou supprimer un référent existant</div>
+    <div class="box">
+      <div class="tb-sel"><select id="rp-select" onchange="onSelectReferentToManage()"><option value="">— Choisir un référent —</option></select></div>
+      <div class="new-contact-grid" id="rp-edit-fields" style="display:none;margin-top:10px">
+        <div class="mfield"><label>Nom</label><input id="rp-edit-nom" type="text"></div>
+        <div class="mfield"><label>Prénom</label><input id="rp-edit-prenom" type="text"></div>
+        <div class="mfield"><label>Email IGÉSR</label><div class="email-local-wrap"><input id="rp-edit-email" type="text" inputmode="email" autocomplete="off"><span class="email-fixed-domain">@igesr.gouv.fr</span></div></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="saveReferentIdentity()">Enregistrer</button>
+          <button class="btn" onclick="deleteReferent()" style="border-color:#F5A0A8;color:#8a2030">Supprimer</button>
+        </div>
+      </div>
+      <div class="help" id="rp-edit-msg" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
 <div class="grid-wrap"><div class="grid" id="grid"></div></div>
 <div id="loader"><div class="spinner"></div><p>Chargement des actions copil…</p></div>
 <div class="overlay hidden" id="overlay" onclick="closeModal(event)">
@@ -181,7 +213,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v15 email IGÉSR imposé chargé');
+console.info('[widget-cartes-copil] v16 panneau de gestion des référents IGÉSR chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
@@ -538,12 +570,15 @@ async function loadData(records){
 
     const allowed = await checkAccess();
     const toolbar = document.querySelector('.toolbar');
+    const referentPanel = document.getElementById('referent-panel');
     if (!allowed) {
       if (toolbar) toolbar.style.display = 'none';
+      if (referentPanel) referentPanel.style.display = 'none';
       document.getElementById('grid').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Responsables de suivi et aux Référents IGESR.</span></div>`;
       return;
     }
     if (toolbar) toolbar.style.display = '';
+    if (referentPanel) referentPanel.style.display = '';
 
     const [contacts, structures, publics, modalites, referents, annees, axes, volets, statuts, degres, lieux, sessions, actionsAxes] = await Promise.all([
       grist.docApi.fetchTable('Contacts').catch(()=>({id:[]})),
@@ -663,6 +698,7 @@ function buildFilterControls(){
   fillSelect('f-modal', modalValues, 'Modalités');
   fillSelect('f-statut', statutValues, 'Statuts');
   fillSelect('f-referent', referentValues, 'Référents');
+  fillSelect('rp-select', referentValues, '— Choisir un référent —');
 }
 
 async function refreshReferentsTableAndFilters(){
@@ -908,42 +944,127 @@ function toggleReferent(id){
   id=String(id); if(SELECTED_REFERENT_IDS.has(id)) SELECTED_REFERENT_IDS.delete(id); else SELECTED_REFERENT_IDS.add(id);
   buildModalBody();
 }
+function validateIgesrIdentity(nomRaw, prenomRaw, emailRaw){
+  const NOM=normalizeNomInput(nomRaw);
+  const PRENOM=normalizePrenomInput(prenomRaw);
+  const emailLocal=normalizeIgesrEmailLocalInput(emailRaw);
+  const email=buildIgesrEmail(emailLocal);
+  if(!NOM || !PRENOM || !emailLocal) return {error:'Renseigner nom, prénom et identifiant email IGÉSR.'};
+  if(emailRaw.includes('@') && !normalizeEmailInput(emailRaw).endsWith(IGESR_EMAIL_DOMAIN)) return {error:`Domaine interdit : seule l’adresse ${IGESR_EMAIL_DOMAIN} est autorisée.`};
+  if(!/^[a-z0-9._%+-]+$/.test(emailLocal)) return {error:'Identifiant email invalide. Utiliser uniquement la forme prenom.nom.'};
+  if(!/^[^\s@]+@igesr\.gouv\.fr$/.test(email)) return {error:'Adresse email IGÉSR invalide.'};
+  return {NOM, PRENOM, emailLocal, email};
+}
+async function findOrCreateIgesrContact(NOM, PRENOM, email){
+  let id=CONTACT_ID_BY_EMAIL[email];
+  if(id) return {id, created:false};
+  const nomPrenom=`${NOM} ${PRENOM}`;
+  const fields={'Nom Prénom':nomPrenom, 'NOM':NOM, 'PRENOM':PRENOM, 'Email':email, 'Structure':IGESR_STRUCTURE_ID};
+  const result=await grist.docApi.applyUserActions([['AddRecord', CONTACT_TABLE, null, fields]]);
+  id=String(Array.isArray(result)?result[0]:result);
+  CONTACT_ROWS.push({id:Number(id), ...fields});
+  rebuildContactIndexes();
+  return {id, created:true};
+}
 async function addNewReferent(){
   const msg=document.getElementById('msg-save'); msg.textContent=''; msg.className='msg';
   const nomRaw=document.getElementById('new-nom').value;
   const prenomRaw=document.getElementById('new-prenom').value;
   const emailRaw=document.getElementById('new-email').value;
-  const NOM=normalizeNomInput(nomRaw);
-  const PRENOM=normalizePrenomInput(prenomRaw);
-  const emailLocal=normalizeIgesrEmailLocalInput(emailRaw);
-  const email=buildIgesrEmail(emailLocal);
-  const structure=IGESR_STRUCTURE_ID;
-  if(!NOM || !PRENOM || !emailLocal){ msg.textContent='✗ Renseigner nom, prénom et identifiant email IGÉSR.'; msg.className='msg err'; return; }
-  document.getElementById('new-nom').value=NOM;
-  document.getElementById('new-prenom').value=PRENOM;
-  document.getElementById('new-email').value=emailLocal;
-  if(emailRaw.includes('@') && !normalizeEmailInput(emailRaw).endsWith(IGESR_EMAIL_DOMAIN)){
-    msg.textContent=`✗ Domaine interdit : seule l’adresse ${IGESR_EMAIL_DOMAIN} est autorisée.`;
-    msg.className='msg err';
-    return;
-  }
-  if(!/^[a-z0-9._%+-]+$/.test(emailLocal)){ msg.textContent='✗ Identifiant email invalide. Utiliser uniquement la forme prenom.nom.'; msg.className='msg err'; return; }
-  if(!/^[^\s@]+@igesr\.gouv\.fr$/.test(email)){ msg.textContent='✗ Adresse email IGÉSR invalide.'; msg.className='msg err'; return; }
-  let id=CONTACT_ID_BY_EMAIL[email];
-  if(!id){
-    const nomPrenom=`${NOM} ${PRENOM}`;
-    const fields={'Nom Prénom':nomPrenom, 'NOM':NOM, 'PRENOM':PRENOM, 'Email':email, 'Structure':structure};
-    try{
-      const result=await grist.docApi.applyUserActions([['AddRecord', CONTACT_TABLE, null, fields]]);
-      id=String(Array.isArray(result)?result[0]:result);
-      CONTACT_ROWS.push({id:Number(id), ...fields});
-      rebuildContactIndexes();
-      buildFilterControls();
-      msg.textContent='✓ Nouveau contact créé et ajouté comme référent'; msg.className='msg ok';
-    } catch(e){ msg.textContent='✗ Erreur contact : '+e.message; msg.className='msg err'; return; }
-  } else { msg.textContent='✓ Contact existant ajouté comme référent'; msg.className='msg ok'; }
-  SELECTED_REFERENT_IDS.add(String(id));
-  buildModalBody();
+  const v=validateIgesrIdentity(nomRaw, prenomRaw, emailRaw);
+  if(v.error){ msg.textContent='✗ '+v.error; msg.className='msg err'; return; }
+  document.getElementById('new-nom').value=v.NOM;
+  document.getElementById('new-prenom').value=v.PRENOM;
+  document.getElementById('new-email').value=v.emailLocal;
+  try{
+    const {id, created}=await findOrCreateIgesrContact(v.NOM, v.PRENOM, v.email);
+    if(created){ buildFilterControls(); msg.textContent='✓ Nouveau contact créé et ajouté comme référent'; msg.className='msg ok'; }
+    else { msg.textContent='✓ Contact existant ajouté comme référent'; msg.className='msg ok'; }
+    SELECTED_REFERENT_IDS.add(String(id));
+    buildModalBody();
+  } catch(e){ msg.textContent='✗ Erreur contact : '+e.message; msg.className='msg err'; }
+}
+async function addGlobalReferent(){
+  const msg=document.getElementById('rp-new-msg'); msg.textContent=''; msg.className='help';
+  const nomRaw=document.getElementById('rp-new-nom').value;
+  const prenomRaw=document.getElementById('rp-new-prenom').value;
+  const emailRaw=document.getElementById('rp-new-email').value;
+  const v=validateIgesrIdentity(nomRaw, prenomRaw, emailRaw);
+  if(v.error){ msg.textContent='✗ '+v.error; msg.className='msg err'; return; }
+  try{
+    const {created}=await findOrCreateIgesrContact(v.NOM, v.PRENOM, v.email);
+    document.getElementById('rp-new-nom').value='';
+    document.getElementById('rp-new-prenom').value='';
+    document.getElementById('rp-new-email').value='';
+    buildFilterControls();
+    msg.textContent = created ? '✓ Nouveau référent créé' : '✓ Ce contact existait déjà dans Contacts (conservé tel quel)';
+    msg.className='msg ok';
+  } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; }
+}
+function onSelectReferentToManage(){
+  const id=document.getElementById('rp-select').value;
+  const wrap=document.getElementById('rp-edit-fields');
+  const msg=document.getElementById('rp-edit-msg');
+  if(msg){ msg.textContent=''; msg.className='help'; }
+  const row = id ? CONTACT_ROWS.find(r=>String(r.id)===String(id)) : null;
+  if(!row){ wrap.style.display='none'; return; }
+  document.getElementById('rp-edit-nom').value = firstText(row,['NOM','Nom','nom']) || '';
+  document.getElementById('rp-edit-prenom').value = firstText(row,['PRENOM','Prénom','Prenom','prenom']) || '';
+  document.getElementById('rp-edit-email').value = normalizeIgesrEmailLocalInput(contactEmailFromRow(row));
+  wrap.style.display='';
+}
+async function saveReferentIdentity(){
+  const id=document.getElementById('rp-select').value;
+  const msg=document.getElementById('rp-edit-msg');
+  if(!id) return;
+  const nomRaw=document.getElementById('rp-edit-nom').value;
+  const prenomRaw=document.getElementById('rp-edit-prenom').value;
+  const emailRaw=document.getElementById('rp-edit-email').value;
+  const v=validateIgesrIdentity(nomRaw, prenomRaw, emailRaw);
+  if(v.error){ msg.textContent='✗ '+v.error; msg.className='msg err'; return; }
+  const existingId=CONTACT_ID_BY_EMAIL[v.email];
+  if(existingId && String(existingId) !== String(id)){ msg.textContent='✗ Cette adresse est déjà utilisée par un autre contact.'; msg.className='msg err'; return; }
+  document.getElementById('rp-edit-nom').value=v.NOM;
+  document.getElementById('rp-edit-prenom').value=v.PRENOM;
+  document.getElementById('rp-edit-email').value=v.emailLocal;
+  const fields={'Nom Prénom':`${v.NOM} ${v.PRENOM}`, 'NOM':v.NOM, 'PRENOM':v.PRENOM, 'Email':v.email};
+  try{
+    await grist.docApi.applyUserActions([['UpdateRecord', CONTACT_TABLE, Number(id), fields]]);
+    const row=CONTACT_ROWS.find(r=>String(r.id)===String(id));
+    if(row) Object.assign(row, fields);
+    rebuildContactIndexes();
+    buildFilterControls();
+    document.getElementById('rp-select').value=id;
+    applyFilters();
+    msg.textContent='✓ Identifiants mis à jour'; msg.className='msg ok';
+  } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; }
+}
+async function deleteReferent(){
+  const id=document.getElementById('rp-select').value;
+  const msg=document.getElementById('rp-edit-msg');
+  if(!id) return;
+  const label=CONTACT_MAP[String(id)] || 'ce référent';
+  const affectedActions=ALL.filter(a=>referentIdsFromAction(a).includes(String(id)));
+  const warning=affectedActions.length
+    ? `\n\nCe référent est inscrit à ${affectedActions.length} action${affectedActions.length>1?'s':''} : il en sera retiré.`
+    : '';
+  const ok=window.confirm(`Supprimer définitivement ${label} de la table Contacts ?${warning}\n\nCette action est irréversible.`);
+  if(!ok) return;
+  try{
+    for(const a of affectedActions){
+      const remainingIds=referentIdsFromAction(a).filter(rid=>rid!==String(id)).map(Number);
+      await grist.docApi.applyUserActions([['UpdateRecord', ACTION_TABLE, a.id, {[REFERENTS_COL]: ['L', ...remainingIds]}]]);
+      a[REFERENTS_COL]=['L', ...remainingIds];
+    }
+    await grist.docApi.applyUserActions([['RemoveRecord', CONTACT_TABLE, Number(id)]]);
+    CONTACT_ROWS=CONTACT_ROWS.filter(r=>String(r.id)!==String(id));
+    rebuildContactIndexes();
+    buildFilterControls();
+    document.getElementById('rp-select').value='';
+    document.getElementById('rp-edit-fields').style.display='none';
+    applyFilters();
+    msg.textContent='✓ Référent supprimé'; msg.className='msg ok';
+  } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; }
 }
 async function saveReferents(){
   if(!CURRENT_ACTION) return;
