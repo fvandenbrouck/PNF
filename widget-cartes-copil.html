@@ -7,6 +7,7 @@
 <!-- Version v15 : email référent imposé au domaine @igesr.gouv.fr et structure IGÉSR masquée/imposée -->
 <!-- Version v16 : panneau de gestion des référents IGÉSR sous les filtres (inscription, modification, suppression) -->
 <!-- Version v17 : correction des clés de colonnes Contacts (nom_prenom/email/structure) provoquant une KeyError Sandbox à la création -->
+<!-- Version v18 : panneau référents en une seule colonne pour éviter tout débordement horizontal du widget -->
 <!-- Version v14 : tri alphabétique des contacts IGÉSR par NOM dans la modale -->
 <!-- Version v13 : filtre Référents limité aux contacts IGÉSR dans la barre des filtres -->
 <!-- Version v12 : filtres public + référents IGÉSR + normalisation nouveau référent -->
@@ -46,7 +47,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   background-position:right 9px center;
 }
 .tb-sel select:focus { border-color:var(--navy); background:#fff; }
-.referent-panel { background:var(--white); border-bottom:1px solid var(--border); padding:14px 12px; display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+.referent-panel { background:var(--white); border-bottom:1px solid var(--border); padding:14px 12px; display:grid; grid-template-columns:1fr; gap:18px; }
 .count { font-family:'DM Mono',monospace; font-size:11px; color:var(--ink3); background:var(--lilas); padding:6px 12px; border-radius:999px; }
 .btn-download { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; padding:8px 14px; border-radius:8px; cursor:pointer; border:1.5px solid var(--navy); background:var(--navy); color:#fff; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; min-height:36px; }
 .btn-download:hover { background:#0d2a52; border-color:#0d2a52; }
@@ -87,7 +88,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .box { border:1.5px solid var(--border); border-radius:9px; background:var(--bg); padding:12px; }
 .description { font-size:12px; color:var(--ink2); line-height:1.6; }
 .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-.mfield { display:flex; flex-direction:column; gap:6px; }
+.mfield { display:flex; flex-direction:column; gap:6px; min-width:0; }
 .mfield label { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:9px; font-weight:600; }
 .mfield input, .mfield select { font-family:'DM Sans',sans-serif; font-size:12px; padding:8px 10px; border:1.5px solid var(--border); border-radius:7px; background:var(--white); outline:none; }
 .mfield input:focus, .mfield select:focus { border-color:var(--navy); }
@@ -214,7 +215,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v17 correction clés colonnes Contacts chargé');
+console.info('[widget-cartes-copil] v18 panneau référents en une colonne chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
