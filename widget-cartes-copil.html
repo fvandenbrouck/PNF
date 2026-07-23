@@ -6,6 +6,7 @@
 <title>Cartes PNF — Comité de pilotage</title>
 <!-- Version v15 : email référent imposé au domaine @igesr.gouv.fr et structure IGÉSR masquée/imposée -->
 <!-- Version v16 : panneau de gestion des référents IGÉSR sous les filtres (inscription, modification, suppression) -->
+<!-- Version v17 : correction des clés de colonnes Contacts (nom_prenom/email/structure) provoquant une KeyError Sandbox à la création -->
 <!-- Version v14 : tri alphabétique des contacts IGÉSR par NOM dans la modale -->
 <!-- Version v13 : filtre Référents limité aux contacts IGÉSR dans la barre des filtres -->
 <!-- Version v12 : filtres public + référents IGÉSR + normalisation nouveau référent -->
@@ -213,7 +214,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v16 panneau de gestion des référents IGÉSR chargé');
+console.info('[widget-cartes-copil] v17 correction clés colonnes Contacts chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
@@ -959,7 +960,7 @@ async function findOrCreateIgesrContact(NOM, PRENOM, email){
   let id=CONTACT_ID_BY_EMAIL[email];
   if(id) return {id, created:false};
   const nomPrenom=`${NOM} ${PRENOM}`;
-  const fields={'Nom Prénom':nomPrenom, 'NOM':NOM, 'PRENOM':PRENOM, 'Email':email, 'Structure':IGESR_STRUCTURE_ID};
+  const fields={'nom_prenom':nomPrenom, 'NOM':NOM, 'PRENOM':PRENOM, 'email':email, 'structure':IGESR_STRUCTURE_ID};
   const result=await grist.docApi.applyUserActions([['AddRecord', CONTACT_TABLE, null, fields]]);
   id=String(Array.isArray(result)?result[0]:result);
   CONTACT_ROWS.push({id:Number(id), ...fields});
@@ -1027,7 +1028,7 @@ async function saveReferentIdentity(){
   document.getElementById('rp-edit-nom').value=v.NOM;
   document.getElementById('rp-edit-prenom').value=v.PRENOM;
   document.getElementById('rp-edit-email').value=v.emailLocal;
-  const fields={'Nom Prénom':`${v.NOM} ${v.PRENOM}`, 'NOM':v.NOM, 'PRENOM':v.PRENOM, 'Email':v.email};
+  const fields={'nom_prenom':`${v.NOM} ${v.PRENOM}`, 'NOM':v.NOM, 'PRENOM':v.PRENOM, 'email':v.email};
   try{
     await grist.docApi.applyUserActions([['UpdateRecord', CONTACT_TABLE, Number(id), fields]]);
     const row=CONTACT_ROWS.find(r=>String(r.id)===String(id));
