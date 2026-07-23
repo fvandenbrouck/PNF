@@ -11,6 +11,7 @@
 <!-- Version v5 : étape d'avancement "Programme" ajoutée + renommage "Courrier EAFC" -> "Courrier recteur" (alignement avec le Journal de bord) -->
 <!-- Version v6 : statut de suivi lu sur la dernière entrée du journal (COPIL ou non), suite à la fusion des entrées côté Journal de bord -->
 <!-- Version v7 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .agenda-wrap) + césure lisible des libellés d'avancement -->
+<!-- Version v8 : référents IGÉSR affichés dans chaque entrée de l'agenda -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -79,6 +80,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tag-year { background:var(--green-bg); color:var(--green); font-family:'DM Mono',monospace; font-size:9px; }
 .tag-struct { background:rgba(168,221,216,.28); color:#1a6b65; }
 .tag-resp { background:var(--lilas); color:var(--navy); font-family:'DM Mono',monospace; }
+.tag-igesr { background:var(--purple-bg); color:var(--purple); font-family:'DM Mono',monospace; }
 .tag-code { background:rgba(27,58,107,.10); color:var(--navy); font-family:'DM Mono',monospace; font-size:9px; font-weight:700; }
 .tag-copil { background:var(--purple-bg); color:var(--purple); font-family:'DM Mono',monospace; font-weight:700; }
 .tag-link { background:var(--navy-l); color:var(--navy); font-weight:600; text-decoration:none; cursor:pointer; align-self:flex-start; }
@@ -197,7 +199,7 @@ details.agenda-past .agenda-list { margin-top:12px; }
 </div>
 
 <script>
-console.info('[widget-copil-calendrier] v7 défilement mobile corrigé chargé');
+console.info('[widget-copil-calendrier] v8 référents IGÉSR affichés chargé');
 let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
 let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};
@@ -279,6 +281,7 @@ function getStructures(a){ return labelsFor(a.id_structure || a.Structure || a.S
 function getModalite(a){ return labelFor(a.id_modalite || a.Modalite || a.modalite, MODAL_MAP); }
 function getPublics(a){ return labelsFor(a.id_publics || a.Publics || a.publics_cibles, PUBLIC_MAP); }
 function getResponsablesAction(a){ return labelsFor(a.Responsable_suivi || a.responsable_suivi || a.Responsable || a.responsable, CONTACT_MAP); }
+function getReferentsAction(a){ return labelsFor(a.Referents || a.referents, CONTACT_MAP); }
 function getChefferieLabel(a){ return labelFor(a.Chefferie || a.chefferie, CHEFFERIE_MAP); }
 function truthy(v){ return v===true || v===1 || String(v||'').toLowerCase()==='true'; }
 function avancementState(a, step){ if(truthy(a&&a[step.na])) return 'na'; if(truthy(a&&a[step.done])) return 'done'; return 'todo'; }
@@ -444,7 +447,7 @@ function entrySortTs(e){
 function agendaItemHtml(e){
   const a=e.action, j=e.journal;
   const date=formatDateValue(j.Date); const heure=j.Heure_copil||'';
-  const annee=getAnnee(a); const volet=getVolet(a); const structs=getStructures(a); const resp=getResponsablesAction(a); const code=getCodeGaia(a);
+  const annee=getAnnee(a); const volet=getVolet(a); const structs=getStructures(a); const resp=getResponsablesAction(a); const refs=getReferentsAction(a); const code=getCodeGaia(a);
   const notesRaw=j.Compte_rendu?String(j.Compte_rendu):'';
   const notes=notesRaw.slice(0,140);
   const locked=isReadOnlyViewer();
@@ -452,7 +455,7 @@ function agendaItemHtml(e){
     <div class="agenda-date"><span class="agenda-day">${esc(date||'Sans date')}</span>${heure?`<span class="agenda-time">${esc(heure)}</span>`:''}</div>
     <div class="agenda-body">
       <div class="agenda-title">${esc(getTitre(a))}</div>
-      <div class="tags">${annee?`<span class="tag tag-year">${esc(annee)}</span>`:''}${voletChipHtml(volet)}${journeeIGChipHtml(a)}${statutSuiviChipHtml(a)}${structs.map(s=>`<span class="tag tag-struct">${esc(s)}</span>`).join('')}${resp.map(r=>`<span class="tag tag-resp">${esc(r)}</span>`).join('')}${code?`<span class="tag tag-code">${esc(code)}</span>`:''}</div>
+      <div class="tags">${annee?`<span class="tag tag-year">${esc(annee)}</span>`:''}${voletChipHtml(volet)}${journeeIGChipHtml(a)}${statutSuiviChipHtml(a)}${structs.map(s=>`<span class="tag tag-struct">${esc(s)}</span>`).join('')}${resp.map(r=>`<span class="tag tag-resp">${esc(r)}</span>`).join('')}${refs.map(r=>`<span class="tag tag-igesr">Réf. ${esc(r)}</span>`).join('')}${code?`<span class="tag tag-code">${esc(code)}</span>`:''}</div>
       ${notes?`<div class="agenda-notes">${esc(notes)}${notesRaw.length>140?'…':''}</div>`:''}
     </div>
   </div>`;
