@@ -12,6 +12,7 @@
 <!-- Version v20 : filtre "Journées IG" ajouté dans la barre de filtres -->
 <!-- Version v21 : Période (dates début/fin) affichée sur la carte et la fiche détail, mise en valeur (gras, bleu marine, icône 📅) -->
 <!-- Version v22 : volume de formation prévu (JS prévision, heures prévues) et dates COPIL déjà définies (Journal_Actions) ajoutés sur la carte et la fiche détail -->
+<!-- Version v23 : fiche détail divisée en deux onglets (Informations / Référents) -->
 <!-- Version v14 : tri alphabétique des contacts IGÉSR par NOM dans la modale -->
 <!-- Version v13 : filtre Référents limité aux contacts IGÉSR dans la barre des filtres -->
 <!-- Version v12 : filtres public + référents IGÉSR + normalisation nouveau référent -->
@@ -98,6 +99,12 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .btn-close { margin-left:auto; border:none; background:transparent; font-size:24px; color:var(--ink3); cursor:pointer; padding:2px 6px; }
 .btn-close:hover { color:var(--ink); }
 .modal-body { overflow-y:auto; padding:18px 24px; display:grid; gap:16px; }
+.tabs { display:flex; flex-wrap:wrap; gap:6px; border-bottom:1px solid var(--border); padding:0 24px 10px; background:var(--white); }
+.tab-btn { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; padding:8px 12px; border:1.5px solid var(--border); border-radius:999px; background:var(--bg); color:var(--ink2); cursor:pointer; }
+.tab-btn:hover { border-color:var(--navy); color:var(--navy); }
+.tab-btn.active { background:var(--navy); color:#fff; border-color:var(--navy); }
+.tab-panel { display:none; gap:16px; }
+.tab-panel.active { display:grid; }
 .section-title { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:10px; font-weight:600; }
 .box { border:1.5px solid var(--border); border-radius:9px; background:var(--bg); padding:12px; }
 .description { font-size:12px; color:var(--ink2); line-height:1.6; }
@@ -233,7 +240,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v22 volume prévu et dates COPIL chargé');
+console.info('[widget-cartes-copil] v23 fiche détail à onglets chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
@@ -242,6 +249,7 @@ let AXE_MAP = {}, VOLET_MAP = {}, STATUT_MAP = {}, DEGRE_MAP = {}, LIEU_MAP = {}
 let AXE_VALUES = [], VOLET_VALUES = [], STATUT_VALUES = [], DEGRE_VALUES = [], LIEU_VALUES = [], SESSION_ROWS = [];
 let JOURNAL_ROWS = [];
 let SELECTED_REFERENT_IDS = new Set();
+let MODAL_ACTIVE_TAB = 'infos';
 const ACTION_TABLE = 'Actions_formation';
 const CONTACT_TABLE = 'Contacts';
 const REFERENTS_COL = 'Referents';
@@ -938,7 +946,7 @@ function render(){
 }
 function openModal(id){
   const a=ALL.find(x=>x.id===id); if(!a) return;
-  CURRENT_ACTION=a; selectedId=id; SELECTED_REFERENT_IDS=new Set(referentIdsFromAction(a));
+  CURRENT_ACTION=a; selectedId=id; SELECTED_REFERENT_IDS=new Set(referentIdsFromAction(a)); MODAL_ACTIVE_TAB='infos';
   document.getElementById('modal-title').textContent=a.titre||'Sans titre';
   document.getElementById('modal-meta').textContent=['Comité de pilotage', getAnnee(a), getVolet(a), getStatut(a), 'référents'].filter(Boolean).join(' · ');
   buildModalBody();
@@ -953,49 +961,66 @@ function buildModalBody(){
     a.heures_formation ? `<span class="tag tag-days">Heures&nbsp;: ${esc(String(a.heures_formation).replace('.', ','))}</span>` : ''
   ].filter(Boolean).join('');
   document.getElementById('modal-body').innerHTML = `
-    <div><div class="section-title">Objectif</div><div class="box description">${esc(a.objectif||a.Objectif||'')}</div></div>
-    <div class="info-grid">
-      <div><div class="section-title">Année</div><div class="box tags">${annee?`<span class="tag tag-ref">${esc(annee)}</span>`:'—'}</div></div>
-      <div><div class="section-title">Période</div><div class="box tags">${periode?`<span class="tag tag-periode">📅 ${esc(periode)}</span>`:'—'}</div></div>
-      <div><div class="section-title">Volume prévu</div><div class="box tags">${volumeTags||'—'}</div></div>
-      <div><div class="section-title">Volet</div><div class="box tags">${volet?`<span class="tag tag-ref">${esc(volet)}</span>`:'—'}</div></div>
-      <div><div class="section-title">Axe</div><div class="box tags">${axe?`<span class="tag tag-ref">${esc(axe)}</span>`:'—'}</div></div>
-      <div><div class="section-title">Degrés</div><div class="box tags">${degres.map(d=>`<span class="tag tag-ref">${esc(d)}</span>`).join('')||'—'}</div></div>
-      <div><div class="section-title">Modalité</div><div class="box tags">${modal?`<span class="tag tag-modal">${esc(modal)}</span>`:'—'}</div></div>
-      <div><div class="section-title">Statut</div><div class="box tags">${statut?`<span class="tag tag-ref">${esc(statut)}</span>`:'—'}</div></div>
-      <div><div class="section-title">Structure porteuse</div><div class="box tags">${structs.map(s=>`<span class="tag tag-struct">${esc(s)}</span>`).join('')||'—'}</div></div>
-      <div><div class="section-title">Lieux</div><div class="box tags">${lieux.map(l=>`<span class="tag tag-public">${esc(l)}</span>`).join('')||'—'}</div></div>
+    <div class="tabs">
+      <button class="tab-btn${MODAL_ACTIVE_TAB==='infos'?' active':''}" onclick="showTab('infos')" id="tab-btn-infos">Informations</button>
+      <button class="tab-btn${MODAL_ACTIVE_TAB==='referents'?' active':''}" onclick="showTab('referents')" id="tab-btn-referents">Référents</button>
     </div>
-    <div><div class="section-title">Dates COPIL déjà définies</div><div class="box tags">${copilDates.length?copilDates.map(d=>`<span class="tag tag-copil-date">📅 ${esc(d)}</span>`).join(''):'—'}</div></div>
-    <div><div class="section-title">Action du schéma directeur</div><div class="box description">${esc(actionAxe||'—')}</div></div>
-    <div><div class="section-title">Publics cibles</div><div class="box tags">${publics.map(p=>`<span class="tag tag-public">${esc(p)}</span>`).join('')||'—'}</div></div>
-    <div>
-      <div class="section-title">Référents inscrits</div>
-      <div class="box">
-        <div class="chips" id="selected-referents">${refs.length?refs.map(r=>`<span class="chip selected" onclick="toggleReferent('${esc(r.id)}')">${esc(r.label)}</span>`).join(''):'<span class="help">Aucun référent inscrit.</span>'}</div>
-        <div class="help" style="margin-top:8px">Cliquez sur un référent inscrit pour le désinscrire.</div>
+    <div class="tab-panel${MODAL_ACTIVE_TAB==='infos'?' active':''}" id="tab-infos">
+      <div><div class="section-title">Objectif</div><div class="box description">${esc(a.objectif||a.Objectif||'')}</div></div>
+      <div class="info-grid">
+        <div><div class="section-title">Année</div><div class="box tags">${annee?`<span class="tag tag-ref">${esc(annee)}</span>`:'—'}</div></div>
+        <div><div class="section-title">Période</div><div class="box tags">${periode?`<span class="tag tag-periode">📅 ${esc(periode)}</span>`:'—'}</div></div>
+        <div><div class="section-title">Volume prévu</div><div class="box tags">${volumeTags||'—'}</div></div>
+        <div><div class="section-title">Volet</div><div class="box tags">${volet?`<span class="tag tag-ref">${esc(volet)}</span>`:'—'}</div></div>
+        <div><div class="section-title">Axe</div><div class="box tags">${axe?`<span class="tag tag-ref">${esc(axe)}</span>`:'—'}</div></div>
+        <div><div class="section-title">Degrés</div><div class="box tags">${degres.map(d=>`<span class="tag tag-ref">${esc(d)}</span>`).join('')||'—'}</div></div>
+        <div><div class="section-title">Modalité</div><div class="box tags">${modal?`<span class="tag tag-modal">${esc(modal)}</span>`:'—'}</div></div>
+        <div><div class="section-title">Statut</div><div class="box tags">${statut?`<span class="tag tag-ref">${esc(statut)}</span>`:'—'}</div></div>
+        <div><div class="section-title">Structure porteuse</div><div class="box tags">${structs.map(s=>`<span class="tag tag-struct">${esc(s)}</span>`).join('')||'—'}</div></div>
+        <div><div class="section-title">Lieux</div><div class="box tags">${lieux.map(l=>`<span class="tag tag-public">${esc(l)}</span>`).join('')||'—'}</div></div>
       </div>
+      <div><div class="section-title">Dates COPIL déjà définies</div><div class="box tags">${copilDates.length?copilDates.map(d=>`<span class="tag tag-copil-date">📅 ${esc(d)}</span>`).join(''):'—'}</div></div>
+      <div><div class="section-title">Action du schéma directeur</div><div class="box description">${esc(actionAxe||'—')}</div></div>
+      <div><div class="section-title">Publics cibles</div><div class="box tags">${publics.map(p=>`<span class="tag tag-public">${esc(p)}</span>`).join('')||'—'}</div></div>
     </div>
-    <div>
-      <div class="section-title">Ajouter un nouveau référent</div>
-      <div class="box">
-        <div class="new-contact-grid">
-          <div class="mfield"><label>Nom</label><input id="new-nom" type="text" placeholder="DUPONT"></div>
-          <div class="mfield"><label>Prénom</label><input id="new-prenom" type="text" placeholder="Marie"></div>
-          <div class="mfield"><label>Email IGÉSR</label><div class="email-local-wrap"><input id="new-email" type="text" inputmode="email" autocomplete="off" placeholder="prenom.nom"><span class="email-fixed-domain">${IGESR_EMAIL_DOMAIN}</span></div></div>
-          <button class="btn btn-primary" onclick="addNewReferent()">Ajouter</button>
+    <div class="tab-panel${MODAL_ACTIVE_TAB==='referents'?' active':''}" id="tab-referents">
+      <div>
+        <div class="section-title">Référents inscrits</div>
+        <div class="box">
+          <div class="chips" id="selected-referents">${refs.length?refs.map(r=>`<span class="chip selected" onclick="toggleReferent('${esc(r.id)}')">${esc(r.label)}</span>`).join(''):'<span class="help">Aucun référent inscrit.</span>'}</div>
+          <div class="help" style="margin-top:8px">Cliquez sur un référent inscrit pour le désinscrire.</div>
         </div>
-        <div class="help" style="margin-top:8px">Saisir uniquement la partie <b>prenom.nom</b> : le domaine <b>${IGESR_EMAIL_DOMAIN}</b> et la structure <b>${esc(igesrStructureLabel())}</b> sont imposés automatiquement. Si l’adresse existe déjà dans Contacts, le contact existant sera utilisé.</div>
       </div>
-    </div>
-    <div>
-      <div class="section-title">Choisir parmi les contacts existants</div>
-      <div class="box">
-        <input class="contact-search" id="contact-search" type="text" placeholder="Filtrer les contacts IGÉSR…" oninput="renderContactChoices()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;margin-bottom:10px">
-        <div class="chips" id="contact-choices"></div>
+      <div>
+        <div class="section-title">Ajouter un nouveau référent</div>
+        <div class="box">
+          <div class="new-contact-grid">
+            <div class="mfield"><label>Nom</label><input id="new-nom" type="text" placeholder="DUPONT"></div>
+            <div class="mfield"><label>Prénom</label><input id="new-prenom" type="text" placeholder="Marie"></div>
+            <div class="mfield"><label>Email IGÉSR</label><div class="email-local-wrap"><input id="new-email" type="text" inputmode="email" autocomplete="off" placeholder="prenom.nom"><span class="email-fixed-domain">${IGESR_EMAIL_DOMAIN}</span></div></div>
+            <button class="btn btn-primary" onclick="addNewReferent()">Ajouter</button>
+          </div>
+          <div class="help" style="margin-top:8px">Saisir uniquement la partie <b>prenom.nom</b> : le domaine <b>${IGESR_EMAIL_DOMAIN}</b> et la structure <b>${esc(igesrStructureLabel())}</b> sont imposés automatiquement. Si l’adresse existe déjà dans Contacts, le contact existant sera utilisé.</div>
+        </div>
+      </div>
+      <div>
+        <div class="section-title">Choisir parmi les contacts existants</div>
+        <div class="box">
+          <input class="contact-search" id="contact-search" type="text" placeholder="Filtrer les contacts IGÉSR…" oninput="renderContactChoices()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;margin-bottom:10px">
+          <div class="chips" id="contact-choices"></div>
+        </div>
       </div>
     </div>`;
   renderContactChoices();
+}
+function showTab(name){
+  MODAL_ACTIVE_TAB=name;
+  ['infos','referents'].forEach(t=>{
+    const panel=document.getElementById(`tab-${t}`);
+    const btn=document.getElementById(`tab-btn-${t}`);
+    if(panel) panel.classList.toggle('active', t===name);
+    if(btn) btn.classList.toggle('active', t===name);
+  });
 }
 function renderContactChoices(){
   const q=norm(document.getElementById('contact-search')?.value||'');
