@@ -16,6 +16,8 @@
 <!-- Version v68 : filtre cumulatif Journée IG -->
 <!-- Version v66 : ajout Journée IG et styles de vignettes volet -->
 <!-- Version v67 : recherche Journée IG explicite et accent-insensible -->
+<!-- Version v70 : ajout du champ Année dans la modale (création et édition d'une action) -->
+<!-- Version v71 : ajout d'un champ de recherche dédié au Code GAIA dans la barre d'outils -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -108,6 +110,24 @@ html, body {
   background-position: right 7px center;
 }
 .tb-sel select:focus { border-color: var(--navy); }
+
+.tb-gaia {
+  flex: 1;
+  min-width: 120px;
+}
+.tb-gaia input {
+  width: 100%;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  outline: none;
+  transition: border-color .12s;
+}
+.tb-gaia input:focus { border-color: var(--navy); }
 
 .tb-multi {
   position: relative;
@@ -755,6 +775,7 @@ html, body {
    Certains navigateurs injectent une couleur de texte claire dans les champs
    lorsque macOS est en mode sombre. On force ici un rendu clair et lisible. */
 .tb-search input,
+.tb-gaia input,
 .tb-sel select,
 .multi-btn,
 .tb-check input,
@@ -771,6 +792,7 @@ html, body {
 }
 
 .tb-search input::placeholder,
+.tb-gaia input::placeholder,
 .mfield input::placeholder,
 .mfield textarea::placeholder,
 .new-contact-line input::placeholder {
@@ -797,6 +819,9 @@ html, body {
       <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
     </svg>
     <input type="text" id="f-search" placeholder="Rechercher titre, objectif…" oninput="applyFilters()">
+  </div>
+  <div class="tb-gaia">
+    <input type="text" id="f-gaia" placeholder="Code GAIA…" oninput="applyFilters()">
   </div>
   <div class="tb-sel"><select id="f-annee" onchange="applyFilters()"><option value="">Années</option></select></div>
   <div class="tb-sel"><select id="f-axe"    onchange="applyFilters()"><option value="">Axes</option></select></div>
@@ -850,7 +875,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v69 structure contact écrite par id + vignettes volet + correction mode sombre chargé');
+console.info('[widget-cartes] v71 recherche par Code GAIA chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
@@ -2142,6 +2167,7 @@ function applyFilters() {
   const statut = document.getElementById('f-statut') ? document.getElementById('f-statut').value : '';
   const onlyJourneeIG = Boolean(document.getElementById('f-journee-ig')?.checked);
   const search = normalizeSearchText(document.getElementById('f-search').value);
+  const gaia = normalizeSearchText(document.getElementById('f-gaia') ? document.getElementById('f-gaia').value : '');
 
   // Les champs arrivent en texte résolu → comparaison directe en chaîne
   function matchText(val, filter) {
@@ -2171,6 +2197,7 @@ function applyFilters() {
     if (!matchList(publicValues(a), pub))   return false;
     if (!matchAny(degreLabelFromValue(getDegre(a)).split(',').map(s => s.trim()).filter(Boolean), degres)) return false;
     if (search && !searchableText(a).includes(search)) return false;
+    if (gaia && !normalizeSearchText(a.code_gaia || '').includes(gaia)) return false;
     return true;
   });
 
@@ -2187,6 +2214,8 @@ function resetFilters() {
   document.querySelectorAll('#f-degre-menu input:checked').forEach(cb => { cb.checked = false; });
   updateDegreFilterButton();
   document.getElementById('f-search').value = '';
+  const gaiaFilter = document.getElementById('f-gaia');
+  if (gaiaFilter) gaiaFilter.value = '';
   applyFilters();
 }
 
@@ -2347,6 +2376,7 @@ function buildModalForm(a) {
   };
   const checked = (values, v) => values.map(x=>String(x||'').trim()).includes(String(v||'').trim()) ? ' checked' : '';
 
+  const anneeOptions = optionValues(window.ANNEE_VALUES, 'Annee_scolaire');
   const voletOptions  = optionValues(window.VOLET_VALUES, 'id_volet');
   const axeOptions    = optionValues(window.AXE_VALUES, 'id_axe');
   const modalOptions  = optionValues(window.MODAL_VALUES, 'id_modalite');
@@ -2378,6 +2408,15 @@ function buildModalForm(a) {
     <div class="mfield full">
       <label>Objectif</label>
       <textarea id="m-objectif" rows="5" placeholder="Objectif de formation">${esc(a.objectif||'')}</textarea>
+    </div>
+    <div class="modal-row">
+      <div class="mfield">
+        <label>Année</label>
+        <select id="m-annee">
+          <option value="">—</option>
+          ${anneeOptions.map(v=>`<option value="${esc(v)}"${selectedMapped(a.Annee_scolaire, v, ANNEE_MAP, 'Annees')}>${esc(v)}</option>`).join('')}
+        </select>
+      </div>
     </div>
     <div class="modal-row">
       <div class="mfield">
@@ -2554,6 +2593,7 @@ function attachDirtyTracking() {
   bind('#m-gaia', 'input', 'code_gaia');
   bind('#m-js-prevision', 'input', 'js_prevision');
   bind('#m-heures-formation', 'input', 'heures_formation');
+  bind('#m-annee', 'change', 'annee');
   bind('#m-volet', 'change', 'volet');
   bind('#m-axe', 'change', 'axe');
   bind('#m-modal', 'change', 'modalite');
@@ -2582,6 +2622,7 @@ function readFormSnapshot() {
     code_gaia: String(byId('m-gaia')?.value || '').trim(),
     js_prevision: String(byId('m-js-prevision')?.value || '').trim().replace(',', '.'),
     js_realise: String(byId('m-heures-formation')?.value || '').trim().replace(',', '.'),
+    annee: String(byId('m-annee')?.value || '').trim(),
     volet: String(byId('m-volet')?.value || '').trim(),
     axe: String(byId('m-axe')?.value || '').trim(),
     modalite: String(byId('m-modal')?.value || '').trim(),
@@ -2698,6 +2739,7 @@ async function saveRecord() {
   const titreVal = document.getElementById('m-titre').value.trim();
   const objectifVal = document.getElementById('m-objectif').value.trim();
   const gaiaVal = document.getElementById('m-gaia').value.trim();
+  const anneeLabel = document.getElementById('m-annee').value;
   const voletLabel = document.getElementById('m-volet').value;
   const axeLabel = document.getElementById('m-axe').value;
   const modalLabel = document.getElementById('m-modal').value;
@@ -2756,6 +2798,10 @@ async function saveRecord() {
   if (formFieldChanged('journee_ig', journeeIGVal)) fields.JourneeIG = journeeIGVal;
 
   // Références simples : n'écrire que si le champ a été modifié dans la modale.
+  if (formFieldChanged('annee', anneeLabel)) {
+    const anneeId = valueIdFromMap(ANNEE_MAP, anneeLabel);
+    fields.Annee_scolaire = anneeId ? Number(anneeId) : null;
+  }
   if (formFieldChanged('volet', voletLabel)) {
     const voletId = valueIdFromMap(VOLET_MAP, voletLabel);
     fields.id_volet = voletId ? Number(voletId) : null;
