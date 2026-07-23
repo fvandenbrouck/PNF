@@ -19,6 +19,7 @@
 <!-- Version v70 : ajout du champ Année dans la modale (création et édition d'une action) -->
 <!-- Version v71 : ajout d'un champ de recherche dédié au Code GAIA dans la barre d'outils -->
 <!-- Version v72 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe) + modale en une colonne sous 640px -->
+<!-- Version v73 : tag Période (dates début/fin) mis en valeur (gras, bleu marine, icône 📅) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -512,7 +513,7 @@ html, body {
   white-space: nowrap;
 }
 .tag-struct  { background: rgba(168,221,216,.3); color: #1a6b65; }
-.tag-periode { background: rgba(249,197,154,.35); color: #8a4a10; }
+.tag-periode { background: rgba(27,58,107,.10); color: var(--navy); font-weight: 700; font-family: 'DM Mono', monospace; }
 .tag-contact { background: var(--lilas); color: var(--navy);
                font-family: 'DM Mono', monospace; font-size: 8.5px; }
 .tag-axe     { background: rgba(27,58,107,.08); color: var(--navy); }
@@ -877,7 +878,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v72 défilement mobile corrigé chargé');
+console.info('[widget-cartes] v73 tag Période mis en valeur chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
@@ -3059,7 +3060,7 @@ function render() {
           ${periode ? `
           <div class="meta-row">
             <span class="meta-label">Période</span>
-            <div class="meta-value"><span class="tag tag-periode">${esc(periode)}</span></div>
+            <div class="meta-value"><span class="tag tag-periode">📅 ${esc(periode)}</span></div>
           </div>` : ''}
 
           ${modalLib ? `

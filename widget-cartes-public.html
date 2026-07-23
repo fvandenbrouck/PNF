@@ -11,6 +11,7 @@
 <!-- Version v52 : libellé Statut résolu depuis la table Statut + filtre Journées IG robuste -->
 <!-- Version v53 : fusion Actions_formation corrigée pour préserver les libellés de la vue -->
 <!-- Version v54 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) -->
+<!-- Version v55 : tag Période (dates début/fin) mis en valeur (gras, bleu marine, icône 📅) -->
 <!-- Version v51 : filtre Journées IG corrigé par fusion complète Actions_formation + lecture booléenne robuste -->
 <!-- Version v50 : lecture robuste du booléen Actions_formation.JourneeIG -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
@@ -377,7 +378,7 @@ html, body, input, select, textarea, button {
 }
 .tag-axe     { background: rgba(27,58,107,.08); color: var(--navy); }
 .tag-struct  { background: rgba(168,221,216,.3); color: #1a6b65; }
-.tag-periode { background: rgba(249,197,154,.35); color: #8a4a10; }
+.tag-periode { background: rgba(27,58,107,.10); color: var(--navy); font-weight: 700; font-family: 'DM Mono', monospace; }
 .tag-contact { background: var(--lilas); color: var(--navy); font-family: 'DM Mono', monospace; font-size: 8.5px; }
 .tag-public  { background: rgba(245,160,168,.18); color: #7a2735; }
 .tag-modal   { background: rgba(245,160,168,.2); color: #8a2030; }
@@ -574,7 +575,7 @@ html, body, input, select, textarea, button {
 </div>
 
 <script>
-console.info('[widget-cartes-public] v54 défilement mobile corrigé chargé');
+console.info('[widget-cartes-public] v55 tag Période mis en valeur chargé');
 
 // Widget public — lecture seule.
 // Important : ce widget ne demande que l'accès « read table » et ne contient aucune action AddRecord/UpdateRecord.
@@ -1515,7 +1516,7 @@ function openModal(a) {
     <div class="detail-grid">
       ${section('Degré', tagList(degres, 'tag-axe'))}
       ${section('Année scolaire', firstText(a, 'annee_scolaire') ? `<div class="detail-tags"><span class="tag tag-days">${esc(firstText(a, 'annee_scolaire'))}</span></div>` : '')}
-      ${section('Période', periode ? `<div class="detail-tags"><span class="tag tag-periode">${esc(periode)}</span></div>` : '')}
+      ${section('Période', periode ? `<div class="detail-tags"><span class="tag tag-periode">📅 ${esc(periode)}</span></div>` : '')}
       ${section('Volet', firstText(a, 'id_volet') ? `<div class="detail-tags">${voletChipHtml(firstText(a, 'id_volet'))}${journeeIGChipHtml(a)}</div>` : (getJourneeIG(a) ? `<div class="detail-tags">${journeeIGChipHtml(a)}</div>` : ''))}
       ${section('Axe', axeLib ? `<div class="detail-tags"><span class="tag tag-axe">${esc(axeLib)}</span></div>` : '')}
       ${section('Action du schéma directeur', actionAxe ? `<div class="detail-text">${esc(actionAxe)}</div>` : '')}
@@ -1578,7 +1579,7 @@ function cardHtml(a, i) {
           ${axeLib ? `<div class="meta-row"><span class="meta-label">Axe</span><div class="meta-value"><span class="tag tag-axe">${esc(axeLib)}</span></div></div>` : ''}
           ${actionAxe ? `<div class="meta-row"><span class="meta-label">Action</span><div class="meta-value"><span class="tag tag-axe">${esc(actionAxe)}</span></div></div>` : ''}
           ${structs.length ? `<div class="meta-row"><span class="meta-label">Structure</span><div class="meta-value tags">${structs.map(s => `<span class="tag tag-struct">${esc(s)}</span>`).join('')}</div></div>` : ''}
-          ${periode ? `<div class="meta-row"><span class="meta-label">Période</span><div class="meta-value"><span class="tag tag-periode">${esc(periode)}</span></div></div>` : ''}
+          ${periode ? `<div class="meta-row"><span class="meta-label">Période</span><div class="meta-value"><span class="tag tag-periode">📅 ${esc(periode)}</span></div></div>` : ''}
           ${modalLib ? `<div class="meta-row"><span class="meta-label">Modalité</span><div class="meta-value"><span class="tag tag-modal">${esc(modalLib)}</span></div></div>` : ''}
           ${lieux.length ? `<div class="meta-row"><span class="meta-label">Lieux</span><div class="meta-value tags">${lieux.map(l => `<span class="tag tag-days">${esc(l)}</span>`).join('')}</div></div>` : ''}
           ${statut ? `<div class="meta-row"><span class="meta-label">Statut</span><div class="meta-value"><span class="tag tag-days">${esc(statut)}</span></div></div>` : ''}
