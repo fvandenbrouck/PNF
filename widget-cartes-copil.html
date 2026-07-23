@@ -9,6 +9,7 @@
 <!-- Version v17 : correction des clés de colonnes Contacts (nom_prenom/email/structure) provoquant une KeyError Sandbox à la création -->
 <!-- Version v18 : panneau référents en une seule colonne pour éviter tout débordement horizontal du widget -->
 <!-- Version v19 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) -->
+<!-- Version v20 : filtre "Journées IG" ajouté dans la barre de filtres -->
 <!-- Version v14 : tri alphabétique des contacts IGÉSR par NOM dans la modale -->
 <!-- Version v13 : filtre Référents limité aux contacts IGÉSR dans la barre des filtres -->
 <!-- Version v12 : filtres public + référents IGÉSR + normalisation nouveau référent -->
@@ -54,6 +55,9 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tb-sel select:focus { border-color:var(--navy); background:#fff; }
 .referent-panel { background:var(--white); border-bottom:1px solid var(--border); padding:14px 12px; display:grid; grid-template-columns:1fr; gap:18px; }
 .count { font-family:'DM Mono',monospace; font-size:11px; color:var(--ink3); background:var(--lilas); padding:6px 12px; border-radius:999px; }
+.tb-check { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); font-family:'DM Sans',sans-serif; font-size:11px; color:var(--ink); cursor:pointer; white-space:nowrap; }
+.tb-check input { accent-color:var(--navy); }
+.tb-check:hover { border-color:var(--navy); }
 .btn-download { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; padding:8px 14px; border-radius:8px; cursor:pointer; border:1.5px solid var(--navy); background:var(--navy); color:#fff; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; min-height:36px; }
 .btn-download:hover { background:#0d2a52; border-color:#0d2a52; }
 .grid-wrap { padding:14px; }
@@ -165,6 +169,10 @@ html, body, input, select, textarea, button {
   <div class="tb-sel"><select id="f-modal" onchange="applyFilters()"><option value="">Modalités</option></select></div>
   <div class="tb-sel"><select id="f-statut" onchange="applyFilters()"><option value="">Statuts</option></select></div>
   <div class="tb-sel"><select id="f-referent" onchange="applyFilters()"><option value="">Référents</option></select></div>
+  <label class="tb-check" title="Afficher uniquement les journées IG">
+    <input type="checkbox" id="f-journee-ig" onchange="applyFilters()">
+    <span>Journées IG</span>
+  </label>
   <button class="btn-download" onclick="downloadSelectionCsv()" title="Télécharger les actions affichées au format CSV">Télécharger CSV</button>
   <span class="count" id="count">–</span>
 </div>
@@ -220,7 +228,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v19 défilement mobile corrigé chargé');
+console.info('[widget-cartes-copil] v20 filtre Journées IG chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
@@ -318,6 +326,19 @@ function buildIgesrEmail(localPart){
 
 function titleCaseName(s){ return normalizePrenomInput(s); }
 function isCopilEnabled(a){ return a && (a.is_copil===true || a.is_copil===1 || String(a.is_copil).toLowerCase()==='true'); }
+function boolValue(v){
+  if(v===true) return true;
+  if(v===false || v===null || v===undefined || v==='') return false;
+  if(typeof v==='number') return v!==0;
+  const s=String(v).trim().toLowerCase();
+  return ['true','1','oui','yes','x','checked'].includes(s);
+}
+function getJourneeIG(a){
+  if(!a) return false;
+  const keys=['JourneeIG','JournéeIG','Journee_IG','Journée_IG','Journee IG','Journée IG','journeeIG','journee_ig'];
+  for(const k of keys){ if(Object.prototype.hasOwnProperty.call(a,k)) return boolValue(a[k]); }
+  return false;
+}
 function simpleLabelFromRow(r){ return firstText(r,['libelle','Libelle','Libellé','label','Label','nom','Nom','code','Code']); }
 function publicLabelFromRow(r){ return firstText(r,['Libellé','libelle','Libelle','label','Label','nom','Nom']); }
 function structureLabelFromRow(r){ return firstText(r,['code','Code','libelle','Libelle','Libellé','nom','Nom','Structure']); }
@@ -796,7 +817,8 @@ function searchableText(a, referentLabels){
     getLieux(a).join(' '),
     getPublics(a).join(' '),
     getDegres(a).join(' '),
-    (referentLabels || []).join(' ')
+    (referentLabels || []).join(' '),
+    getJourneeIG(a) ? 'Journées IG Journee IG inspection générale inspection generale' : ''
   ].join(' ');
 }
 
@@ -812,6 +834,7 @@ function applyFilters(){
   const modalFilter = document.getElementById('f-modal')?.value || '';
   const statutFilter = document.getElementById('f-statut')?.value || '';
   const referentFilter = document.getElementById('f-referent')?.value || '';
+  const journeeIGOnly = Boolean(document.getElementById('f-journee-ig')?.checked);
 
   FILTERED = ALL.filter(a=>{
     const annee = getAnnee(a);
@@ -836,6 +859,7 @@ function applyFilters(){
     if(modalFilter && modal !== modalFilter) return false;
     if(statutFilter && statut !== statutFilter) return false;
     if(referentFilter && !referentIds.includes(String(referentFilter))) return false;
+    if(journeeIGOnly && !getJourneeIG(a)) return false;
     if(q && !normalizeSearch(searchableText(a, referentLabels)).includes(q)) return false;
     return true;
   });
