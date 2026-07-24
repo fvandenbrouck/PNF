@@ -22,6 +22,7 @@
 <!-- Version v49 : onglet "Journal de bord / COPIL" avec formulaire unique (sélecteur COPIL/Autre, statut/échéance, compte-rendu, lien de document) remplaçant les entrées "Compte-rendu"/"COPIL" séparées ; historique existant conservé -->
 <!-- Version v50 : ordre des onglets de la fiche action = Pilotage - Journal de bord / COPIL - Courrier recteurs - Programme - Bilan (chronologie de mise en œuvre) -->
 <!-- Version v51 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) + césure lisible des libellés d'avancement -->
+<!-- Version v52 : alerte si une date de COPIL proposée tombe pendant une période d'indisponibilité des référents IGÉSR (table Indisponibilite) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -366,8 +367,25 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   </div>
 </div>
 
+<div class="overlay nested hidden" id="indispo-overlay" onclick="cancelIndispoModal(event)">
+  <div class="modal nbjours-modal">
+    <div class="modal-head">
+      <div class="modal-head-text"><h2>Période de regroupement de l'IGÉSR</h2></div>
+      <button class="btn-close" onclick="cancelIndispoModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="description" id="indispo-text"></p>
+      <div class="btn-row">
+        <span class="msg" id="indispo-msg"></span>
+        <button type="button" class="btn" onclick="cancelIndispoModal()">Choisir une autre date</button>
+        <button type="button" class="btn btn-primary" onclick="confirmIndispoModal()">Continuer quand même</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-console.info('[widget-journal-actions] v51 défilement mobile corrigé chargé');
+console.info('[widget-journal-actions] v52 alerte indisponibilité COPIL chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null, EDITING_JOURNAL_ID = null;
 let CONTACT_ROWS = [], CONTACT_SUIVI_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], JOURNAL_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_NORM_LABEL = {}, CHEFFERIE_MAP = {}, CHEFFERIE_ID_BY_LABEL = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {}, STATUS_ID_BY_LABEL = {};
@@ -376,6 +394,9 @@ let SELECTED_LIEUX = new Set();
 const ACTION_TABLE = 'Actions_formation';
 const JOURNAL_TABLE = 'Journal_Actions';
 const SESSION_TABLE = 'Journal_sessions';
+const INDISPO_TABLE = 'Indisponibilite';
+let INDISPO_ROWS = [];
+let PENDING_JOURNAL_SAVE = null;
 const SUIVI_STRUCTURE_ID = '8';
 const AVANCEMENT_STEPS = [
   { key:'COPIL', label:'COPIL', naLabel:'Aucun COPIL', done:'Avancement_COPIL', na:'NA_COPIL' },
@@ -401,6 +422,26 @@ function dateToTs(v){
   return isNaN(d) ? null : Math.floor(d.getTime()/1000);
 }
 function dateSortValue(v){ if(!v) return 0; if(typeof v==='number') return v<1000000000000?v*1000:v; const d=new Date(v); return isNaN(d)?0:d.getTime(); }
+function gristDateTs(v){ if(v===null||v===undefined||v==='') return null; if(typeof v==='number') return v; return dateToTs(v); }
+// Identifiants de colonnes réels vs libellés affichés : Date_debut/Date_fin ont été renommés
+// Date_de_debut/Date_de_fin par Grist au moment de fixer un libellé plus lisible (colId lié au
+// libellé par défaut). Alias multiples pour rester robuste à un futur renommage similaire.
+function indispoField(r, aliases){ for(const k of aliases){ if(r && r[k]!==undefined && r[k]!==null && r[k]!=='') return r[k]; } return null; }
+function findIndisponibilite(dateStr){
+  const ts=dateToTs(dateStr);
+  if(ts===null) return null;
+  const period=INDISPO_ROWS.find(r=>{
+    const debut=gristDateTs(indispoField(r, ['Date_de_debut','Date_debut','Date de début','Date début']));
+    const fin=gristDateTs(indispoField(r, ['Date_de_fin','Date_fin','Date de fin']));
+    if(debut===null || fin===null) return false;
+    return ts>=debut && ts<=fin;
+  });
+  if(!period) return null;
+  return {
+    Date_debut: indispoField(period, ['Date_de_debut','Date_debut','Date de début','Date début']),
+    Date_fin: indispoField(period, ['Date_de_fin','Date_fin','Date de fin'])
+  };
+}
 function labelToId(label, table){
   const s=String(label||'').trim();
   if(!s) return '';
@@ -756,10 +797,10 @@ async function loadData(records){
     }
     if (toolbar) toolbar.style.display = '';
 
-    const [actionsFull, contacts, chefferie, lieux, modalitex, statuts, jsessions, jactions, structs, modals, publics, annees, axes, volets, degres] = await Promise.all([
-      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Chefferie'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Statuts_suivi'), fetchSafe('Journal_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Structures'), fetchSafe('Modalites'), fetchSafe('Publics'), fetchSafe('Annees'), fetchSafe('Axes'), fetchSafe('Volets'), fetchSafe('Degres')
+    const [actionsFull, contacts, chefferie, lieux, modalitex, statuts, jsessions, jactions, structs, modals, publics, annees, axes, volets, degres, indispo] = await Promise.all([
+      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Chefferie'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Statuts_suivi'), fetchSafe('Journal_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Structures'), fetchSafe('Modalites'), fetchSafe('Publics'), fetchSafe('Annees'), fetchSafe('Axes'), fetchSafe('Volets'), fetchSafe('Degres'), fetchSafe('Indisponibilite')
     ]);
-    CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); LIEU_ROWS=toRows(lieux); MODALITEX_ROWS=toRows(modalitex); STATUS_ROWS=toRows(statuts); SESSION_ROWS=toRows(jsessions); JOURNAL_ROWS=toRows(jactions);
+    CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); LIEU_ROWS=toRows(lieux); MODALITEX_ROWS=toRows(modalitex); STATUS_ROWS=toRows(statuts); SESSION_ROWS=toRows(jsessions); JOURNAL_ROWS=toRows(jactions); INDISPO_ROWS=toRows(indispo);
     CONTACT_MAP=Object.fromEntries(CONTACT_ROWS.map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
     CONTACT_ID_BY_LABEL=Object.fromEntries(CONTACT_ROWS.flatMap(r=>{
       const id=String(r.id);
@@ -1302,6 +1343,37 @@ async function addJournalEntry(){
   // inclut pas dans fields, pour ne pas écraser les valeurs historiques déjà enregistrées.
   const fields={ Action: CURRENT_ACTION.id, Date: dateToTs(date), Type_entree: kind==='COPIL'?'COPIL':'Compte-rendu', Heure_copil: heure, Statut_suivi: Number(statusId), Compte_rendu: notes, Echeance: dateToTs(ech), Lien: lien };
   if(!editingId && resp) fields.Responsable = Number(resp);
+  if(kind==='COPIL'){
+    const period=findIndisponibilite(date);
+    if(period){
+      PENDING_JOURNAL_SAVE={fields, editingId};
+      openIndispoModal(date, period);
+      return;
+    }
+  }
+  await performJournalSave(fields, editingId);
+}
+function openIndispoModal(dateStr, period){
+  const dateLabel=formatDateValue(dateToTs(dateStr));
+  const debutLabel=formatDateValue(period.Date_debut);
+  const finLabel=formatDateValue(period.Date_fin);
+  document.getElementById('indispo-text').textContent=`Le ${dateLabel} tombe pendant une période de regroupement de l'IGÉSR (du ${debutLabel} au ${finLabel}).`;
+  const msg=document.getElementById('indispo-msg'); if(msg){ msg.textContent=''; msg.className='msg'; }
+  document.getElementById('indispo-overlay').classList.remove('hidden');
+}
+function cancelIndispoModal(event){
+  if(event && event.target!==document.getElementById('indispo-overlay')) return;
+  document.getElementById('indispo-overlay').classList.add('hidden');
+  PENDING_JOURNAL_SAVE=null;
+  const msg=document.getElementById('msg-journal'); if(msg){ msg.textContent=''; msg.className='msg'; }
+}
+async function confirmIndispoModal(){
+  document.getElementById('indispo-overlay').classList.add('hidden');
+  const pending=PENDING_JOURNAL_SAVE; PENDING_JOURNAL_SAVE=null;
+  if(pending) await performJournalSave(pending.fields, pending.editingId);
+}
+async function performJournalSave(fields, editingId){
+  const msg=document.getElementById('msg-journal');
   try{
     if(editingId){
       await grist.docApi.applyUserActions([['UpdateRecord', JOURNAL_TABLE, editingId, fields]]);
@@ -1317,7 +1389,7 @@ async function addJournalEntry(){
       applyFilters(); buildModal();
       showTabMessage('journal','msg-journal','✓ Entrée ajoutée','ok');
     }
-  } catch(e){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; console.error(e); }
+  } catch(e){ if(msg){ msg.textContent='✗ Erreur : '+e.message; msg.className='msg err'; } console.error(e); }
 }
 function csvEscape(v){ const s=String(v??'').replace(/\r?\n/g,' | '); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function downloadCsv(){ const rows=FILTERED.map(a=>{ const session=getSessionForAction(a.id); const latest=latestJournal(a.id); return { titre:getTitre(a), annee:getAnnee(a), responsable:getResponsablesAction(a).join(', '), chefferie:getChefferieLabel(a), structure:getStructures(a).join(', '), modalite:getModalite(a), nb_sessions:sessionNb(session), nombre_copil:getSessionComputed(session).nombreCopil??'', participants_prevus:getSessionComputed(session).participantsPrevus??'', inscrits_gaia:getSessionComputed(session).inscritsGaia??'', sessions:sessionStructuredDates(session).join(' | '), lieux:sessionStructuredLieux(session).join(', '), modalites_sessions:sessionStructuredModalites(session).join(', '), total_presents:getSessionComputed(session).totalPresents??'', journees_stagiaires:getSessionComputed(session).journeesStagiaires??'', taux_presence_gaia:formatPercentValue(getSessionComputed(session).tauxGaia), taux_presence_prevu:formatPercentValue(getSessionComputed(session).tauxPrevu), notes:sessionComment(session), avancement:avancementText(a), dernier_statut:statusTextFromEntry(latest), derniere_entree:latest?formatDateValue(latest.Date):'', compte_rendu:latest&&latest.Compte_rendu||'', prochaine_etape:latest&&latest.Prochaine_etape||'', echeance:latest?formatDateValue(latest.Echeance):'' }; }); const headers=['titre','annee','responsable','chefferie','structure','modalite','nb_sessions','nombre_copil','participants_prevus','inscrits_gaia','sessions','lieux','modalites_sessions','total_presents','journees_stagiaires','taux_presence_gaia','taux_presence_prevu','notes','avancement','dernier_statut','derniere_entree','compte_rendu','prochaine_etape','echeance']; const csv='﻿'+[headers.join(';'),...rows.map(r=>headers.map(h=>csvEscape(r[h])).join(';'))].join('\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='journal_actions_selection_'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
