@@ -6,6 +6,7 @@
 <title>Utilisateurs PNF — Administration</title>
 <!-- Version v1 : gestion des classes d'accès (Utilisateurs / Structure / Classe) -->
 <!-- Version v2 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .main) -->
+<!-- Version v3 : filtre par Classe ajouté dans la barre d'outils, combinable avec le filtre Structure -->
 <!-- Accès réservé aux Propriétaires : protégé par une règle ACL sur les tables Utilisateurs et Classe,
      pas par ce script. Voir onglet Access Rules du document. -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
@@ -99,6 +100,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
     <div class="tb-title"><strong>Utilisateurs</strong><span>Classes & accès — PNF</span></div>
     <div class="tb-search"><select id="search" onchange="onSearchSelect()"><option value="">— Sélectionner un utilisateur —</option></select></div>
     <div class="tb-filter"><select id="filter-structure" onchange="onStructureFilterChange()"><option value="">Structure</option></select></div>
+    <div class="tb-filter"><select id="filter-classe" onchange="onClasseFilterChange()"><option value="">Classe</option></select></div>
     <span class="count" id="count">–</span>
     <button class="btn btn-primary" onclick="openNew()">+ Ajouter un utilisateur</button>
   </div>
@@ -145,6 +147,7 @@ let SELECTED_ID = null;
 let PENDING_DELETE_ID = null;
 let IS_NEW = false;
 let FILTER_STRUCTURE = '';
+let FILTER_CLASSE = '';
 
 grist.ready({ requiredAccess: 'full', columns: [] });
 
@@ -163,6 +166,7 @@ async function loadAll() {
   } finally {
     document.getElementById('loader').classList.add('hidden');
     populateStructureFilter();
+    populateClasseFilter();
     renderList();
     if (SELECTED_ID) selectUser(SELECTED_ID);
   }
@@ -229,10 +233,27 @@ function onStructureFilterChange() {
   renderList();
 }
 
+function populateClasseFilter() {
+  const select = document.getElementById('filter-classe');
+  const sorted = [...CLASSES].sort((a, b) => (a.Type || '').localeCompare(b.Type || '', 'fr'));
+  const current = FILTER_CLASSE;
+  select.innerHTML = `<option value="">Classe</option>` +
+    sorted.map(c => `<option value="${c.id}" ${String(c.id) === String(current) ? 'selected' : ''}>${esc(c.Type)}</option>`).join('');
+}
+
+function onClasseFilterChange() {
+  FILTER_CLASSE = document.getElementById('filter-classe').value;
+  renderList();
+}
+
 function renderList() {
-  const filtered = FILTER_STRUCTURE ? USERS.filter(u => String(u.Structure) === String(FILTER_STRUCTURE)) : USERS;
+  const filtered = USERS.filter(u => {
+    if (FILTER_STRUCTURE && String(u.Structure) !== String(FILTER_STRUCTURE)) return false;
+    if (FILTER_CLASSE && String(u.Classe) !== String(FILTER_CLASSE)) return false;
+    return true;
+  });
   const sorted = sortedByNom(filtered);
-  document.getElementById('count').textContent = FILTER_STRUCTURE
+  document.getElementById('count').textContent = (FILTER_STRUCTURE || FILTER_CLASSE)
     ? `${filtered.length} / ${USERS.length} utilisateur${USERS.length > 1 ? 's' : ''}`
     : `${USERS.length} utilisateur${USERS.length > 1 ? 's' : ''}`;
   populateSearchSelect(filtered);
