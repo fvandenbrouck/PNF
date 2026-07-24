@@ -21,6 +21,7 @@
 <!-- Version v72 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe) + modale en une colonne sous 640px -->
 <!-- Version v73 : tag Période (dates début/fin) mis en valeur (gras, bleu marine, icône 📅) -->
 <!-- Version v74 : barre d'outils non collante sous 760px (recouvrait jusqu'à un tiers de l'écran en permanence sur mobile) -->
+<!-- Version v75 : statut automatiquement défini sur "Prévu" dès qu'un responsable de suivi est désigné (sauf changement explicite du statut dans la même modification) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -882,7 +883,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v74 barre d\'outils non collante sur mobile chargé');
+console.info('[widget-cartes] v75 statut auto "Prévu" chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
@@ -2142,6 +2143,12 @@ function normalizeSearchText(s) {
     .trim();
 }
 
+function findStatutIdByKeyword(keyword) {
+  const target = normalizeSearchText(keyword);
+  const opt = (STATUT_OPTIONS || []).find(o => normalizeSearchText(o.label).includes(target));
+  return opt ? opt.id : null;
+}
+
 function searchableText(a) {
   return normalizeSearchText([
     a.titre || '',
@@ -2842,6 +2849,12 @@ async function saveRecord() {
   }
   if (formFieldChanged('statut', statutIds)) {
     fields[STATUT_ACTION_COL] = statutIds.length ? Number(statutIds[0]) : null;
+  } else if (formFieldChanged('responsables_suivi', responsableSuiviIds) && responsableSuiviIds.length) {
+    // Dès qu'un responsable de suivi est désigné, le statut passe automatiquement à "Prévu" —
+    // sauf si l'utilisateur a lui-même changé le statut dans cette même modification, auquel
+    // cas son choix explicite l'emporte.
+    const prevuId = findStatutIdByKeyword('prevu');
+    if (prevuId) fields[STATUT_ACTION_COL] = Number(prevuId);
   }
 
   if (formFieldChanged('action', actionAxeRaw)) {
