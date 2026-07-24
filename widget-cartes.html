@@ -20,6 +20,7 @@
 <!-- Version v71 : ajout d'un champ de recherche dédié au Code GAIA dans la barre d'outils -->
 <!-- Version v72 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe) + modale en une colonne sous 640px -->
 <!-- Version v73 : tag Période (dates début/fin) mis en valeur (gras, bleu marine, icône 📅) -->
+<!-- Version v74 : barre d'outils non collante sous 760px (recouvrait jusqu'à un tiers de l'écran en permanence sur mobile) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -680,6 +681,9 @@ html, body {
   .new-contact-sep { display: none; }
   .modal-row { grid-template-columns: 1fr; }
 }
+@media (max-width: 760px) {
+  .toolbar { position: static; }
+}
 
 .check-field {
   display: inline-flex;
@@ -878,7 +882,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v73 tag Période mis en valeur chargé');
+console.info('[widget-cartes] v74 barre d\'outils non collante sur mobile chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];

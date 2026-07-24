@@ -12,6 +12,7 @@
 <!-- Version v53 : fusion Actions_formation corrigée pour préserver les libellés de la vue -->
 <!-- Version v54 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) -->
 <!-- Version v55 : tag Période (dates début/fin) mis en valeur (gras, bleu marine, icône 📅) -->
+<!-- Version v56 : barre d'outils non collante sous 760px (recouvrait jusqu'à un tiers de l'écran en permanence sur mobile) -->
 <!-- Version v51 : filtre Journées IG corrigé par fusion complète Actions_formation + lecture booléenne robuste -->
 <!-- Version v50 : lecture robuste du booléen Actions_formation.JourneeIG -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
@@ -517,7 +518,7 @@ html, body, input, select, textarea, button {
 }
 
 @media (max-width: 760px) {
-  .toolbar { align-items: stretch; }
+  .toolbar { align-items: stretch; position: static; }
   .tb-title { width: 100%; }
   .grid { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
@@ -575,7 +576,7 @@ html, body, input, select, textarea, button {
 </div>
 
 <script>
-console.info('[widget-cartes-public] v55 tag Période mis en valeur chargé');
+console.info('[widget-cartes-public] v56 barre d\'outils non collante sur mobile chargé');
 
 // Widget public — lecture seule.
 // Important : ce widget ne demande que l'accès « read table » et ne contient aucune action AddRecord/UpdateRecord.
