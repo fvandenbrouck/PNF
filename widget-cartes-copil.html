@@ -13,6 +13,7 @@
 <!-- Version v21 : Période (dates début/fin) affichée sur la carte et la fiche détail, mise en valeur (gras, bleu marine, icône 📅) -->
 <!-- Version v22 : volume de formation prévu (JS prévision, heures prévues) et dates COPIL déjà définies (Journal_Actions) ajoutés sur la carte et la fiche détail -->
 <!-- Version v23 : fiche détail divisée en deux onglets (Informations / Référents) -->
+<!-- Version v24 : profil Doyen (lecture seule) — onglet Informations + liste des référents inscrits sans inscription possible -->
 <!-- Version v14 : tri alphabétique des contacts IGÉSR par NOM dans la modale -->
 <!-- Version v13 : filtre Référents limité aux contacts IGÉSR dans la barre des filtres -->
 <!-- Version v12 : filtres public + référents IGÉSR + normalisation nouveau référent -->
@@ -240,7 +241,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v23 fiche détail à onglets chargé');
+console.info('[widget-cartes-copil] v24 profil Doyen (lecture seule) chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
@@ -611,17 +612,30 @@ function getPublics(a){ return labelsForList(a.id_publics || a.Publics || a['Pub
 
 // Garde-fou d'affichage : Utilisateurs n'est lisible que sur sa propre ligne (sauf Owner qui voit tout).
 // Plus d'une ligne renvoyée => Owner. Une seule ligne => sa propre classe. Zéro ligne => non classé (Public).
+// Doyen est un sous-ensemble en lecture seule de Referent_IGESR : voit l'onglet Informations
+// et la liste des référents inscrits, mais ne peut ni inscrire ni désinscrire un référent
+// (le panneau de gestion globale et les formulaires d'ajout lui sont masqués — défense en
+// profondeur, la vraie barrière étant l'absence de droits Create/Update côté ACL Grist).
+let CURRENT_CLASS = null;
 async function checkAccess(){
   try {
     const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
-    if (rows.length > 1) return true;
-    if (rows.length === 1) return ['Chefferie','Responsable_suivi','Referent_IGESR'].includes(rows[0].ClasseNom);
+    if (rows.length > 1) { CURRENT_CLASS = 'Owner'; return true; }
+    if (rows.length === 1) {
+      const cls = rows[0].ClasseNom;
+      const allowed = ['Chefferie','Responsable_suivi','Referent_IGESR','Doyen'].includes(cls);
+      CURRENT_CLASS = allowed ? cls : null;
+      return allowed;
+    }
+    CURRENT_CLASS = null;
     return false;
   } catch(e) {
     console.warn('[widget-cartes-copil] vérification des droits impossible :', e);
+    CURRENT_CLASS = null;
     return false;
   }
 }
+function isDoyenViewer(){ return CURRENT_CLASS === 'Doyen'; }
 
 async function loadData(records){
   showLoader(true);
@@ -634,11 +648,11 @@ async function loadData(records){
     if (!allowed) {
       if (toolbar) toolbar.style.display = 'none';
       if (referentPanel) referentPanel.style.display = 'none';
-      document.getElementById('grid').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Responsables de suivi et aux Référents IGESR.</span></div>`;
+      document.getElementById('grid').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Responsables de suivi, aux Référents IGESR et aux Doyens.</span></div>`;
       return;
     }
     if (toolbar) toolbar.style.display = '';
-    if (referentPanel) referentPanel.style.display = '';
+    if (referentPanel) referentPanel.style.display = isDoyenViewer() ? 'none' : '';
 
     const [contacts, structures, publics, modalites, referents, annees, axes, volets, statuts, degres, lieux, sessions, actionsAxes, journalActions] = await Promise.all([
       grist.docApi.fetchTable('Contacts').catch(()=>({id:[]})),
@@ -949,13 +963,14 @@ function openModal(id){
   CURRENT_ACTION=a; selectedId=id; SELECTED_REFERENT_IDS=new Set(referentIdsFromAction(a)); MODAL_ACTIVE_TAB='infos';
   document.getElementById('modal-title').textContent=a.titre||'Sans titre';
   document.getElementById('modal-meta').textContent=['Comité de pilotage', getAnnee(a), getVolet(a), getStatut(a), 'référents'].filter(Boolean).join(' · ');
+  const saveBtn=document.getElementById('btn-save'); if(saveBtn) saveBtn.style.display=isDoyenViewer()?'none':'';
   buildModalBody();
   document.getElementById('msg-save').textContent=''; document.getElementById('msg-save').className='msg';
   document.getElementById('overlay').classList.remove('hidden');
 }
 function closeModal(e){ if(e && e.target!==document.getElementById('overlay')) return; document.getElementById('overlay').classList.add('hidden'); CURRENT_ACTION=null; }
 function buildModalBody(){
-  const a=CURRENT_ACTION; const modal=getModalite(a); const structs=getStructures(a); const publics=getPublics(a); const refs=[...SELECTED_REFERENT_IDS].map(id=>({id,label:CONTACT_MAP[id]})).filter(x=>x.label); const annee=getAnnee(a), axe=getAxe(a), volet=getVolet(a), statut=getStatut(a), actionAxe=getActionAxe(a), lieux=getLieux(a), degres=getDegres(a), periode=getPeriode(a), copilDates=getCopilDates(a.id);
+  const a=CURRENT_ACTION; const doyenView=isDoyenViewer(); const modal=getModalite(a); const structs=getStructures(a); const publics=getPublics(a); const refs=[...SELECTED_REFERENT_IDS].map(id=>({id,label:CONTACT_MAP[id]})).filter(x=>x.label); const annee=getAnnee(a), axe=getAxe(a), volet=getVolet(a), statut=getStatut(a), actionAxe=getActionAxe(a), lieux=getLieux(a), degres=getDegres(a), periode=getPeriode(a), copilDates=getCopilDates(a.id);
   const volumeTags = [
     a.JS_prevision ? `<span class="tag tag-days">JS&nbsp;: ${esc(String(a.JS_prevision).replace('.', ','))}</span>` : '',
     a.heures_formation ? `<span class="tag tag-days">Heures&nbsp;: ${esc(String(a.heures_formation).replace('.', ','))}</span>` : ''
@@ -987,10 +1002,11 @@ function buildModalBody(){
       <div>
         <div class="section-title">Référents inscrits</div>
         <div class="box">
-          <div class="chips" id="selected-referents">${refs.length?refs.map(r=>`<span class="chip selected" onclick="toggleReferent('${esc(r.id)}')">${esc(r.label)}</span>`).join(''):'<span class="help">Aucun référent inscrit.</span>'}</div>
-          <div class="help" style="margin-top:8px">Cliquez sur un référent inscrit pour le désinscrire.</div>
+          <div class="${doyenView?'tags':'chips'}" id="selected-referents">${refs.length?refs.map(r=>doyenView?`<span class="tag tag-ref">${esc(r.label)}</span>`:`<span class="chip selected" onclick="toggleReferent('${esc(r.id)}')">${esc(r.label)}</span>`).join(''):'<span class="help">Aucun référent inscrit.</span>'}</div>
+          ${doyenView?'':'<div class="help" style="margin-top:8px">Cliquez sur un référent inscrit pour le désinscrire.</div>'}
         </div>
       </div>
+      ${doyenView?'':`
       <div>
         <div class="section-title">Ajouter un nouveau référent</div>
         <div class="box">
@@ -1009,9 +1025,9 @@ function buildModalBody(){
           <input class="contact-search" id="contact-search" type="text" placeholder="Filtrer les contacts IGÉSR…" oninput="renderContactChoices()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;margin-bottom:10px">
           <div class="chips" id="contact-choices"></div>
         </div>
-      </div>
+      </div>`}
     </div>`;
-  renderContactChoices();
+  if(!doyenView) renderContactChoices();
 }
 function showTab(name){
   MODAL_ACTIVE_TAB=name;
