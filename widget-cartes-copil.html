@@ -14,6 +14,7 @@
 <!-- Version v22 : volume de formation prévu (JS prévision, heures prévues) et dates COPIL déjà définies (Journal_Actions) ajoutés sur la carte et la fiche détail -->
 <!-- Version v23 : fiche détail divisée en deux onglets (Informations / Référents) -->
 <!-- Version v24 : profil Doyen (lecture seule) — onglet Informations + liste des référents inscrits sans inscription possible -->
+<!-- Version v25 : défilement mobile réellement corrigé (barre d'outils non collante sous 760px, elle masquait le contenu en recouvrant jusqu'à la moitié de l'écran) -->
 <!-- Version v14 : tri alphabétique des contacts IGÉSR par NOM dans la modale -->
 <!-- Version v13 : filtre Référents limité aux contacts IGÉSR dans la barre des filtres -->
 <!-- Version v12 : filtres public + référents IGÉSR + normalisation nouveau référent -->
@@ -139,7 +140,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 #loader.hidden { display:none; }
 .spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
-@media (max-width:760px) { .info-grid,.new-contact-grid { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } .modal { max-height:98vh; } .referent-panel { grid-template-columns:1fr; } }
+@media (max-width:760px) { .info-grid,.new-contact-grid { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } .modal { max-height:98vh; } .referent-panel { grid-template-columns:1fr; } .toolbar { position:static; } }
 
 /* ── CORRECTION MODE SOMBRE / SAFARI ──────────────────────────────── */
 html, body, input, select, textarea, button {
@@ -241,7 +242,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v24 profil Doyen (lecture seule) chargé');
+console.info('[widget-cartes-copil] v25 défilement mobile corrigé chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
