@@ -6,6 +6,7 @@
 <title>Alertes PNF</title>
 <!-- Version v1 : vue Alertes avec deux onglets Suivi / Données clôturées -->
 <!-- Version v2 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) -->
+<!-- Version v3 : libellés Statut de suivi et Chefferie résolus (au lieu d'identifiants bruts) ; détail des données manquantes affiché au lieu de « AlerteData = True » -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -124,7 +125,7 @@ select option { color:var(--ink); background:var(--white); }
   </div>
 </div>
 <script>
-console.info('[widget-alertes] v2 défilement mobile corrigé chargé');
+console.info('[widget-alertes] v3 libellés statut/chefferie et détail des données manquantes chargé');
 
 let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
 let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
@@ -167,13 +168,13 @@ function labelsFor(v,map){ return asList(v).map(x=>labelFor(x,map)).filter(Boole
 
 function anneeLabel(r){ return firstText(r,['Annee_scolaire','Année scolaire','Annee scolaire','annee_scolaire','Annee','Année','annee','libelle','Libelle','Libellé','label','Label','nom','Nom']); }
 function contactLabel(r){ const np=firstText(r,['Nom Prénom','Nom Prenom','nom_prenom','NOM_PRENOM']); const nom=firstText(r,['NOM','Nom','nom']); const prenom=firstText(r,['PRENOM','Prénom','Prenom','prenom']); const email=firstText(r,['Email','EMAIL','email','mail']); return np || [nom,prenom].filter(Boolean).join(' ').trim() || [prenom,nom].filter(Boolean).join(' ').trim() || email; }
-function chefferieLabel(r){ return firstText(r,['Nom Prénom','Nom Prenom','nom_prenom','NOM_PRENOM','Nom','nom','Libellé','libelle','Libelle','label','Label']); }
-function statusLabel(r){ return firstText(r,['Statut','statut','STATUT','libelle','Libelle','Libellé','nom','Nom','label','Label']); }
+function chefferieLabel(r){ const np=firstText(r,['NOM_Prenom','Nom Prénom','Nom Prenom','nom_prenom','NOM_PRENOM']); if(np) return np; const nomPrenom=[firstText(r,['NOM','Nom','nom']),firstText(r,['Prenom','Prénom','PRENOM','prenom'])].filter(Boolean).join(' '); return nomPrenom || firstText(r,['Libellé','libelle','Libelle','label','Label']); }
+function statusLabel(r){ return firstText(r,['statut_suivi','Statut_suivi','Statut','statut','STATUT','libelle','Libelle','Libellé','nom','Nom','label','Label']); }
 function getTitre(a){ return firstText(a,['Titre','titre','Intitule','Intitulé','intitule']) || 'Sans titre'; }
 function getObjectif(a){ return firstText(a,['Objectif','objectif']); }
 function getGaia(a){ return firstText(a,['Code_GAIA','Code GAIA','code_gaia','GAIA','Code','code']); }
 function getAnnee(a){ return labelFor(a.Annee_scolaire || a['Année scolaire'] || a['Annee scolaire'] || a.annee_scolaire || a.Annee || a['Année'] || a.annee || a.id_annee || a.id_annees || a.Annees || a['Années'], ANNEE_MAP); }
-function getChefferie(a){ return labelFor(a.Chefferie || a.chefferie || a.id_chefferie, CHEFFERIE_MAP); }
+function getChefferie(a){ return labelsFor(a.Chefferie || a.chefferie || a.id_chefferie, CHEFFERIE_MAP).join(', '); }
 function getResponsableIds(a){
   const ids = new Set();
   const add = x => { const id=refId(x); if(/^\d+$/.test(id) && CONTACT_MAP[id]) ids.add(id); };
@@ -211,7 +212,6 @@ function latestJournal(actionId){
 function sessionForAction(actionId){ return SESSION_ROWS.find(s=>String(actionIdFromSession(s))===String(actionId)) || null; }
 function sessionComputedMissing(s){
   if(!s) return ['Aucune ligne Journal_sessions'];
-  if(Object.prototype.hasOwnProperty.call(s,'AlerteData') && boolValue(s.AlerteData)) return ['AlerteData = True'];
   const missing=[];
   [['Nb_sessions','Nombre de sessions'],['Nombre_COPIL','Nombre COPIL'],['Participants_prevus','Participants prévus'],['Inscrits_GAIA','Inscrits GAIA']].forEach(([k,label])=>{ if(isEmpty(s[k])) missing.push(label); });
   for(let i=0;i<10;i++){
@@ -219,6 +219,8 @@ function sessionComputedMissing(s){
     const presents = s[`Presents${i}`];
     if(!isEmpty(date) && isEmpty(presents)) missing.push(`Présents session ${i+1}`);
   }
+  // AlerteData (formule Grist) peut signaler un bilan incomplet non détectable ici : on garde un libellé lisible.
+  if(!missing.length && Object.prototype.hasOwnProperty.call(s,'AlerteData') && boolValue(s.AlerteData)) missing.push('Bilan incomplet');
   return missing;
 }
 function isDataAlert(actionId, latest){
