@@ -15,6 +15,8 @@
 <!-- Version v56 : barre d'outils non collante sous 760px (recouvrait jusqu'à un tiers de l'écran en permanence sur mobile) -->
 <!-- Version v51 : filtre Journées IG corrigé par fusion complète Actions_formation + lecture booléenne robuste -->
 <!-- Version v50 : lecture robuste du booléen Actions_formation.JourneeIG -->
+<!-- Version v57 : Format (table Formats) et articulations Magistère/Mentor : filtre, étiquettes sur les cartes et dans la fiche -->
+<!-- Version v58 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -383,6 +385,8 @@ html, body, input, select, textarea, button {
 .tag-contact { background: var(--lilas); color: var(--navy); font-family: 'DM Mono', monospace; font-size: 8.5px; }
 .tag-public  { background: rgba(245,160,168,.18); color: #7a2735; }
 .tag-modal   { background: rgba(245,160,168,.2); color: #8a2030; }
+.tag-format  { background: rgba(168,221,216,.35); color: #1a6b65; }
+.tag-artic   { background: rgba(232,232,245,.9); color: #1B3A6B; }
 .tag-days    { background: rgba(27,58,107,.06); color: var(--ink2); }
 
 .overlay {
@@ -546,6 +550,7 @@ html, body, input, select, textarea, button {
   <div class="tb-sel"><select id="f-public" onchange="applyFilters()"><option value="">Publics</option></select></div>
   <div class="tb-sel"><select id="f-degre"  onchange="applyFilters()"><option value="">Degrés</option></select></div>
   <div class="tb-sel"><select id="f-modal"  onchange="applyFilters()"><option value="">Modalités</option></select></div>
+  <div class="tb-sel"><select id="f-format" onchange="applyFilters()"><option value="">Formats</option></select></div>
   <div class="tb-sel"><select id="f-statut" onchange="applyFilters()"><option value="">Statuts</option></select></div>
   <label class="tb-check" title="Afficher uniquement les journées IG">
     <input type="checkbox" id="f-journee-ig" onchange="applyFilters()">
@@ -576,7 +581,7 @@ html, body, input, select, textarea, button {
 </div>
 
 <script>
-console.info('[widget-cartes-public] v56 barre d\'outils non collante sur mobile chargé');
+console.info('[widget-cartes-public] v58 format et articulation Magistère/Mentor chargé');
 
 // Widget public — lecture seule.
 // Important : ce widget ne demande que l'accès « read table » et ne contient aucune action AddRecord/UpdateRecord.
@@ -595,6 +600,8 @@ let STATUT_MAP = {};
 let STATUT_VALUES = [];
 let MODALITE_MAP = {};
 let MODALITE_VALUES = [];
+let FORMAT_MAP = {};
+let FORMAT_VALUES = [];
 const DEFAULT_DEGRE_ROWS = [
   {id: 1, nom_deg: 'Premier degré'},
   {id: 2, nom_deg: 'Second degré'}
@@ -615,6 +622,8 @@ const FIELD_ALIASES = {
   action_axe: ['action_axe_affichage', 'Action_axe_affichage', 'Action complète', 'Action_complete', 'Action du schéma directeur', 'id_action_schema', 'id_action_axe', 'action_axe', 'action_schema', 'Action_schema', 'Action_schéma', 'Action_sch_ma', 'Action (schéma directeur)'],
   id_structure: ['id_structure', 'Structure_porteuse', 'Structure porteuse', 'structures', 'Structures'],
   id_modalite: ['id_modalite', 'Modalite', 'Modalité', 'modalite'],
+  id_format: ['id_format', 'Format', 'format'],
+  articulation_parcours: ['articulation_parcours'],
   id_contacts: ['id_contacts', 'Contacts_pilotes', 'Contacts / pilotes', 'contacts_pilotes', 'Contacts'],
   id_publics: ['id_publics', 'Publics_cibles', 'Publics cibles', 'publics_cibles', 'Publics'],
   journees_stagiaires: ['journees_stagiaires', 'Journées_stagiaires', 'Journées stagiaires', 'journees'],
@@ -1054,6 +1063,29 @@ function modaliteText(a) {
   return modaliteValue(get(a, 'id_modalite'));
 }
 
+function formatValue(v) {
+  if (v === null || v === undefined || v === '' || v === 0) return '';
+  if (Array.isArray(v)) return asList(v).map(formatValue).filter(Boolean).join(', ');
+  if (typeof v === 'object') {
+    const id = v.id || v.$id || v.rowId || v.row_id || v.ref || v.value;
+    if (id !== undefined && id !== null && FORMAT_MAP[String(id)]) return FORMAT_MAP[String(id)];
+    const label = firstRowText(v, ['libelle', 'Libelle', 'Libellé']) || cleanDisplay(v);
+    return FORMAT_MAP[label] || label;
+  }
+  const key = String(v || '').trim();
+  if (!key || key === 'L' || key === 'R' || key === 'Formats' || key === 'Format') return '';
+  return FORMAT_MAP[key] || key;
+}
+
+function formatText(a) {
+  return formatValue(get(a, 'id_format'));
+}
+
+function articulationList(a) {
+  const v = String(get(a, 'articulation_parcours')).trim();
+  return (v === 'Magistère' || v === 'Mentor') ? [v] : [];
+}
+
 function firstText(a, key) {
   return cleanDisplay(get(a, key));
 }
@@ -1239,6 +1271,20 @@ async function loadStatutValuesIfAllowed() {
   }
 }
 
+async function loadFormatValuesIfAllowed() {
+  try {
+    if (!grist.docApi || !grist.docApi.fetchTable) return;
+    const table = await grist.docApi.fetchTable('Formats');
+    const rows = (table.id || []).map((id, i) => ({ id, libelle: cleanDisplay(table.libelle ? table.libelle[i] : '') })).filter(r => r.libelle);
+    FORMAT_MAP = Object.fromEntries(rows.flatMap(r => [[String(r.id), r.libelle], [r.libelle, r.libelle]]));
+    FORMAT_VALUES = rows.map(r => r.libelle);
+  } catch(e) {
+    console.warn('Table Formats non accessible : le filtre Formats sera construit à partir des actions existantes.', e);
+    FORMAT_MAP = {};
+    FORMAT_VALUES = [];
+  }
+}
+
 async function loadModaliteValuesIfAllowed() {
   try {
     if (!grist.docApi || !grist.docApi.fetchTable) return;
@@ -1357,6 +1403,7 @@ function buildFilters() {
   fillFilterFromValues('f-public', PUBLIC_VALUES.length ? PUBLIC_VALUES : [...new Set(ALL.flatMap(publicList))]);
   fillFilterFromValues('f-degre', DEGRE_VALUES.length ? DEGRE_VALUES : [...new Set(ALL.flatMap(degreList))]);
   fillFilterFromValues('f-modal', MODALITE_VALUES.length ? MODALITE_VALUES : [...new Set(ALL.map(modaliteText).filter(Boolean))]);
+  fillFilterFromValues('f-format', FORMAT_VALUES.length ? FORMAT_VALUES : [...new Set(ALL.map(formatText).filter(Boolean))]);
   fillFilterFromValues('f-statut', STATUT_VALUES.length ? STATUT_VALUES : [...new Set(ALL.map(statutText).filter(Boolean))]);
 }
 
@@ -1425,6 +1472,8 @@ function searchableText(a) {
     firstText(a, 'id_axe'),
     actionAxeText(a),
     modaliteText(a),
+    formatText(a),
+    ...articulationList(a),
     firstText(a, 'annee_scolaire'),
     statutText(a),
     getJourneeIG(a) ? 'Journées IG Journee IG inspection générale inspection generale' : '',
@@ -1444,6 +1493,7 @@ function applyFilters() {
   const pub    = document.getElementById('f-public').value;
   const degre  = document.getElementById('f-degre').value;
   const modal  = document.getElementById('f-modal').value;
+  const format = document.getElementById('f-format').value;
   const statut = document.getElementById('f-statut').value;
   const journeeIGOnly = Boolean(document.getElementById('f-journee-ig')?.checked);
   const search = normalizeSearchText(document.getElementById('f-search').value);
@@ -1457,6 +1507,7 @@ function applyFilters() {
     if (!matchList(publicList(a), pub)) return false;
     if (!matchList(degreList(a), degre)) return false;
     if (!matchText(modaliteText(a), modal)) return false;
+    if (!matchText(formatText(a), format)) return false;
     if (!matchText(statutText(a), statut)) return false;
     if (journeeIGOnly && !getJourneeIG(a)) return false;
     if (search && !searchableText(a).includes(search)) return false;
@@ -1468,7 +1519,7 @@ function applyFilters() {
 }
 
 function resetFilters() {
-  ['f-annee', 'f-axe', 'f-volet', 'f-struct', 'f-lieu', 'f-public', 'f-degre', 'f-modal', 'f-statut'].forEach(id => {
+  ['f-annee', 'f-axe', 'f-volet', 'f-struct', 'f-lieu', 'f-public', 'f-degre', 'f-modal', 'f-format', 'f-statut'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -1502,6 +1553,8 @@ function openModal(a) {
   const structs = listText(a, 'id_structure');
   const degres = degreList(a);
   const modalite = modaliteText(a);
+  const formatLib = formatText(a);
+  const artic = articulationList(a);
   const lieux = lieuxForAction(a);
   const statut = statutText(a);
   const actionAxe = actionAxeText(a);
@@ -1522,6 +1575,8 @@ function openModal(a) {
       ${section('Axe', axeLib ? `<div class="detail-tags"><span class="tag tag-axe">${esc(axeLib)}</span></div>` : '')}
       ${section('Action du schéma directeur', actionAxe ? `<div class="detail-text">${esc(actionAxe)}</div>` : '')}
       ${section('Modalité', modalite ? `<div class="detail-tags"><span class="tag tag-modal">${esc(modalite)}</span></div>` : '')}
+      ${section('Format', formatLib ? `<div class="detail-tags"><span class="tag tag-format">${esc(formatLib)}</span></div>` : '')}
+      ${section('Articulation', tagList(artic, 'tag-artic'))}
       ${section('Lieux', tagList(lieux, 'tag-days'))}
       ${section('Statut', statut ? `<div class="detail-tags"><span class="tag tag-days">${esc(statut)}</span></div>` : '')}
       ${section('Structure porteuse', tagList(structs, 'tag-struct'))}
@@ -1546,6 +1601,8 @@ function cardHtml(a, i) {
   const annee = firstText(a, 'annee_scolaire');
   const actionAxe = actionAxeText(a);
   const modalLib = modaliteText(a);
+  const formatLib = formatText(a);
+  const artic = articulationList(a);
   const lieux = lieuxForAction(a);
   const statut = statutText(a);
   const structs = listText(a, 'id_structure');
@@ -1582,6 +1639,8 @@ function cardHtml(a, i) {
           ${structs.length ? `<div class="meta-row"><span class="meta-label">Structure</span><div class="meta-value tags">${structs.map(s => `<span class="tag tag-struct">${esc(s)}</span>`).join('')}</div></div>` : ''}
           ${periode ? `<div class="meta-row"><span class="meta-label">Période</span><div class="meta-value"><span class="tag tag-periode">📅 ${esc(periode)}</span></div></div>` : ''}
           ${modalLib ? `<div class="meta-row"><span class="meta-label">Modalité</span><div class="meta-value"><span class="tag tag-modal">${esc(modalLib)}</span></div></div>` : ''}
+          ${formatLib ? `<div class="meta-row"><span class="meta-label">Format</span><div class="meta-value"><span class="tag tag-format">${esc(formatLib)}</span></div></div>` : ''}
+          ${artic.length ? `<div class="meta-row"><span class="meta-label">Articulation</span><div class="meta-value tags">${artic.map(x => `<span class="tag tag-artic">${esc(x)}</span>`).join('')}</div></div>` : ''}
           ${lieux.length ? `<div class="meta-row"><span class="meta-label">Lieux</span><div class="meta-value tags">${lieux.map(l => `<span class="tag tag-days">${esc(l)}</span>`).join('')}</div></div>` : ''}
           ${statut ? `<div class="meta-row"><span class="meta-label">Statut</span><div class="meta-value"><span class="tag tag-days">${esc(statut)}</span></div></div>` : ''}
           ${publics.length ? `<div class="meta-row"><span class="meta-label">Publics</span><div class="meta-value tags">${publics.map(p => `<span class="tag tag-public">${esc(p)}</span>`).join('')}</div></div>` : ''}
@@ -1615,6 +1674,7 @@ grist.onRecords(async (records) => {
       loadDegreValuesIfAllowed(),
       loadStatutValuesIfAllowed(),
       loadModaliteValuesIfAllowed(),
+      loadFormatValuesIfAllowed(),
       loadLieuxSessionsIfAllowed()
     ]);
 

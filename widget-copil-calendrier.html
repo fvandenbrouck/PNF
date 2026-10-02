@@ -13,6 +13,8 @@
 <!-- Version v7 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .agenda-wrap) + césure lisible des libellés d'avancement -->
 <!-- Version v8 : référents IGÉSR affichés dans chaque entrée de l'agenda -->
 <!-- Version v9 : accès en lecture seule étendu au profil Doyen (agenda seul, comme Referent_IGESR) -->
+<!-- Version v10 : Format (table Formats) et articulations Magistère/Mentor affichés dans la fiche récapitulative -->
+<!-- Version v11 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -200,11 +202,11 @@ details.agenda-past .agenda-list { margin-top:12px; }
 </div>
 
 <script>
-console.info('[widget-copil-calendrier] v9 accès Doyen (lecture seule) chargé');
+console.info('[widget-copil-calendrier] v11 format et articulation Magistère/Mentor chargé');
 let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
 let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};
-let AXE_MAP = {}, VOLET_MAP = {}, STRUCT_MAP = {}, MODAL_MAP = {}, PUBLIC_MAP = {}, DEGRE_MAP = {}, ANNEE_MAP = {};
+let AXE_MAP = {}, VOLET_MAP = {}, STRUCT_MAP = {}, MODAL_MAP = {}, FORMAT_MAP = {}, PUBLIC_MAP = {}, DEGRE_MAP = {}, ANNEE_MAP = {};
 const ACTION_TABLE = 'Actions_formation';
 const JOURNAL_TABLE = 'Journal_Actions';
 const AVANCEMENT_STEPS = [
@@ -280,6 +282,8 @@ function searchNorm(s){ return String(s||'').toLowerCase().normalize('NFD').repl
 function getDegre(a){ return labelsFor(a.Degre || a.Degres || a.id_degre || a.id_degres, DEGRE_MAP); }
 function getStructures(a){ return labelsFor(a.id_structure || a.Structure || a.Structures, STRUCT_MAP); }
 function getModalite(a){ return labelFor(a.id_modalite || a.Modalite || a.modalite, MODAL_MAP); }
+function getFormat(a){ return labelFor(a.id_format || a.Format, FORMAT_MAP); }
+function getArtic(a){ const v=String(a.articulation_parcours||'').trim(); return (v==='Magistère'||v==='Mentor') ? [v] : []; }
 function getPublics(a){ return labelsFor(a.id_publics || a.Publics || a.publics_cibles, PUBLIC_MAP); }
 function getResponsablesAction(a){ return labelsFor(a.Responsable_suivi || a.responsable_suivi || a.Responsable || a.responsable, CONTACT_MAP); }
 function getReferentsAction(a){ return labelsFor(a.Referents || a.referents, CONTACT_MAP); }
@@ -382,8 +386,8 @@ async function loadData(){
     }
     if (toolbar) toolbar.style.display = '';
 
-    const [actionsFull, contacts, chefferie, lieux, modalitex, statuts, jsessions, jactions, structs, modals, publics, annees, axes, volets, degres] = await Promise.all([
-      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Chefferie'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Statuts_suivi'), fetchSafe('Journal_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Structures'), fetchSafe('Modalites'), fetchSafe('Publics'), fetchSafe('Annees'), fetchSafe('Axes'), fetchSafe('Volets'), fetchSafe('Degres')
+    const [actionsFull, contacts, chefferie, lieux, modalitex, statuts, jsessions, jactions, structs, modals, publics, annees, axes, volets, degres, formats] = await Promise.all([
+      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Chefferie'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Statuts_suivi'), fetchSafe('Journal_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Structures'), fetchSafe('Modalites'), fetchSafe('Publics'), fetchSafe('Annees'), fetchSafe('Axes'), fetchSafe('Volets'), fetchSafe('Degres'), fetchSafe('Formats')
     ]);
     CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); LIEU_ROWS=toRows(lieux); MODALITEX_ROWS=toRows(modalitex); STATUS_ROWS=toRows(statuts); SESSION_ROWS=toRows(jsessions); JOURNAL_ROWS=toRows(jactions);
     CONTACT_MAP=Object.fromEntries(CONTACT_ROWS.map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
@@ -398,6 +402,7 @@ async function loadData(){
     VOLET_MAP=Object.fromEntries(toRows(volets).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
     DEGRE_MAP=Object.fromEntries(toRows(degres).map(r=>[String(r.id),degreLabel(r)]).filter(([,v])=>v));
     MODAL_MAP=Object.fromEntries(toRows(modals).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    FORMAT_MAP=Object.fromEntries(toRows(formats).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
     PUBLIC_MAP=Object.fromEntries(toRows(publics).map(r=>[String(r.id),firstText(r,['Libellé','libelle','Libelle','label','Label','nom','Nom'])]).filter(([,v])=>v));
     const ANNEE_ROWS=toRows(annees);
     ANNEE_MAP=Object.fromEntries(ANNEE_ROWS.map(r=>[String(r.id), firstText(r,['Annee_scolaire','annee','Annee','Année','nom','Nom','libelle','Libelle'])]).filter(([,v])=>v));
@@ -495,6 +500,8 @@ function buildModalBody(a){
   const resp=getResponsablesAction(a).join(', ')||'—';
   const chefferie=getChefferieLabel(a)||'—';
   const modal=getModalite(a)||'—';
+  const formatLib=getFormat(a)||'—';
+  const artic=getArtic(a).join(', ')||'—';
   const publics=getPublics(a).join(', ')||'—';
   const code=getCodeGaia(a)||'—';
   const annee=getAnnee(a)||'—';
@@ -506,6 +513,8 @@ function buildModalBody(a){
     <div class="identity-item"><span class="identity-label">Code GAIA</span><span class="identity-value">${esc(code)}</span></div>
     <div class="identity-item"><span class="identity-label">Structure</span><span class="identity-value">${esc(structs)}</span></div>
     <div class="identity-item"><span class="identity-label">Modalité</span><span class="identity-value">${esc(modal)}</span></div>
+    <div class="identity-item"><span class="identity-label">Format</span><span class="identity-value">${esc(formatLib)}</span></div>
+    <div class="identity-item"><span class="identity-label">Articulation</span><span class="identity-value">${esc(artic)}</span></div>
     <div class="identity-item"><span class="identity-label">Publics</span><span class="identity-value">${esc(publics)}</span></div>
     <div class="identity-item"><span class="identity-label">Responsable(s) du suivi</span><span class="identity-value">${esc(resp)}</span></div>
     <div class="identity-item"><span class="identity-label">Chefferie</span><span class="identity-value">${esc(chefferie)}</span></div>

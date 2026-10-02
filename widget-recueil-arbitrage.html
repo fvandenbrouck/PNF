@@ -11,6 +11,8 @@
 <!-- Version v2.3 : à la fusion, l'effectif et la durée de la proposition principale prennent le maximum des deux (et non plus leur somme) -->
 <!-- Version v2.4 : champs texte corrigés nettoyés des espaces superflus ; message « Versement en cours » pendant le versement -->
 <!-- Version v2.5 : fiche de retour supprimée (onglet, texte généré et bouton de copie) -->
+<!-- Version v3.0 : modalité et format séparés (table Formats, questions Magistère/Mentor) : champs corrigeables, filtre et export du format, versement de id_format et des articulations vers le catalogue -->
+<!-- Version v3.1 : articulation Magistère / Mentor : une seule question à trois choix (Magistère, Mentor, Ni l'un ni l'autre) à la place de deux questions Oui/Non -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -149,20 +151,21 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v2.5 chargé');
+console.info('[widget-recueil-arbitrage] v3.1 chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
 const STATUTS = ['Reçue', "En cours d'instruction", 'Retenue', 'Refusée', 'Fusionnée'];
 const PERIODES_DEFAUT = ['Septembre - décembre 2027', 'Janvier - mars 2028', 'Avril - juin 2028', "Au fil de l'année"];
+const PARCOURS = ['Magistère', 'Mentor', "Ni l'un ni l'autre"];
 const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr_apports','Apports théoriques et pratiques (art. 2, 1°)'],['Arr_activite','Séquences de mise en activité (art. 2, 2°)'],['Arr_acquis','Évaluation des acquis (art. 2, 3°)'],['Arr_prerequis','Prérequis précisés (art. 3, 2°)'],['Arr_programme','Programme et séquencement (art. 3, 4° et 5°)'],['Arr_attestation','Document attestant le suivi (art. 3, 6°)']];
 
 /* ============================== état ============================== */
-let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, MODELES = [], PERIODES = PERIODES_DEFAUT.slice();
+let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, MODELES = [], PERIODES = PERIODES_DEFAUT.slice();
 let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false;
 let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
 let TAB = 'list', SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
-const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', periode:'', noteMin:'', noteMax:'', du:'', au:'', rouge:false, versees:'' });
+const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', format:'', periode:'', noteMin:'', noteMax:'', du:'', au:'', rouge:false, versees:'' });
 let FL = newF(), FE = newF();
 let EX = { mode:'Sans cotation', cols:new Set(), fmt:{ sep:';', bom:true, dateFr:true, decComma:true, headers:'labels', listSep:' | ' }, excluded:new Set(), preset:'std-sans', saving:false };
 
@@ -197,6 +200,7 @@ const aNum = id => ACTION[id] ? ACTION[id].num_action : '';
 const axeOf = aid => ACTION[aid] ? ACTION[aid].id_axe : 0;
 const axeLib = aid => { const x = AXE[axeOf(aid)]; return x ? clean(x.libelle) : ''; };
 const modLib = id => MODALITE[id] ? clean(MODALITE[id].libelle) : '';
+const fmtLib = id => FORMAT[id] ? clean(FORMAT[id].libelle) : '';
 const pubLibs = v => asIds(v).map(id => PUBLIC[id] ? clean(PUBLIC[id].libelle) : '').filter(Boolean);
 const statutOf = p => p.Statut_instruction || 'Reçue';
 const stClass = s => 'st-' + (s === "En cours d'instruction" ? 'En-cours' : s);
@@ -225,12 +229,12 @@ const cDuree = p => (p.C_Duree_jours ?? p.Duree_jours);
 /* ============================== chargement ============================== */
 async function fetchRows(t){ try { return toRows(await grist.docApi.fetchTable(t)); } catch (e) { console.warn('[arbitrage] lecture impossible :', t, e); return []; } }
 async function loadAll(){
-  const [props, structs, axes, acts, mods, pubs, annees, crit, params, modeles, contacts, volets, degres, lieux] = await Promise.all([
+  const [props, structs, axes, acts, mods, pubs, annees, crit, params, modeles, contacts, volets, degres, lieux, formats] = await Promise.all([
     fetchRows(PROP), fetchRows('Structures'), fetchRows('Axes'), fetchRows('Actions_axes'), fetchRows('Modalites'), fetchRows('Publics'), fetchRows('Annees'), fetchRows('Criteres_evaluation'), fetchRows('Parametres_recueil'), fetchRows(MODELES_T),
-    fetchRows('Contacts'), fetchRows('Volets'), fetchRows('Degres'), fetchRows('Lieux')
+    fetchRows('Contacts'), fetchRows('Volets'), fetchRows('Degres'), fetchRows('Lieux'), fetchRows('Formats')
   ]);
   AF = await fetchRows('Actions_formation');
-  CONTACTS = contacts; VOLETS = Object.fromEntries(volets.map(r => [r.id, r])); DEGRES = Object.fromEntries(degres.map(r => [r.id, r])); LIEUX = Object.fromEntries(lieux.map(r => [r.id, r]));
+  CONTACTS = contacts; VOLETS = Object.fromEntries(volets.map(r => [r.id, r])); DEGRES = Object.fromEntries(degres.map(r => [r.id, r])); FORMAT = Object.fromEntries(formats.map(r => [r.id, r])); LIEUX = Object.fromEntries(lieux.map(r => [r.id, r]));
   P = props; STRUCT = Object.fromEntries(structs.map(r => [r.id, r])); AXE = Object.fromEntries(axes.map(r => [r.id, r]));
   ACTION = Object.fromEntries(acts.map(r => [r.id, r])); MODALITE = Object.fromEntries(mods.map(r => [r.id, r])); PUBLIC = Object.fromEntries(pubs.map(r => [r.id, r]));
   ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); CRIT = crit; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur])); MODELES = modeles;
@@ -266,6 +270,7 @@ function matches(p, f){
   if (f.action && String(act) !== f.action) return false;
   if (f.structure && String(refId(p.Structure_porteuse)) !== f.structure) return false;
   if (f.modalite && String(refId(p.Modalite)) !== f.modalite) return false;
+  if (f.format && String(refId(p.Format)) !== f.format) return false;
   if (f.periode && p.Periode !== f.periode) return false;
   const g = num(p.Score_global);
   if (f.noteMin !== '' && !(g !== null && g >= Number(f.noteMin))) return false;
@@ -294,6 +299,7 @@ function filterPanel(c){
     <div class="fld"><label>Action</label><select onchange="setF('${c}','action',this.value)"><option value="">Toutes</option>${acts.map(a => opt(a.id, 'Action ' + a.num_action, f.action)).join('')}</select></div>
     <div class="fld"><label>Structure porteuse</label><select onchange="setF('${c}','structure',this.value)"><option value="">Toutes</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
     <div class="fld"><label>Modalité</label><select onchange="setF('${c}','modalite',this.value)"><option value="">Toutes</option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), f.modalite)).join('')}</select></div>
+    <div class="fld"><label>Format</label><select onchange="setF('${c}','format',this.value)"><option value="">Tous</option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), f.format)).join('')}</select></div>
     <div class="fld"><label>Période</label><select onchange="setF('${c}','periode',this.value)"><option value="">Toutes</option>${PERIODES.map(x => opt(x, x, f.periode)).join('')}</select></div>
     <div class="fld"><label>Note globale (de / à)</label><div class="row"><input type="number" min="0" max="10" step="0.5" style="width:70px" value="${esc(f.noteMin)}" onchange="setF('${c}','noteMin',this.value)"><input type="number" min="0" max="10" step="0.5" style="width:70px" value="${esc(f.noteMax)}" onchange="setF('${c}','noteMax',this.value)"></div></div>
     <div class="fld"><label>Déposée du / au</label><div class="row"><input type="date" style="width:128px" value="${esc(f.du)}" onchange="setF('${c}','du',this.value)"><input type="date" style="width:128px" value="${esc(f.au)}" onchange="setF('${c}','au',this.value)"></div></div>
@@ -343,7 +349,7 @@ function renderListBody(){
     const e = ev(p), st = statutOf(p), act = refId(p.Action_SD), fd = fusionDans(p);
     return `<tr class="clickable" onclick="openModal(${p.id})">
       <td>${p.id}</td><td>${esc(fmtDate(p.Date_depot))}</td>
-      <td><div class="t-title">${esc(p.Titre || 'Sans titre')}</div><div class="t-sub">${esc(p.Email_contact || '')}${fd ? ` · fusionnée dans n° ${fd}` : ''}${descendants(p.id).length ? ` · ${descendants(p.id).length} fusionnée(s)` : ''}</div></td>
+      <td><div class="t-title">${esc(p.Titre || 'Sans titre')}</div><div class="t-sub">${esc([modLib(refId(p.Modalite)), fmtLib(refId(p.Format))].filter(Boolean).join(' · ') || 'Modalité non renseignée')} — ${esc(p.Email_contact || '')}${fd ? ` · fusionnée dans n° ${fd}` : ''}${descendants(p.id).length ? ` · ${descendants(p.id).length} fusionnée(s)` : ''}</div></td>
       <td>${esc(sCode(refId(p.Structure_porteuse)))}</td>
       <td>${act ? 'Action ' + esc(aNum(act)) : '–'}</td>
       <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}</td>
@@ -378,9 +384,10 @@ function renderModal(){
 const EDITS = [
   { k:'Titre', c:'C_Titre', l:'Titre', t:'text' }, { k:'Objectifs', c:'C_Objectifs', l:'Objectifs', t:'area' },
   { k:'Action_SD', c:'C_Action_SD', l:'Action du schéma directeur', t:'action' }, { k:'Structure_porteuse', c:'C_Structure_porteuse', l:'Structure porteuse', t:'struct' },
-  { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' },
+  { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Format', c:'C_Format', l:'Format', t:'format' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' },
   { k:'Periode', c:'C_Periode', l:'Période', t:'periode' }, { k:'Duree_jours', c:'C_Duree_jours', l:'Durée (en jours)', t:'num' },
   { k:'Effectif_previsionnel', c:'C_Effectif_previsionnel', l:'Effectif prévisionnel', t:'int' }, { k:'Lieu', c:'C_Lieu', l:'Lieu', t:'text' },
+  { k:'Articulation_parcours', c:'C_Articulation_parcours', l:'Articulation à un parcours', t:'parcours' },
   { k:'Email_contact', c:'C_Email_contact', l:'Adresse électronique du porteur', t:'text' }, { k:'Action_pluriannuelle', c:'C_Action_pluriannuelle', l:'Action pluriannuelle', t:'oui' },
   { get k(){ return REPCOL; }, c:'C_Report', l:'Report d\'une action du PNF précédent', t:'oui' }
 ];
@@ -389,12 +396,13 @@ function depText(p, f){
   if (f.t === 'action') { const a = refId(v); return a ? `${aLib(a)}\n(${axeLib(a)})` : '–'; }
   if (f.t === 'struct') return sFull(refId(v)) || '–';
   if (f.t === 'modalite') return modLib(refId(v)) || '–';
+  if (f.t === 'format') return fmtLib(refId(v)) || '–';
   if (f.t === 'publics') return pubLibs(v).join(', ') || '–';
   return (v === null || v === undefined || v === '') ? '–' : String(v);
 }
 function sameVal(f, a, b){
   if (f.t === 'publics') return asIds(a).sort().join(',') === asIds(b).sort().join(',');
-  if (['action', 'struct', 'modalite'].includes(f.t)) return refId(a) === refId(b);
+  if (['action', 'struct', 'modalite', 'format'].includes(f.t)) return refId(a) === refId(b);
   if (f.t === 'num' || f.t === 'int') return num(a) === num(b);
   if (f.t === 'text') return String(a ?? '') === String(b ?? '');   // exact : un nettoyage d'espaces est une vraie modification
   return String(a ?? '').trim() === String(b ?? '').trim();
@@ -405,7 +413,9 @@ function inputFor(p, f){
   if (f.t === 'area') return `<textarea id="${id}">${esc(v ?? '')}</textarea>`;
   if (f.t === 'num' || f.t === 'int') return `<input type="number" id="${id}" step="${f.t === 'int' ? 1 : 0.5}" min="0" value="${esc(v ?? '')}">`;
   if (f.t === 'periode') return `<select id="${id}"><option value=""></option>${PERIODES.map(x => opt(x, x, v)).join('')}</select>`;
+  if (f.t === 'parcours') return `<select id="${id}"><option value=""></option>${PARCOURS.map(x => opt(x, x, v)).join('')}</select>`;
   if (f.t === 'oui') return `<select id="${id}"><option value=""></option>${['Oui', 'Non'].map(x => opt(x, x, v)).join('')}</select>`;
+  if (f.t === 'format') return `<select id="${id}"><option value="0"></option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), refId(v))).join('')}</select>`;
   if (f.t === 'modalite') return `<select id="${id}"><option value="0"></option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), refId(v))).join('')}</select>`;
   if (f.t === 'struct') return `<select id="${id}"><option value="0"></option>${Object.values(STRUCT).sort((a, b) => String(a.code).localeCompare(String(b.code), 'fr', { numeric:true })).map(s => opt(s.id, sFull(s.id), refId(v))).join('')}</select>`;
   if (f.t === 'action') {
@@ -444,13 +454,13 @@ function resetField(c){
   const p = cur(), f = EDITS.find(x => x.c === c), v = p[f.k], el = document.getElementById('ed-' + c); if (!el) return;
   if (f.t === 'publics') { const s = new Set(asIds(v)); el.querySelectorAll('input[data-pub]').forEach(i => i.checked = s.has(Number(i.dataset.pub))); }
   else if (f.t === 'action') { const a = refId(v); document.getElementById('ed-' + c + '-axe').value = String(axeOf(a)); axeChanged('ed-' + c); el.value = String(a); }
-  else if (['struct', 'modalite'].includes(f.t)) el.value = String(refId(v));
+  else if (['struct', 'modalite', 'format'].includes(f.t)) el.value = String(refId(v));
   else el.value = v ?? '';
 }
 function readEdit(f){
   const el = document.getElementById('ed-' + f.c);
   if (f.t === 'publics') return ['L', ...[...el.querySelectorAll('input[data-pub]:checked')].map(i => Number(i.dataset.pub))];
-  if (['action', 'struct', 'modalite'].includes(f.t)) return Number(el.value) || 0;
+  if (['action', 'struct', 'modalite', 'format'].includes(f.t)) return Number(el.value) || 0;
   if (f.t === 'num') return el.value === '' ? null : Number(el.value);
   if (f.t === 'int') return el.value === '' ? null : Math.round(Number(el.value));
   return f.t === 'text' ? el.value.trim() : el.value;          // champs texte courts : espaces superflus retirés
@@ -569,7 +579,7 @@ function versePlan(p){
   const members = groupMembers(p), act = refId(p.C_Action_SD ?? p.Action_SD), duree = num(cDuree(p)) || 0, eff = num(cEff(p)) || 0;
   const structs = [...new Set(members.map(m => refId(m.C_Structure_porteuse ?? m.Structure_porteuse)).filter(Boolean))];
   const emails = []; members.forEach(m => { const e = lc(m.C_Email_contact || m.Email_contact); if (e && !emails.some(x => x.email === e)) emails.push({ email: e, struct: refId(m.C_Structure_porteuse ?? m.Structure_porteuse) }); });
-  return { members, structs, emails, act, axe: axeOf(act), modalite: refId(p.C_Modalite ?? p.Modalite), publics: asIds(p.C_Publics ?? p.Public_cible),
+  return { members, structs, emails, act, axe: axeOf(act), modalite: refId(p.C_Modalite ?? p.Modalite), format: refId(p.C_Format ?? p.Format), articulation: (p.C_Articulation_parcours ?? p.Articulation_parcours) || '', publics: asIds(p.C_Publics ?? p.Public_cible),
     heures: duree * jourHeures(), js: duree * eff, annee: refId(p.Annee_scolaire), titre: clean(p.C_Titre ?? p.Titre), objectif: String(p.C_Objectifs ?? p.Objectifs ?? '').trim() };
 }
 function paneVerse(p){
@@ -580,7 +590,7 @@ function paneVerse(p){
   const pl = versePlan(p), grp = pl.members.length > 1;
   const dups = AF.filter(a => norm(a.titre) === norm(pl.titre) && refId(a.Annee_scolaire) === pl.annee);
   const sum = [['Titre', pl.titre || '–'], ['Objectifs', pl.objectif || '–'], ['Action du schéma directeur', pl.act ? aLib(pl.act) + '\n(' + axeLib(pl.act) + ')' : '–'],
-    ['Structure(s) porteuse(s)', pl.structs.map(sFull).join('\n') || '–'], ['Modalité', modLib(pl.modalite) || '–'], ['Publics cibles', pubLibs(['L', ...pl.publics]).join(', ') || '–'],
+    ['Structure(s) porteuse(s)', pl.structs.map(sFull).join('\n') || '–'], ['Modalité', modLib(pl.modalite) || '–'], ['Format', fmtLib(pl.format) || '–'], ['Articulation à un parcours', pl.articulation || '–'], ['Publics cibles', pubLibs(['L', ...pl.publics]).join(', ') || '–'],
     ['Heures de formation', fmtN(pl.heures)], ['Journées stagiaires (JS)', fmtN(pl.js)], ['Année scolaire', (ANNEE[pl.annee] || {}).libelle || '–'], ['Statut', '(vide)']];
   const perio = (p.C_Periode && p.Periode && p.C_Periode !== p.Periode) ? `${p.C_Periode} (déposée : ${p.Periode})` : (p.C_Periode || p.Periode || '');
   const lieuxOpts = Object.values(LIEUX).filter(l => clean(l.Site) || clean(l.ville)).map(l => `<label class="chk"><input type="checkbox" data-lieu="${l.id}">${esc(clean(l.Site) || '—')}${clean(l.ville) ? ' (' + esc(clean(l.ville)) + ')' : ''}</label>`).join('');
@@ -645,7 +655,7 @@ async function doVerse(){
     if (contactIds.length !== pl.emails.length) throw new Error('Un contact est introuvable après sa création : rien n\'a été versé.');
     const before = new Set((await fetchRows('Actions_formation')).map(r => r.id));
     const fields = { titre: pl.titre, objectif: pl.objectif, date_debut: v.d1, date_fin: v.d2, id_volet: v.volet, id_axe: pl.axe, id_action_axe: pl.act, id_structure: ['L', ...pl.structs],
-      id_modalite: pl.modalite, id_lieu: ['L', ...v.lieux], Annee_scolaire: pl.annee, Contacts: ['L', ...contactIds], id_publics: ['L', ...pl.publics], Degre: ['L', ...v.deg], JS_prevision: pl.js, heures_formation: pl.heures };
+      id_modalite: pl.modalite, id_format: pl.format, articulation_parcours: pl.articulation, id_lieu: ['L', ...v.lieux], Annee_scolaire: pl.annee, Contacts: ['L', ...contactIds], id_publics: ['L', ...pl.publics], Degre: ['L', ...v.deg], JS_prevision: pl.js, heures_formation: pl.heures };
     await grist.docApi.applyUserActions([['AddRecord', 'Actions_formation', null, fields]]);   // 2. l'action
     const created = (await fetchRows('Actions_formation')).filter(r => !before.has(r.id));
     if (created.length !== 1) throw new Error(`Impossible d'identifier l'action créée (${created.length} nouvelle(s) ligne(s)) : vérifie le catalogue des actions avant de recommencer.`);
@@ -657,6 +667,8 @@ async function doVerse(){
       if (a.titre !== pl.titre) bad.push('titre'); if (num(a.date_debut) !== v.d1 || num(a.date_fin) !== v.d2) bad.push('dates'); if (refId(a.id_action_axe) !== pl.act) bad.push('action SD');
       if (asIds(a.id_structure).sort().join() !== pl.structs.slice().sort().join()) bad.push('structures'); if (asIds(a.Contacts).sort().join() !== contactIds.slice().sort().join()) bad.push('contacts');
       if (num(a.heures_formation) !== pl.heures || num(a.JS_prevision) !== pl.js) bad.push('heures/JS');
+      if (refId(a.id_format) !== pl.format || refId(a.id_modalite) !== pl.modalite) bad.push('modalité/format');
+      if ((a.articulation_parcours || '') !== pl.articulation) bad.push('articulation');
     }
     renderAll();
     if (refId(P.find(x => x.id === id).Id_action_creee) !== createdId) bad.push('lien');
@@ -683,13 +695,15 @@ const EXPORT_COLS = [
   { k:'axe', g:G.DEP, l:'Axe du schéma directeur', v:p => axeLib(refId(p.Action_SD)) }, { k:'indicateur', g:G.DEP, l:'Indicateur du schéma directeur', v:p => p.Indicateur_SD },
   { k:'pluriannuelle', g:G.DEP, l:'Action pluriannuelle', v:p => p.Action_pluriannuelle }, { k:'report', g:G.DEP, l:'Report d\'une action du PNF précédent', v:p => p[REPCOL] },
   { k:'periode', g:G.DEP, l:'Période calendaire envisagée', v:p => p.Periode }, { k:'modalite', g:G.DEP, l:'Modalité de formation', v:p => modLib(refId(p.Modalite)) },
+  { k:'format', g:G.DEP, l:'Format de formation', v:p => fmtLib(refId(p.Format)) }, { k:'articulation', g:G.DEP, l:'Articulation à un parcours (Magistère / Mentor)', v:p => p.Articulation_parcours },
   { k:'publics', g:G.DEP, l:'Public cible', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, l:'Durée (jours)', v:p => p.Duree_jours }, { k:'effectif', g:G.DEP, l:'Effectif prévisionnel', v:p => p.Effectif_previsionnel },
   { k:'lieu', g:G.DEP, l:'Lieu prévisionnel', v:p => p.Lieu }, { k:'commentaire_porteur', g:G.DEP, l:'Commentaire du porteur', v:p => p.Commentaire_porteur },
   { k:'c_titre', g:G.COR, l:'Titre (corrigé)', v:p => p.C_Titre }, { k:'c_objectifs', g:G.COR, l:'Objectifs (corrigés)', v:p => p.C_Objectifs },
   { k:'c_action_num', g:G.COR, l:'Action du schéma directeur (n°, corrigée)', v:p => aNum(refId(p.C_Action_SD)) }, { k:'c_action_lib', g:G.COR, l:'Action du schéma directeur (libellé, corrigé)', v:p => aLib(refId(p.C_Action_SD)) },
   { k:'c_axe', g:G.COR, l:'Axe du schéma directeur (corrigé)', v:p => axeLib(refId(p.C_Action_SD)) },
   { k:'c_structure_code', g:G.COR, l:'Structure porteuse (code, corrigée)', v:p => sCode(refId(p.C_Structure_porteuse)) }, { k:'c_structure_lib', g:G.COR, l:'Structure porteuse (libellé, corrigé)', v:p => clean((STRUCT[refId(p.C_Structure_porteuse)] || {}).libelle) },
-  { k:'c_modalite', g:G.COR, l:'Modalité (corrigée)', v:p => modLib(refId(p.C_Modalite)) }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) },
+  { k:'c_modalite', g:G.COR, l:'Modalité (corrigée)', v:p => modLib(refId(p.C_Modalite)) },
+  { k:'c_format', g:G.COR, l:'Format (corrigé)', v:p => fmtLib(refId(p.C_Format)) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours (corrigée)', v:p => p.C_Articulation_parcours }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) },
   { k:'c_periode', g:G.COR, l:'Période (corrigée)', v:p => p.C_Periode }, { k:'c_duree', g:G.COR, l:'Durée en jours (corrigée)', v:p => p.C_Duree_jours },
   { k:'c_effectif', g:G.COR, l:'Effectif prévisionnel (corrigé)', v:p => p.C_Effectif_previsionnel }, { k:'c_lieu', g:G.COR, l:'Lieu (corrigé)', v:p => p.C_Lieu },
   { k:'c_email', g:G.COR, l:'Adresse électronique de contact (corrigée)', v:p => p.C_Email_contact }, { k:'c_pluriannuelle', g:G.COR, l:'Action pluriannuelle (corrigée)', v:p => p.C_Action_pluriannuelle },

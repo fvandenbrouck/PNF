@@ -22,6 +22,8 @@
 <!-- Version v73 : tag Période (dates début/fin) mis en valeur (gras, bleu marine, icône 📅) -->
 <!-- Version v74 : barre d'outils non collante sous 760px (recouvrait jusqu'à un tiers de l'écran en permanence sur mobile) -->
 <!-- Version v75 : statut automatiquement défini sur "Prévu" dès qu'un responsable de suivi est désigné (sauf changement explicite du statut dans la même modification) -->
+<!-- Version v76 : Format (table Formats) et articulations Magistère/Mentor : saisie dans la modale (création et édition), filtre, export CSV, étiquettes sur les cartes -->
+<!-- Version v77 : articulation Magistère / Mentor : une seule liste (Magistère, Mentor, Ni l'un ni l'autre) dans la modale, colonne articulation_parcours -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -520,6 +522,8 @@ html, body {
                font-family: 'DM Mono', monospace; font-size: 8.5px; }
 .tag-axe     { background: rgba(27,58,107,.08); color: var(--navy); }
 .tag-modal   { background: rgba(245,160,168,.2); color: #8a2030; }
+.tag-format  { background: rgba(168,221,216,.35); color: #1a6b65; }
+.tag-artic   { background: rgba(232,232,245,.9); color: #1B3A6B; }
 .tag-statut  { background: rgba(27,58,107,.08); color: var(--navy); border: 1px solid rgba(27,58,107,.12); }
 .tag-public  { background: rgba(168,221,216,.25); color: #205450; }
 
@@ -842,6 +846,7 @@ html, body {
     <div id="f-degre-menu" class="multi-menu hidden"></div>
   </div>
   <div class="tb-sel"><select id="f-modal"  onchange="applyFilters()"><option value="">Modalités</option></select></div>
+  <div class="tb-sel"><select id="f-format" onchange="applyFilters()"><option value="">Formats</option></select></div>
   <div class="tb-sel"><select id="f-statut" onchange="applyFilters()"><option value="">Statuts</option></select></div>
   <label class="tb-check" title="Afficher uniquement les journées IG">
     <input type="checkbox" id="f-journee-ig" onchange="applyFilters()">
@@ -883,11 +888,11 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v75 statut auto "Prévu" chargé');
+console.info('[widget-cartes] v77 format et articulation Magistère/Mentor chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
-let VOLET_MAP = {}, AXE_MAP = {}, ACTION_AXE_MAP = {}, STRUCT_MAP = {}, MODAL_MAP = {}, CONT_MAP = {}, PUBLIC_MAP = {}, ANNEE_MAP = {}, STATUT_MAP = {}, LIEU_MAP = {};
+let VOLET_MAP = {}, AXE_MAP = {}, ACTION_AXE_MAP = {}, STRUCT_MAP = {}, MODAL_MAP = {}, FORMAT_MAP = {}, CONT_MAP = {}, PUBLIC_MAP = {}, ANNEE_MAP = {}, STATUT_MAP = {}, LIEU_MAP = {};
 let ANNEE_ID_TO_LABEL = {}, ANNEE_LABEL_TO_ID = {}, ANNEE_OPTIONS = [];
 let STRUCT_OPTIONS = [];
 let STATUT_ID_TO_LABEL = {}, STATUT_LABEL_TO_ID = {}, STATUT_OPTIONS = [];
@@ -1753,7 +1758,7 @@ grist.onRecords(async (records) => {
     }
     if (toolbar) toolbar.style.display = '';
 
-    const [volets, axes, actionsAxes, structs, modals, contacts, publics, degres, annees, statuts, lieux, sessions, actionsFull] = await Promise.all([
+    const [volets, axes, actionsAxes, structs, modals, contacts, publics, degres, annees, statuts, lieux, sessions, actionsFull, formats] = await Promise.all([
       grist.docApi.fetchTable('Volets'),
       grist.docApi.fetchTable('Axes'),
       grist.docApi.fetchTable('Actions_axes').catch(() => ({id:[], 'N° action':[], libelle:[], Libelle:[], 'Libellé':[]})),
@@ -1767,6 +1772,7 @@ grist.onRecords(async (records) => {
       grist.docApi.fetchTable('Lieux').catch(() => ({id:[], Site:[]})),
       grist.docApi.fetchTable('Journal_sessions').catch(() => ({id:[]})),
       grist.docApi.fetchTable('Actions_formation').catch(() => ({id:[]})),
+      grist.docApi.fetchTable('Formats').catch(() => ({id:[], libelle:[]})),
     ]);
 
     const toRows = t => (t.id||[]).map((id,i) => {
@@ -1788,6 +1794,7 @@ grist.onRecords(async (records) => {
     const aaRows = toRows(actionsAxes);
     const sRows = toRows(structs);
     const mRows = toRows(modals);
+    const fmRows = toRows(formats);
     const cRows = toRows(contacts);
     const pRows = toRows(publics);
     const dRows = toRows(degres);
@@ -1810,6 +1817,7 @@ grist.onRecords(async (records) => {
       .filter(o => o.value && o.label)
       .sort((a,b)=>a.label.localeCompare(b.label,'fr',{numeric:true}));
     MODAL_MAP  = Object.fromEntries(mRows.map(r => [String(r.id), tableLabelFromRow(r, 'Modalites')]).filter(([,v]) => v));
+    FORMAT_MAP = Object.fromEntries(fmRows.map(r => [String(r.id), tableLabelFromRow(r, 'Formats')]).filter(([,v]) => v));
     ANNEE_ID_TO_LABEL = Object.fromEntries(eRows
       .map(r => [String(r.id), anneeLabelFromRow(r)])
       .filter(([,v]) => v));
@@ -1897,6 +1905,7 @@ grist.onRecords(async (records) => {
     window.STATUT_VALUES = STATUT_OPTIONS.map(o => o.label);
     window.STRUCT_VALUES = [...new Set(sRows.map(r => tableLabelFromRow(r, 'Structures')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr')); 
     window.MODAL_VALUES  = [...new Set(mRows.map(r => tableLabelFromRow(r, 'Modalites')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr')); 
+    window.FORMAT_VALUES = [...new Set(fmRows.map(r => tableLabelFromRow(r, 'Formats')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
     window.CONTACT_VALUES = CONTACT_OPTIONS.map(o => o.label);
     window.PUBLIC_VALUES = [...new Set(pRows.map(publicLabelFromRow).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
 
@@ -1975,6 +1984,7 @@ function buildFilters() {
   fillFromData('f-public', r => publicValues(r), true);
   fillDegreFilter();
   fillFromData('f-modal',  r => labelFromRefValue(r.id_modalite, MODAL_MAP, 'Modalites')); 
+  fillFromData('f-format', r => labelFromRefValue(r.id_format, FORMAT_MAP, 'Formats'));
   safeFillStatutFilter();
 }
 
@@ -2165,6 +2175,8 @@ function searchableText(a) {
     labelFromRefValue(a.id_axe, AXE_MAP, 'Axes'),
     labelFromRefValue(a.id_volet, VOLET_MAP, 'Volets'),
     labelFromRefValue(a.id_modalite, MODAL_MAP, 'Modalites'),
+    labelFromRefValue(a.id_format, FORMAT_MAP, 'Formats'),
+    articulationsOf(a).join(' '),
     labelsFromRefValue(a.id_structure, STRUCT_MAP, 'Structures').join(' ')
   ].join(' '));
 }
@@ -2178,6 +2190,7 @@ function applyFilters() {
   const pub    = document.getElementById('f-public').value;
   const degres = getSelectedDegreFilters();
   const modal  = document.getElementById('f-modal').value;
+  const format = document.getElementById('f-format') ? document.getElementById('f-format').value : '';
   const statut = document.getElementById('f-statut') ? document.getElementById('f-statut').value : '';
   const onlyJourneeIG = Boolean(document.getElementById('f-journee-ig')?.checked);
   const search = normalizeSearchText(document.getElementById('f-search').value);
@@ -2204,6 +2217,7 @@ function applyFilters() {
     if (!matchText(labelFromRefValue(a.id_axe, AXE_MAP, 'Axes'), axe)) return false;
     if (!matchText(labelFromRefValue(a.id_volet, VOLET_MAP, 'Volets'), volet)) return false;
     if (!matchText(labelFromRefValue(a.id_modalite, MODAL_MAP, 'Modalites'), modal)) return false;
+    if (!matchText(labelFromRefValue(a.id_format, FORMAT_MAP, 'Formats'), format)) return false;
     if (!matchText(statutLabelFromValue(getStatut(a)), statut)) return false;
     if (onlyJourneeIG && !getJourneeIG(a)) return false;
     if (!matchList(labelsFromRefValue(a.id_structure, STRUCT_MAP, 'Structures'), struct)) return false;
@@ -2220,8 +2234,13 @@ function applyFilters() {
   render();
 }
 
+function articulationsOf(a) {
+  const v = String(a.articulation_parcours || '').trim();
+  return (v === 'Magistère' || v === 'Mentor') ? [v] : [];
+}
+
 function resetFilters() {
-  ['f-annee','f-axe','f-volet','f-struct','f-lieu','f-public','f-modal','f-statut'].forEach(id =>
+  ['f-annee','f-axe','f-volet','f-struct','f-lieu','f-public','f-modal','f-format','f-statut'].forEach(id =>
     document.getElementById(id).value = '');
   const journeeIGFilter = document.getElementById('f-journee-ig');
   if (journeeIGFilter) journeeIGFilter.checked = false;
@@ -2394,6 +2413,8 @@ function buildModalForm(a) {
   const voletOptions  = optionValues(window.VOLET_VALUES, 'id_volet');
   const axeOptions    = optionValues(window.AXE_VALUES, 'id_axe');
   const modalOptions  = optionValues(window.MODAL_VALUES, 'id_modalite');
+  const formatOptions = optionValues(window.FORMAT_VALUES, 'id_format');
+  const parcoursOptions = (cur) => ['Magistère', 'Mentor', "Ni l'un ni l'autre"].map(v => `<option value="${esc(v)}"${String(cur || '').trim() === v ? ' selected' : ''}>${esc(v)}</option>`).join('');
   const structOptions = optionValues(window.STRUCT_VALUES, 'id_structure');
   // Structures proposées pour la création d'un nouveau contact :
   // les valeurs du select sont les ids Grist de la table Structures, les libellés ne servent qu'à l'affichage.
@@ -2478,6 +2499,19 @@ function buildModalForm(a) {
       <div class="mfield">
         <label>Date fin</label>
         <input type="date" id="m-fin" value="${fmtDate(a.date_fin)}">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="mfield">
+        <label>Format</label>
+        <select id="m-format">
+          <option value="">—</option>
+          ${formatOptions.map(v=>`<option value="${esc(v)}"${selectedMapped(a.id_format, v, FORMAT_MAP, 'Formats')}>${esc(v)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="mfield">
+        <label>Articulée à un parcours Magistère ou Mentor</label>
+        <select id="m-parcours"><option value="">—</option>${parcoursOptions(a.articulation_parcours)}</select>
       </div>
     </div>
     <div class="modal-row">
@@ -2611,6 +2645,8 @@ function attachDirtyTracking() {
   bind('#m-volet', 'change', 'volet');
   bind('#m-axe', 'change', 'axe');
   bind('#m-modal', 'change', 'modalite');
+  bind('#m-format', 'change', 'format');
+  bind('#m-parcours', 'change', 'parcours');
   bind('#m-action-axe', 'change', 'action');
   bind('#m-debut', 'change', 'debut');
   bind('#m-fin', 'change', 'fin');
@@ -2640,6 +2676,8 @@ function readFormSnapshot() {
     volet: String(byId('m-volet')?.value || '').trim(),
     axe: String(byId('m-axe')?.value || '').trim(),
     modalite: String(byId('m-modal')?.value || '').trim(),
+    format: String(byId('m-format')?.value || '').trim(),
+    parcours: String(byId('m-parcours')?.value || '').trim(),
     action: String(byId('m-action-axe')?.value || '').trim(),
     debut: String(byId('m-debut')?.value || '').trim(),
     fin: String(byId('m-fin')?.value || '').trim(),
@@ -2757,6 +2795,8 @@ async function saveRecord() {
   const voletLabel = document.getElementById('m-volet').value;
   const axeLabel = document.getElementById('m-axe').value;
   const modalLabel = document.getElementById('m-modal').value;
+  const formatLabel = document.getElementById('m-format') ? document.getElementById('m-format').value : '';
+  const parcoursVal = document.getElementById('m-parcours') ? document.getElementById('m-parcours').value : '';
   const debutVal = document.getElementById('m-debut').value;
   const finVal = document.getElementById('m-fin').value;
   const actionAxeRaw = document.getElementById('m-action-axe').value;
@@ -2828,6 +2868,11 @@ async function saveRecord() {
     const modalId = valueIdFromMap(MODAL_MAP, modalLabel);
     fields.id_modalite = modalId ? Number(modalId) : null;
   }
+  if (formFieldChanged('format', formatLabel)) {
+    const formatId = valueIdFromMap(FORMAT_MAP, formatLabel);
+    fields.id_format = formatId ? Number(formatId) : null;
+  }
+  if (formFieldChanged('parcours', parcoursVal)) fields.articulation_parcours = parcoursVal;
 
   // Références multiples : n'écrire que si la sélection a été modifiée.
   if (formFieldChanged('structures', structLabels)) {
@@ -2945,6 +2990,8 @@ function downloadFilteredCSV() {
     'action_referentiel',
     'structure',
     'modalite',
+    'format',
+    'articulation_parcours',
     'statut',
     'journee_ig',
     'publics',
@@ -2966,6 +3013,8 @@ function downloadFilteredCSV() {
     action_referentiel: actionAxeDisplay(getActionAxe(a)),
     structure: csvJoinList(asList(a.id_structure).filter(Boolean)),
     modalite: a.id_modalite || '',
+    format: labelFromRefValue(a.id_format, FORMAT_MAP, 'Formats'),
+    articulation_parcours: a.articulation_parcours || '',
     statut: statutLabelFromValue(getStatut(a)),
     journee_ig: getJourneeIG(a) ? 'oui' : '',
     publics: csvJoinList(publicValues(a)),
@@ -3011,6 +3060,8 @@ function render() {
     const voletLib = labelFromRefValue(a.id_volet, VOLET_MAP, 'Volets');
     const anneeLib = anneeLabelFromValue(getAnnee(a));
     const modalLib = labelFromRefValue(a.id_modalite, MODAL_MAP, 'Modalites');
+    const formatLib = labelFromRefValue(a.id_format, FORMAT_MAP, 'Formats');
+    const artic    = articulationsOf(a);
     const num      = axeNum(axeLib);
     const band     = BANDS[num] || '';
     const structs  = labelsFromRefValue(a.id_structure, STRUCT_MAP, 'Structures');
@@ -3084,6 +3135,18 @@ function render() {
           <div class="meta-row">
             <span class="meta-label">Modalité</span>
             <div class="meta-value"><span class="tag tag-modal">${esc(modalLib)}</span></div>
+          </div>` : ''}
+
+          ${formatLib ? `
+          <div class="meta-row">
+            <span class="meta-label">Format</span>
+            <div class="meta-value"><span class="tag tag-format">${esc(formatLib)}</span></div>
+          </div>` : ''}
+
+          ${artic.length ? `
+          <div class="meta-row">
+            <span class="meta-label">Articulation</span>
+            <div class="meta-value tags">${artic.map(x => `<span class="tag tag-artic">${esc(x)}</span>`).join('')}</div>
           </div>` : ''}
 
           ${(a.JS_prevision || a.heures_formation) ? `
