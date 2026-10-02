@@ -14,6 +14,7 @@
 <!-- Version v3.0 : modalité et format séparés (table Formats, questions Magistère/Mentor) : champs corrigeables, filtre et export du format, versement de id_format et des articulations vers le catalogue -->
 <!-- Version v3.1 : articulation Magistère / Mentor : une seule question à trois choix (Magistère, Mentor, Ni l'un ni l'autre) à la place de deux questions Oui/Non -->
 <!-- Version v3.2 : durée saisie en heures (colonnes Duree_heures / C_Duree_heures) ; journées stagiaires = effectif × heures / 6 (paramètre jour_heures) -->
+<!-- Version v3.3 : la déclaration « document attestant le suivi » (Arr_attestation) est retirée de la liste des déclarations de l'arrêté -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -152,14 +153,14 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.2 chargé');
+console.info('[widget-recueil-arbitrage] v3.3 chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
 const STATUTS = ['Reçue', "En cours d'instruction", 'Retenue', 'Refusée', 'Fusionnée'];
 const PERIODES_DEFAUT = ['Septembre - décembre 2027', 'Janvier - mars 2028', 'Avril - juin 2028', "Au fil de l'année"];
 const PARCOURS = ['Magistère', 'Mentor', "Ni l'un ni l'autre"];
-const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr_apports','Apports théoriques et pratiques (art. 2, 1°)'],['Arr_activite','Séquences de mise en activité (art. 2, 2°)'],['Arr_acquis','Évaluation des acquis (art. 2, 3°)'],['Arr_prerequis','Prérequis précisés (art. 3, 2°)'],['Arr_programme','Programme et séquencement (art. 3, 4° et 5°)'],['Arr_attestation','Document attestant le suivi (art. 3, 6°)']];
+const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr_apports','Apports théoriques et pratiques (art. 2, 1°)'],['Arr_activite','Séquences de mise en activité (art. 2, 2°)'],['Arr_acquis','Évaluation des acquis (art. 2, 3°)'],['Arr_prerequis','Prérequis précisés (art. 3, 2°)'],['Arr_programme','Programme et séquencement (art. 3, 4° et 5°)']];
 
 /* ============================== état ============================== */
 let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, MODELES = [], PERIODES = PERIODES_DEFAUT.slice();

@@ -139,6 +139,9 @@ def render(mode):
     out, counter, req_flags, unknown = [], [0], [], set()
 
     def field(fid):
+        if fid not in FIELDS:   # champ supprimé (colonne retirée) mais encore cité dans la mise en page du formulaire
+            print(f"Avertissement : le champ {fid} cité dans la mise en page n'existe plus ; ignoré.", file=sys.stderr)
+            return
         f = FIELDS[fid]
         ftype = f["type"]
         counter[0] += 1
