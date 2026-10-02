@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recueil des besoins PNF — Arbitrage</title>
+<!-- Version v1 : liste des propositions, fiche (déposé/corrigé, évaluation, instruction avec fusion, fiche de retour) et export CSV avec filtres, cases à cocher et modèles partagés -->
+<!-- Version v2 : fusions en chaîne (une proposition principale peut elle-même être fusionnée) ; champs corrigeables ajoutés (adresse électronique, pluriannuelle, report) ; onglet Versement vers Actions_formation (contacts créés si absents, dates, volet, degrés, lieux) -->
+<!-- Version v2.1 : libellés « catalogue des actions » (bouton Verser, messages) ; le dépassement du délai n'est plus rédhibitoire (réglage des critères dans Grist) -->
+<!-- Version v2.2 : note de pertinence supprimée (note globale 100 % automatique, filtre « Pertinence à noter » retiré) ; la case « Incompatibilité constatée » est conservée -->
+<!-- Version v2.3 : à la fusion, l'effectif et la durée de la proposition principale prennent le maximum des deux (et non plus leur somme) -->
+<!-- Version v2.4 : champs texte corrigés nettoyés des espaces superflus ; message « Versement en cours » pendant le versement -->
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --turquoise:#A8DDD8; --peach:#F9C59A; --strawberry:#F5A0A8; --lilas:#E8E8F5;
+  --navy:#1B3A6B; --navy-l:#e8edf5; --bg:#F7F5F2; --white:#fff;
+  --ink:#1a1208; --ink2:#4a3f2f; --ink3:#8a8070; --border:#E0D8CC;
+  --danger:#8a2030; --danger-l:rgba(245,160,168,.28); --ok:#1a6b65; --ok-l:rgba(168,221,216,.35);
+}
+/* Défilement naturel de la page (pas de hauteur calculée) ; barre d'outils sticky seulement au-dessus de 760px. */
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); color-scheme:light; font-size:13px; }
+.toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:10px 12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; position:sticky; top:0; z-index:10; }
+.tabs { display:flex; gap:6px; background:var(--bg); padding:4px; border:1px solid var(--border); border-radius:10px; flex-wrap:wrap; }
+.tab { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; border:0; background:transparent; color:var(--ink3); padding:8px 12px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+.tab.active { background:var(--navy); color:#fff; }
+.count { font-family:'DM Mono',monospace; font-size:11px; color:var(--ink3); background:var(--lilas); padding:6px 12px; border-radius:999px; }
+.page { padding:14px; display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+.pane > *, .modal-body { min-width:0; }
+.panel { background:var(--white); border:1.5px solid var(--border); border-radius:12px; padding:12px 14px; }
+.panel > summary { cursor:pointer; font-weight:700; font-size:12px; color:var(--navy); }
+.panel h3 { font-family:'Fraunces',serif; font-size:15px; margin-bottom:8px; }
+.section-title { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:10px; font-weight:600; margin-bottom:6px; }
+.grid-f { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; margin-top:10px; }
+.fld { display:flex; flex-direction:column; gap:3px; }
+.fld > label { font-size:10px; font-weight:700; color:var(--ink3); text-transform:uppercase; letter-spacing:.05em; }
+input[type=text], input[type=number], input[type=date], select, textarea { font-family:'DM Sans',sans-serif; font-size:12px; color:var(--ink)!important; -webkit-text-fill-color:var(--ink)!important; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 9px; outline:none; width:100%; }
+textarea { min-height:90px; resize:vertical; line-height:1.5; }
+input:focus, select:focus, textarea:focus { border-color:var(--navy); background:#fff; }
+select option { color:var(--ink); background:var(--white); }
+input, select, textarea, button { color-scheme:light; }
+.chk { display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; }
+.chk input { width:auto; accent-color:var(--navy); }
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.btn { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; padding:8px 12px; border-radius:8px; cursor:pointer; white-space:nowrap; border:1px solid var(--border); background:var(--white); color:var(--ink2); }
+.btn:hover { border-color:var(--navy); color:var(--navy); }
+.btn.primary { border:1.5px solid var(--navy); background:var(--navy); color:#fff; }
+.btn.primary:hover { background:#0d2a52; color:#fff; }
+.btn.danger { color:var(--danger); }
+.btn.danger:hover { border-color:var(--danger); }
+.btn.small { padding:5px 9px; font-size:11px; }
+.btn[disabled] { opacity:.45; cursor:not-allowed; }
+/* tableau */
+.tbl-wrap { overflow-x:auto; border:1.5px solid var(--border); border-radius:12px; background:var(--white); }
+table.t { border-collapse:collapse; width:100%; min-width:860px; }
+table.t th { text-align:left; font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink3); padding:9px 10px; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; }
+table.t td { padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:top; font-size:12px; }
+table.t tbody tr.clickable { cursor:pointer; }
+table.t tbody tr.clickable:hover { background:var(--navy-l); }
+.t-title { font-family:'Fraunces',serif; font-size:13.5px; font-weight:600; line-height:1.3; }
+.t-sub { font-size:10.5px; color:var(--ink3); margin-top:2px; }
+.chip { font-family:'DM Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; display:inline-block; }
+.st-Reçue { background:var(--lilas); color:var(--navy); }
+.st-En-cours { background:rgba(249,197,154,.45); color:#8a4a10; }
+.st-Retenue { background:var(--ok-l); color:var(--ok); }
+.st-Refusée { background:var(--danger-l); color:var(--danger); }
+.st-Fusionnée { background:#ece7dd; color:var(--ink2); }
+.flag { font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; margin-left:4px; }
+.flag.bad { background:var(--danger-l); color:var(--danger); }
+.flag.good { background:var(--ok-l); color:var(--ok); }
+.gauge { height:8px; background:#ece7dd; border-radius:4px; overflow:hidden; min-width:54px; }
+.gauge > i { display:block; height:100%; border-radius:4px; }
+.g-row { display:flex; align-items:center; gap:8px; margin:3px 0; }
+.g-row .g-l { min-width:210px; font-size:12px; }
+.g-row .g-n { font-family:'DM Mono',monospace; font-size:11px; min-width:44px; text-align:right; }
+.g-row .gauge { flex:1; height:11px; }
+.mini { display:grid; gap:3px; min-width:96px; }
+.mini .gauge { height:5px; }
+.big-n { font-family:'Fraunces',serif; font-size:17px; font-weight:700; }
+.empty { text-align:center; padding:60px 20px; color:var(--ink3); }
+.empty p { font-family:'Fraunces',serif; font-size:22px; margin-bottom:8px; }
+/* modale */
+.overlay { position:fixed; inset:0; background:rgba(27,58,107,.45); backdrop-filter:blur(3px); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; }
+.overlay.hidden { display:none; }
+.modal { background:var(--white); border-radius:15px; width:100%; max-width:1020px; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(27,58,107,.25); margin:auto 0; }
+.modal-head { padding:16px 22px 12px; border-bottom:1px solid var(--border); display:flex; gap:12px; align-items:flex-start; }
+.modal-head h2 { font-family:'Fraunces',serif; font-size:19px; line-height:1.3; }
+.modal-meta { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-top:5px; letter-spacing:.04em; }
+.btn-close { margin-left:auto; border:none; background:transparent; font-size:24px; color:var(--ink3); cursor:pointer; padding:2px 6px; }
+.modal-tabs { padding:8px 22px 0; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+.mtab { font-size:12px; font-weight:700; border:0; background:transparent; color:var(--ink3); padding:8px 12px; border-bottom:3px solid transparent; cursor:pointer; }
+.mtab.active { color:var(--navy); border-bottom-color:var(--navy); }
+.modal-body { padding:16px 22px 22px; }
+.pane { display:none; gap:14px; }
+.pane.active { display:grid; }
+.cmp { display:grid; grid-template-columns:150px 1fr 1fr 70px; gap:8px 12px; align-items:start; }
+.cmp .h { font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink3); }
+.cmp .lab { font-size:11px; font-weight:700; color:var(--ink2); padding-top:7px; }
+.cmp .dep { font-size:12px; color:var(--ink2); background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 9px; white-space:pre-wrap; line-height:1.5; }
+.mod-flag { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--strawberry); margin-left:6px; vertical-align:middle; }
+.box { border:1.5px solid var(--border); border-radius:9px; background:var(--bg); padding:10px 12px; font-size:12px; line-height:1.55; }
+.pub-list { max-height:150px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:6px 8px; display:grid; gap:2px; }
+.pub-cat { font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; color:var(--ink3); margin-top:4px; }
+.crit { display:grid; grid-template-columns:22px 1fr 150px 40px; gap:4px 8px; font-size:11.5px; padding:4px 0; border-bottom:1px dashed var(--border); align-items:start; }
+.crit .m { color:var(--danger); font-size:10.5px; grid-column:2/5; }
+.ic-ok { color:var(--ok); font-weight:700; } .ic-bad { color:var(--danger); font-weight:700; } .ic-mid { color:#a06a10; font-weight:700; } .ic-na { color:var(--ink3); }
+.retour { width:100%; min-height:380px; font-family:'DM Mono',monospace; font-size:11.5px; line-height:1.55; }
+.warn { background:var(--danger-l); color:var(--danger); border-radius:8px; padding:8px 10px; font-size:11.5px; }
+.note { background:var(--ok-l); color:var(--ok); border-radius:8px; padding:8px 10px; font-size:11.5px; }
+.grp { border:1px solid var(--border); border-radius:10px; padding:8px 10px; background:var(--white); }
+.grp-h { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
+.grp-h b { font-size:12px; color:var(--navy); }
+.cols-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
+.cols-list { display:grid; gap:3px; }
+.vs-sum { display:grid; grid-template-columns:170px 1fr; gap:4px 12px; font-size:12px; }
+.vs-sum dt { color:var(--ink3); font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.06em; padding-top:3px; }
+.vs-sum dd { margin:0; white-space:pre-wrap; }
+.chk-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:3px 12px; }
+.ct-row { display:grid; grid-template-columns:minmax(180px,1.2fr) 1fr 1fr; gap:8px; align-items:center; padding:6px 0; border-bottom:1px dashed var(--border); }
+@media (max-width:760px) { .vs-sum, .ct-row { grid-template-columns:1fr; } }
+#toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:10px; font-size:12px; z-index:600; opacity:0; pointer-events:none; transition:.2s; max-width:90vw; }
+#toast.show { opacity:1; } #toast.err { background:var(--danger); }
+#loader { position:fixed; inset:0; background:rgba(247,245,242,.92); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:500; }
+#loader.hidden { display:none; }
+.spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (max-width:760px) {
+  .toolbar { position:static; align-items:stretch; }
+  .cmp { grid-template-columns:1fr; } .cmp .h { display:none; }
+  .crit { grid-template-columns:22px 1fr 40px; } .crit .src { display:none; }
+  .g-row .g-l { min-width:120px; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar" id="toolbar">
+  <div class="tabs" role="tablist">
+    <button type="button" class="tab active" id="tab-list" onclick="setTab('list')">Propositions</button>
+    <button type="button" class="tab" id="tab-export" onclick="setTab('export')">Export CSV</button>
+  </div>
+  <span class="count" id="count">–</span>
+</div>
+<div class="page" id="page"></div>
+<div id="loader"><div class="spinner"></div><p>Chargement des propositions…</p></div>
+<div class="overlay hidden" id="overlay" onmousedown="overlayDown(event)">
+  <div class="modal" id="modal"></div>
+</div>
+<div id="toast"></div>
+<script>
+console.info('[widget-recueil-arbitrage] v2.4 chargé');
+
+/* ============================== constantes ============================== */
+const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
+const STATUTS = ['Reçue', "En cours d'instruction", 'Retenue', 'Refusée', 'Fusionnée'];
+const PERIODES_DEFAUT = ['Septembre - décembre 2027', 'Janvier - mars 2028', 'Avril - juin 2028', "Au fil de l'année"];
+const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr_apports','Apports théoriques et pratiques (art. 2, 1°)'],['Arr_activite','Séquences de mise en activité (art. 2, 2°)'],['Arr_acquis','Évaluation des acquis (art. 2, 3°)'],['Arr_prerequis','Prérequis précisés (art. 3, 2°)'],['Arr_programme','Programme et séquencement (art. 3, 4° et 5°)'],['Arr_attestation','Document attestant le suivi (art. 3, 6°)']];
+
+/* ============================== état ============================== */
+let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, MODELES = [], PERIODES = PERIODES_DEFAUT.slice();
+let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false;
+let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
+let TAB = 'list', SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
+const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', periode:'', noteMin:'', noteMax:'', du:'', au:'', rouge:false, versees:'' });
+let FL = newF(), FE = newF();
+let EX = { mode:'Sans cotation', cols:new Set(), fmt:{ sep:';', bom:true, dateFr:true, decComma:true, headers:'labels', listSep:' | ' }, excluded:new Set(), preset:'std-sans', saving:false };
+
+/* ============================== utilitaires ============================== */
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const norm = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const clean = s => String(s ?? '').replace(/\s+/g, ' ').trim();
+function toRows(t){ return (t && t.id || []).map((id,i) => { const r = { id }; Object.keys(t).forEach(k => { if (k !== 'id') r[k] = t[k][i]; }); return r; }); }
+function decode(v){
+  if (Array.isArray(v) && v.length) {
+    if (v[0] === 'O' && v[1] && typeof v[1] === 'object') { const o = {}; Object.keys(v[1]).forEach(k => o[k] = decode(v[1][k])); return o; }
+    if (v[0] === 'L') return v.slice(1).map(decode);
+    if (v[0] === 'E') return null;
+  }
+  return v;
+}
+function asIds(v){ if (v == null || v === '' || v === 0) return []; if (Array.isArray(v)) return (v[0] === 'L' ? v.slice(1) : v).map(Number).filter(n => n > 0); const n = Number(v); return n > 0 ? [n] : []; }
+const refId = v => { const a = asIds(v); return a.length ? a[0] : 0; };
+const num = v => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+const fmtN = (n, d = 1) => (n === null || n === undefined ? '–' : (Math.round(n * 10 ** d) / 10 ** d).toString().replace('.', ','));
+function toDate(v){ if (v === null || v === undefined || v === '') return null; const ms = v > 20000000000 ? v : v * 1000; const d = new Date(ms); return isNaN(d.getTime()) ? null : d; }
+const fmtDate = v => { const d = toDate(v); return d ? d.toLocaleDateString('fr-FR') : ''; };
+const isoDate = v => { const d = toDate(v); return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : ''; };
+function toast(msg, err){ const t = document.getElementById('toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : ''); clearTimeout(toast._t); toast._t = setTimeout(() => t.className = '', err ? 6000 : 2800); }
+const showLoader = v => document.getElementById('loader').classList.toggle('hidden', !v);
+
+/* ============================== libellés ============================== */
+const sCode = id => STRUCT[id] ? STRUCT[id].code : '';
+const sFull = id => STRUCT[id] ? `${STRUCT[id].code} — ${clean(STRUCT[id].libelle)}` : '';
+const aLib = id => ACTION[id] ? clean(ACTION[id].libelle) : '';
+const aNum = id => ACTION[id] ? ACTION[id].num_action : '';
+const axeOf = aid => ACTION[aid] ? ACTION[aid].id_axe : 0;
+const axeLib = aid => { const x = AXE[axeOf(aid)]; return x ? clean(x.libelle) : ''; };
+const modLib = id => MODALITE[id] ? clean(MODALITE[id].libelle) : '';
+const pubLibs = v => asIds(v).map(id => PUBLIC[id] ? clean(PUBLIC[id].libelle) : '').filter(Boolean);
+const statutOf = p => p.Statut_instruction || 'Reçue';
+const stClass = s => 'st-' + (s === "En cours d'instruction" ? 'En-cours' : s);
+const jourHeures = () => num(PARAMS.jour_heures) || 6;
+function ev(p){ if (p._ev === undefined) { const e = decode(p.Evaluation); p._ev = (e && typeof e === 'object' && !Array.isArray(e)) ? e : null; } return p._ev; }
+const isRouge = p => p.Redhibitoire === true;
+const isVersee = p => refId(p.Id_action_creee) > 0;
+const fusionDans = p => refId(p.Fusionnee_dans);
+const fusionnees = id => P.filter(x => fusionDans(x) === id);               // fusionnées directement dans id
+function descendants(id, seen = new Set()){                                  // toutes les fusionnées, à tous les niveaux
+  const out = [];
+  fusionnees(id).forEach(k => { if (seen.has(k.id)) return; seen.add(k.id); out.push(k, ...descendants(k.id, seen)); });
+  return out;
+}
+function racine(p){                                                          // proposition principale « de tête » d'un groupe fusionné
+  let cur = p, n = 0;
+  while (fusionDans(cur) && n++ < 50) { const up = P.find(x => x.id === fusionDans(cur)); if (!up) break; cur = up; }
+  return cur;
+}
+const groupeVerse = p => isVersee(racine(p));
+function gaugeColor(s){ const v = Math.max(0, Math.min(10, s || 0)); return `hsl(${Math.round(v * 12)},62%,45%)`; }
+function gauge(s){ return `<div class="gauge"><i style="width:${s === null || s === undefined ? 0 : Math.max(0, Math.min(10, s)) * 10}%;background:${gaugeColor(s)}"></i></div>`; }
+const cEff = p => (p.C_Effectif_previsionnel ?? p.Effectif_previsionnel);
+const cDuree = p => (p.C_Duree_jours ?? p.Duree_jours);
+
+/* ============================== chargement ============================== */
+async function fetchRows(t){ try { return toRows(await grist.docApi.fetchTable(t)); } catch (e) { console.warn('[arbitrage] lecture impossible :', t, e); return []; } }
+async function loadAll(){
+  const [props, structs, axes, acts, mods, pubs, annees, crit, params, modeles, contacts, volets, degres, lieux] = await Promise.all([
+    fetchRows(PROP), fetchRows('Structures'), fetchRows('Axes'), fetchRows('Actions_axes'), fetchRows('Modalites'), fetchRows('Publics'), fetchRows('Annees'), fetchRows('Criteres_evaluation'), fetchRows('Parametres_recueil'), fetchRows(MODELES_T),
+    fetchRows('Contacts'), fetchRows('Volets'), fetchRows('Degres'), fetchRows('Lieux')
+  ]);
+  AF = await fetchRows('Actions_formation');
+  CONTACTS = contacts; VOLETS = Object.fromEntries(volets.map(r => [r.id, r])); DEGRES = Object.fromEntries(degres.map(r => [r.id, r])); LIEUX = Object.fromEntries(lieux.map(r => [r.id, r]));
+  P = props; STRUCT = Object.fromEntries(structs.map(r => [r.id, r])); AXE = Object.fromEntries(axes.map(r => [r.id, r]));
+  ACTION = Object.fromEntries(acts.map(r => [r.id, r])); MODALITE = Object.fromEntries(mods.map(r => [r.id, r])); PUBLIC = Object.fromEntries(pubs.map(r => [r.id, r]));
+  ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); CRIT = crit; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur])); MODELES = modeles;
+  if (P.length) { const k = Object.keys(P[0]).find(x => x.startsWith('Report')); if (k) REPCOL = k; }
+  const used = [...new Set(P.map(p => p.Periode).filter(Boolean))];
+  PERIODES = [...new Set([...PERIODES_DEFAUT, ...used])];
+  try { // choix de la colonne Periode (si les métadonnées sont lisibles)
+    const tabs = toRows(await grist.docApi.fetchTable('_grist_Tables')); const tid = (tabs.find(t => t.tableId === PROP) || {}).id;
+    const cols = toRows(await grist.docApi.fetchTable('_grist_Tables_column')); const c = cols.find(x => x.parentId === tid && x.colId === 'Periode');
+    const ch = c && JSON.parse(c.widgetOptions || '{}').choices; if (ch && ch.length) PERIODES = [...new Set([...ch, ...used])];
+  } catch (e) { /* repli sur les valeurs par défaut */ }
+}
+async function reload(){ await loadAll(); renderAll(); }
+function scheduleReload(){ clearTimeout(RELOAD_TIMER); RELOAD_TIMER = setTimeout(async () => { await loadAll(); renderAll(false); }, 350); }
+
+/* ============================== accès ============================== */
+// Garde-fou d'affichage (la vraie barrière reste l'ACL) : Utilisateurs n'est lisible en entier que par Owner et Chefferie.
+async function checkAccess(){
+  try {
+    const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
+    if (rows.length > 1) return true;
+    if (rows.length === 1) return ['Chefferie', 'Proprietaire'].includes(rows[0].ClasseNom);
+    return false;
+  } catch (e) { console.warn('[arbitrage] vérification des droits impossible :', e); return false; }
+}
+
+/* ============================== filtres ============================== */
+function matches(p, f){
+  const act = refId(p.Action_SD);
+  if (f.q && !norm([p.id, p.Titre, p.Email_contact, sCode(refId(p.Structure_porteuse)), p.Objectifs].join(' ')).includes(norm(f.q))) return false;
+  if (f.statuts.size && !f.statuts.has(statutOf(p))) return false;
+  if (f.axe && String(axeOf(act)) !== f.axe) return false;
+  if (f.action && String(act) !== f.action) return false;
+  if (f.structure && String(refId(p.Structure_porteuse)) !== f.structure) return false;
+  if (f.modalite && String(refId(p.Modalite)) !== f.modalite) return false;
+  if (f.periode && p.Periode !== f.periode) return false;
+  const g = num(p.Score_global);
+  if (f.noteMin !== '' && !(g !== null && g >= Number(f.noteMin))) return false;
+  if (f.noteMax !== '' && !(g !== null && g <= Number(f.noteMax))) return false;
+  const d = isoDate(p.Date_depot);
+  if (f.du && !(d && d >= f.du)) return false;
+  if (f.au && !(d && d <= f.au)) return false;
+  if (f.rouge && !isRouge(p)) return false;
+  if (f.versees === 'oui' && !isVersee(p)) return false;
+  if (f.versees === 'non' && isVersee(p)) return false;
+  return true;
+}
+const stateOf = c => c === 'l' ? FL : FE;
+function setF(c, k, v){ stateOf(c)[k] = v; c === 'l' ? renderListBody() : renderExportBody(); }
+function toggleStatut(c, s, on){ const st = stateOf(c).statuts; on ? st.add(s) : st.delete(s); c === 'l' ? renderListBody() : renderExportBody(); }
+function resetF(c){ if (c === 'l') FL = newF(); else FE = newF(); renderTab(); }
+function copyListFilters(){ FE = { ...FL, statuts:new Set(FL.statuts) }; renderTab(); toast('Filtres de la liste repris.'); }
+function opt(v, label, sel){ return `<option value="${esc(v)}"${String(sel) === String(v) ? ' selected' : ''}>${esc(label)}</option>`; }
+function filterPanel(c){
+  const f = stateOf(c), id = x => `${c}-${x}`;
+  const structIds = [...new Set(P.map(p => refId(p.Structure_porteuse)).filter(Boolean))].sort((a, b) => sCode(a).localeCompare(sCode(b), 'fr', { numeric:true }));
+  const acts = Object.values(ACTION).sort((a, b) => a.num_action - b.num_action);
+  return `<div class="grid-f">
+    <div class="fld"><label>Recherche</label><input type="text" id="${id('q')}" value="${esc(f.q)}" placeholder="Titre, structure, email…" oninput="setFQ('${c}',this.value)"></div>
+    <div class="fld"><label>Axe</label><select onchange="setF('${c}','axe',this.value)"><option value="">Tous</option>${Object.values(AXE).map(a => opt(a.id, clean(a.libelle), f.axe)).join('')}</select></div>
+    <div class="fld"><label>Action</label><select onchange="setF('${c}','action',this.value)"><option value="">Toutes</option>${acts.map(a => opt(a.id, 'Action ' + a.num_action, f.action)).join('')}</select></div>
+    <div class="fld"><label>Structure porteuse</label><select onchange="setF('${c}','structure',this.value)"><option value="">Toutes</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
+    <div class="fld"><label>Modalité</label><select onchange="setF('${c}','modalite',this.value)"><option value="">Toutes</option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), f.modalite)).join('')}</select></div>
+    <div class="fld"><label>Période</label><select onchange="setF('${c}','periode',this.value)"><option value="">Toutes</option>${PERIODES.map(x => opt(x, x, f.periode)).join('')}</select></div>
+    <div class="fld"><label>Note globale (de / à)</label><div class="row"><input type="number" min="0" max="10" step="0.5" style="width:70px" value="${esc(f.noteMin)}" onchange="setF('${c}','noteMin',this.value)"><input type="number" min="0" max="10" step="0.5" style="width:70px" value="${esc(f.noteMax)}" onchange="setF('${c}','noteMax',this.value)"></div></div>
+    <div class="fld"><label>Déposée du / au</label><div class="row"><input type="date" style="width:128px" value="${esc(f.du)}" onchange="setF('${c}','du',this.value)"><input type="date" style="width:128px" value="${esc(f.au)}" onchange="setF('${c}','au',this.value)"></div></div>
+  </div>
+  <div class="row" style="margin-top:10px"><span class="section-title" style="margin:0">Statut</span>${STATUTS.map(s => `<label class="chk"><input type="checkbox" ${f.statuts.has(s) ? 'checked' : ''} onchange="toggleStatut('${c}','${s.replace(/'/g, "\\'")}',this.checked)">${esc(s)}</label>`).join('')}</div>
+  <div class="row" style="margin-top:8px">
+    <label class="chk"><input type="checkbox" ${f.rouge ? 'checked' : ''} onchange="setF('${c}','rouge',this.checked)">Rédhibitoires seulement</label>
+    <select style="width:auto" onchange="setF('${c}','versees',this.value)">${opt('', 'Versées ou non', f.versees)}${opt('oui', 'Déjà versées', f.versees)}${opt('non', 'Non versées', f.versees)}</select>
+    <button class="btn small" onclick="resetF('${c}')">Réinitialiser les filtres</button>
+    ${c === 'e' ? '<button class="btn small" onclick="copyListFilters()">Reprendre les filtres de la liste</button>' : ''}
+  </div>`;
+}
+let _qTimer = null;
+function setFQ(c, v){ stateOf(c).q = v; clearTimeout(_qTimer); _qTimer = setTimeout(() => c === 'l' ? renderListBody() : renderExportBody(), 250); }
+
+/* ============================== onglets ============================== */
+function setTab(t){ TAB = t; document.getElementById('tab-list').classList.toggle('active', t === 'list'); document.getElementById('tab-export').classList.toggle('active', t === 'export'); renderTab(); }
+function renderTab(){ TAB === 'list' ? renderList() : renderExport(); }
+function renderAll(rerenderModal = true){
+  renderTab();
+  if (MODAL && rerenderModal) renderModal();
+}
+
+/* ============================== liste ============================== */
+function sortRows(rows){
+  const g = p => num(p.Score_global);
+  const by = { date_desc:(a, b) => (b.Date_depot || 0) - (a.Date_depot || 0), date_asc:(a, b) => (a.Date_depot || 0) - (b.Date_depot || 0),
+    note_desc:(a, b) => (g(b) ?? -1) - (g(a) ?? -1), note_asc:(a, b) => (g(a) ?? 11) - (g(b) ?? 11),
+    structure:(a, b) => sCode(refId(a.Structure_porteuse)).localeCompare(sCode(refId(b.Structure_porteuse)), 'fr', { numeric:true }),
+    titre:(a, b) => String(a.Titre || '').localeCompare(String(b.Titre || ''), 'fr'), id:(a, b) => a.id - b.id }[SORT];
+  return rows.slice().sort(by);
+}
+function renderList(){
+  document.getElementById('page').innerHTML = `
+    <details class="panel" open><summary>Filtres</summary>${filterPanel('l')}</details>
+    <div class="row"><span class="section-title" style="margin:0">Trier par</span>
+      <select style="width:auto" onchange="SORT=this.value;renderListBody()">${[['date_desc','Date de dépôt (récentes d\'abord)'],['date_asc','Date de dépôt (anciennes d\'abord)'],['note_desc','Note (décroissante)'],['note_asc','Note (croissante)'],['structure','Structure'],['titre','Titre'],['id','N°']].map(([v, l]) => opt(v, l, SORT)).join('')}</select></div>
+    <div id="list-body"></div>`;
+  renderListBody();
+}
+function renderListBody(){
+  const rows = sortRows(P.filter(p => matches(p, FL)));
+  document.getElementById('count').textContent = `${rows.length} / ${P.length} proposition${P.length > 1 ? 's' : ''}`;
+  const body = document.getElementById('list-body'); if (!body) return;
+  if (!rows.length) { body.innerHTML = `<div class="empty"><p>${P.length ? 'Aucune proposition' : 'Aucune proposition reçue'}</p><span>${P.length ? 'Aucune proposition ne correspond aux filtres.' : 'Les propositions déposées par le formulaire apparaîtront ici.'}</span></div>`; return; }
+  body.innerHTML = `<div class="tbl-wrap"><table class="t"><thead><tr><th>N°</th><th>Déposée</th><th>Titre</th><th>Structure</th><th>Action</th><th>Statut</th><th>Cotation</th><th>Note</th></tr></thead><tbody>${rows.map(p => {
+    const e = ev(p), st = statutOf(p), act = refId(p.Action_SD), fd = fusionDans(p);
+    return `<tr class="clickable" onclick="openModal(${p.id})">
+      <td>${p.id}</td><td>${esc(fmtDate(p.Date_depot))}</td>
+      <td><div class="t-title">${esc(p.Titre || 'Sans titre')}</div><div class="t-sub">${esc(p.Email_contact || '')}${fd ? ` · fusionnée dans n° ${fd}` : ''}${descendants(p.id).length ? ` · ${descendants(p.id).length} fusionnée(s)` : ''}</div></td>
+      <td>${esc(sCode(refId(p.Structure_porteuse)))}</td>
+      <td>${act ? 'Action ' + esc(aNum(act)) : '–'}</td>
+      <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}</td>
+      <td><div class="mini"><div title="Complétude">${gauge(num(p.Score_completude))}</div><div title="Conformité">${gauge(num(p.Score_conformite))}</div><div title="Alignement">${gauge(num(p.Score_alignement))}</div></div></td>
+      <td><div class="big-n">${fmtN(num(p.Score_global))}</div>${isRouge(p) ? '<span class="flag bad">rédhibitoire</span>' : ''}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+/* ============================== fiche (modale) ============================== */
+function overlayDown(e){ if (e.target.id === 'overlay') closeModal(); }
+function closeModal(){ MODAL = null; document.getElementById('overlay').classList.add('hidden'); }
+function openModal(id, tab){ MODAL = { id, tab: tab || 'dep' }; renderModal(); document.getElementById('overlay').classList.remove('hidden'); }
+function setMTab(t){ MODAL.tab = t; document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.dataset.t === t)); document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.dataset.t === t)); }
+const cur = () => P.find(x => x.id === MODAL.id);
+function renderModal(){
+  const p = cur(); if (!p) { closeModal(); return; }
+  const st = statutOf(p), e = ev(p);
+  document.getElementById('modal').innerHTML = `
+    <div class="modal-head"><div><h2>${esc(p.Titre || 'Sans titre')}</h2>
+      <div class="modal-meta">N° ${p.id} · déposée le ${esc(fmtDate(p.Date_depot) || '–')} · ${esc(p.Email_contact || '')} · <span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? ' · versée dans le catalogue des actions' : ''}</div></div>
+      <button class="btn-close" onclick="closeModal()">×</button></div>
+    <div class="modal-tabs">${[['dep', 'Déposé / corrigé'], ['eval', 'Évaluation'], ['instr', 'Instruction'], ['retour', 'Fiche de retour'], ['verse', 'Versement']].map(([t, l]) => `<button class="mtab${MODAL.tab === t ? ' active' : ''}" data-t="${t}" onclick="setMTab('${t}')">${l}</button>`).join('')}</div>
+    <div class="modal-body">
+      <div class="pane${MODAL.tab === 'dep' ? ' active' : ''}" data-t="dep">${paneDep(p)}</div>
+      <div class="pane${MODAL.tab === 'eval' ? ' active' : ''}" data-t="eval">${paneEval(p, e)}</div>
+      <div class="pane${MODAL.tab === 'instr' ? ' active' : ''}" data-t="instr">${paneInstr(p)}</div>
+      <div class="pane${MODAL.tab === 'retour' ? ' active' : ''}" data-t="retour">${paneRetour(p, e)}</div>
+      <div class="pane${MODAL.tab === 'verse' ? ' active' : ''}" data-t="verse">${paneVerse(p)}</div>
+    </div>`;
+}
+
+/* ----- onglet Déposé / corrigé ----- */
+const EDITS = [
+  { k:'Titre', c:'C_Titre', l:'Titre', t:'text' }, { k:'Objectifs', c:'C_Objectifs', l:'Objectifs', t:'area' },
+  { k:'Action_SD', c:'C_Action_SD', l:'Action du schéma directeur', t:'action' }, { k:'Structure_porteuse', c:'C_Structure_porteuse', l:'Structure porteuse', t:'struct' },
+  { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' },
+  { k:'Periode', c:'C_Periode', l:'Période', t:'periode' }, { k:'Duree_jours', c:'C_Duree_jours', l:'Durée (en jours)', t:'num' },
+  { k:'Effectif_previsionnel', c:'C_Effectif_previsionnel', l:'Effectif prévisionnel', t:'int' }, { k:'Lieu', c:'C_Lieu', l:'Lieu', t:'text' },
+  { k:'Email_contact', c:'C_Email_contact', l:'Adresse électronique du porteur', t:'text' }, { k:'Action_pluriannuelle', c:'C_Action_pluriannuelle', l:'Action pluriannuelle', t:'oui' },
+  { get k(){ return REPCOL; }, c:'C_Report', l:'Report d\'une action du PNF précédent', t:'oui' }
+];
+function depText(p, f){
+  const v = p[f.k];
+  if (f.t === 'action') { const a = refId(v); return a ? `${aLib(a)}\n(${axeLib(a)})` : '–'; }
+  if (f.t === 'struct') return sFull(refId(v)) || '–';
+  if (f.t === 'modalite') return modLib(refId(v)) || '–';
+  if (f.t === 'publics') return pubLibs(v).join(', ') || '–';
+  return (v === null || v === undefined || v === '') ? '–' : String(v);
+}
+function sameVal(f, a, b){
+  if (f.t === 'publics') return asIds(a).sort().join(',') === asIds(b).sort().join(',');
+  if (['action', 'struct', 'modalite'].includes(f.t)) return refId(a) === refId(b);
+  if (f.t === 'num' || f.t === 'int') return num(a) === num(b);
+  if (f.t === 'text') return String(a ?? '') === String(b ?? '');   // exact : un nettoyage d'espaces est une vraie modification
+  return String(a ?? '').trim() === String(b ?? '').trim();
+}
+function inputFor(p, f){
+  const id = 'ed-' + f.c, v = p[f.c];
+  if (f.t === 'text') return `<input type="text" id="${id}" value="${esc(v ?? '')}">`;
+  if (f.t === 'area') return `<textarea id="${id}">${esc(v ?? '')}</textarea>`;
+  if (f.t === 'num' || f.t === 'int') return `<input type="number" id="${id}" step="${f.t === 'int' ? 1 : 0.5}" min="0" value="${esc(v ?? '')}">`;
+  if (f.t === 'periode') return `<select id="${id}"><option value=""></option>${PERIODES.map(x => opt(x, x, v)).join('')}</select>`;
+  if (f.t === 'oui') return `<select id="${id}"><option value=""></option>${['Oui', 'Non'].map(x => opt(x, x, v)).join('')}</select>`;
+  if (f.t === 'modalite') return `<select id="${id}"><option value="0"></option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), refId(v))).join('')}</select>`;
+  if (f.t === 'struct') return `<select id="${id}"><option value="0"></option>${Object.values(STRUCT).sort((a, b) => String(a.code).localeCompare(String(b.code), 'fr', { numeric:true })).map(s => opt(s.id, sFull(s.id), refId(v))).join('')}</select>`;
+  if (f.t === 'action') {
+    const a = refId(v), ax = axeOf(a);
+    return `<div style="display:grid;gap:6px"><select id="${id}-axe" onchange="axeChanged('${id}')"><option value="0">— axe —</option>${Object.values(AXE).map(x => opt(x.id, clean(x.libelle) + ' — ' + clean(x.description), ax)).join('')}</select>
+      <select id="${id}"><option value="0">— action —</option>${Object.values(ACTION).filter(x => !ax || x.id_axe === ax).sort((x, y) => x.num_action - y.num_action).map(x => opt(x.id, clean(x.libelle), a)).join('')}</select></div>`;
+  }
+  if (f.t === 'publics') {
+    const sel = new Set(asIds(v)); let last = null, h = '';
+    Object.values(PUBLIC).forEach(x => { if (x.categorie !== last) { last = x.categorie; h += `<div class="pub-cat">${esc(last || 'Sans catégorie')}</div>`; } h += `<label class="chk"><input type="checkbox" data-pub="${x.id}" ${sel.has(x.id) ? 'checked' : ''}>${esc(clean(x.libelle))}</label>`; });
+    return `<div class="pub-list" id="${id}">${h}</div>`;
+  }
+  return '';
+}
+function axeChanged(id){
+  const ax = Number(document.getElementById(id + '-axe').value), sel = document.getElementById(id), keep = Number(sel.value);
+  sel.innerHTML = `<option value="0">— action —</option>` + Object.values(ACTION).filter(x => !ax || x.id_axe === ax).sort((x, y) => x.num_action - y.num_action).map(x => opt(x.id, clean(x.libelle), keep)).join('');
+}
+function paneDep(p){
+  const rows = EDITS.map(f => {
+    const modif = !sameVal(f, p[f.k], p[f.c]);
+    return `<div class="lab">${esc(f.l)}${modif ? '<span class="mod-flag" title="Valeur corrigée par la chefferie"></span>' : ''}</div><div class="dep">${esc(depText(p, f))}</div><div>${inputFor(p, f)}</div><div><button class="btn small" title="Remettre la valeur déposée dans le champ (à enregistrer)" onclick="resetField('${f.c}')">Rétablir</button></div>`;
+  }).join('');
+  const arr = ARR.map(([k, l]) => `${esc(l)} : <b>${esc(p[k] || '–')}</b>`).join('<br>');
+  const ori = oriOf(p);
+  return `<div class="cmp"><div class="h"></div><div class="h">Déposé par le porteur</div><div class="h">Corrigé (utilisé pour le versement et l'export)</div><div class="h"></div>${rows}</div>
+    <div class="row"><button class="btn primary" onclick="saveEdits()">Enregistrer les corrections</button><span class="t-sub">Seules les valeurs modifiées sont écrites. Les valeurs déposées ne sont jamais modifiées.</span></div>
+    <div class="section-title">Autres éléments déposés (lecture seule)</div>
+    <div class="box"><b>Contexte de la demande</b><br>${esc(p.Contexte || '–')}</div>
+    <div class="box">Pluriannuelle : <b>${esc(p.Action_pluriannuelle || '–')}</b> · Report d'une action prévue au PNF précédent : <b>${esc(p[REPCOL] || '–')}</b> · Indicateur du schéma directeur : <b>${esc(p.Indicateur_SD || '–')}</b></div>
+    <div class="box"><b>Conformité à l'arrêté du 1er août 2023 (déclaré)</b><br>${arr}</div>
+    <div class="box"><b>Orientations du schéma directeur</b> : ${ori.length ? esc(ori.join(' · ')) : '–'}</div>
+    ${p.Commentaire_porteur ? `<div class="box"><b>Commentaire du porteur</b><br>${esc(p.Commentaire_porteur)}</div>` : ''}`;
+}
+function resetField(c){
+  const p = cur(), f = EDITS.find(x => x.c === c), v = p[f.k], el = document.getElementById('ed-' + c); if (!el) return;
+  if (f.t === 'publics') { const s = new Set(asIds(v)); el.querySelectorAll('input[data-pub]').forEach(i => i.checked = s.has(Number(i.dataset.pub))); }
+  else if (f.t === 'action') { const a = refId(v); document.getElementById('ed-' + c + '-axe').value = String(axeOf(a)); axeChanged('ed-' + c); el.value = String(a); }
+  else if (['struct', 'modalite'].includes(f.t)) el.value = String(refId(v));
+  else el.value = v ?? '';
+}
+function readEdit(f){
+  const el = document.getElementById('ed-' + f.c);
+  if (f.t === 'publics') return ['L', ...[...el.querySelectorAll('input[data-pub]:checked')].map(i => Number(i.dataset.pub))];
+  if (['action', 'struct', 'modalite'].includes(f.t)) return Number(el.value) || 0;
+  if (f.t === 'num') return el.value === '' ? null : Number(el.value);
+  if (f.t === 'int') return el.value === '' ? null : Math.round(Number(el.value));
+  return f.t === 'text' ? el.value.trim() : el.value;          // champs texte courts : espaces superflus retirés
+}
+async function saveEdits(){
+  const p = cur(), fields = {};
+  EDITS.forEach(f => { const nv = readEdit(f); if (!sameVal(f, nv, p[f.c])) fields[f.c] = nv; });
+  if (!Object.keys(fields).length) { toast('Aucune correction à enregistrer.'); return; }
+  await writeFields(p.id, fields, 'Corrections enregistrées.');
+}
+
+/* ----- écriture avec relecture ----- */
+async function writeFields(id, fields, okMsg){
+  try {
+    await grist.docApi.applyUserActions([['UpdateRecord', PROP, id, fields]]);
+    await loadAll();
+    const p = P.find(x => x.id === id); const bad = [];
+    Object.keys(fields).forEach(k => { const f = EDITS.find(x => x.c === k) || { t: Array.isArray(fields[k]) ? 'publics' : (typeof fields[k] === 'number' ? 'num' : 'text') }; if (!sameVal(f, fields[k], p[k])) bad.push(k); });
+    renderAll();
+    if (bad.length) { toast('Écriture non confirmée pour : ' + bad.join(', '), true); return false; }
+    toast(okMsg || 'Enregistré.'); return true;
+  } catch (e) { console.error(e); toast('Échec de l\'enregistrement : ' + (e.message || e), true); return false; }
+}
+
+/* ----- onglet Évaluation ----- */
+function critIcon(r){ if (r === null || r === undefined) return '<span class="ic-na">–</span>'; if (r >= 1) return '<span class="ic-ok">✔</span>'; if (r <= 0) return '<span class="ic-bad">✗</span>'; return '<span class="ic-mid">◐</span>'; }
+function paneEval(p, e){
+  if (!e) return `<div class="warn">L'évaluation n'est pas disponible pour cette proposition (colonne Evaluation vide ou en erreur).</div>`;
+  const b = e.blocs || {}, row = (l, s, extra) => `<div class="g-row"><span class="g-l">${l}</span>${gauge(s)}<span class="g-n">${fmtN(s)}</span>${extra || ''}</div>`;
+  const BL = [['Completude', 'Complétude'], ['Conformite', 'Conformité (cahier des charges et arrêté 2023)'], ['Alignement', 'Alignement avec le schéma directeur (bonus)']];
+  const groups = BL.map(([k, l]) => {
+    const cs = (e.criteres || []).filter(c => c.bloc === k); if (!cs.length) return '';
+    return `<div class="grp"><div class="grp-h"><b>${esc(l)}</b><span class="t-sub">${fmtN(b[k])} / 10</span></div>${cs.map(c => `<div class="crit"><span>${critIcon(c.res)}</span><span>${esc(c.libelle)}${c.redhibitoire ? ' <span class="flag bad">rédhibitoire</span>' : ''}</span><span class="src t-sub">${esc(c.source || '')}${c.reference ? ' · ' + esc(c.reference) : ''}</span><span class="t-sub">×${esc(c.poids)}</span>${c.motif ? `<span class="m">${esc(c.motif)}</span>` : ''}</div>`).join('')}</div>`;
+  }).join('');
+  return `${isRouge(p) ? `<div class="warn"><b>Incompatibilité (note 0)</b> : ${esc((e.veto_motifs || []).join(' · '))}</div>` : ''}
+    <div class="panel"><div class="g-row"><span class="g-l"><b>Note globale</b></span>${gauge(num(p.Score_global))}<span class="g-n big-n">${fmtN(num(p.Score_global))}</span></div>
+    ${row('Complétude', b.Completude)}${row('Conformité', b.Conformite)}${row('Alignement schéma directeur', b.Alignement)}
+    <div class="t-sub" style="margin-top:6px">Base ${fmtN(e.base)} + bonus d'alignement ${fmtN(e.bonus)} (plafonné à 10). Les cotations sont calculées sur les valeurs déposées.</div></div>
+    <div class="panel"><h3>Incompatibilité</h3><div class="t-sub" style="margin-bottom:8px">À cocher si la proposition est manifestement hors du cadre du PNF : la note passe à 0 et la proposition est signalée en rouge. Le statut et le motif de la décision se renseignent dans l'onglet Instruction.</div><div class="row">
+      <label class="chk"><input type="checkbox" id="ev-veto" ${p.Veto_chefferie ? 'checked' : ''}>Incompatibilité constatée par la chefferie (note 0)</label>
+      <button class="btn primary" onclick="saveEval()">Enregistrer</button></div></div>
+    <div style="display:grid;gap:10px">${groups}</div>`;
+}
+async function saveEval(){
+  const p = cur(), v = document.getElementById('ev-veto').checked;
+  if (v === !!p.Veto_chefferie) { toast('Aucune modification à enregistrer.'); return; }
+  await writeFields(p.id, { Veto_chefferie: v }, 'Incompatibilité enregistrée.');
+}
+
+/* ----- onglet Instruction (statut, décision, fusion) ----- */
+function treeRows(id, depth, versee){
+  return fusionnees(id).map(k => `<div class="row" style="margin:4px 0;padding-left:${depth * 18}px"><span class="chip st-Fusionnée">n° ${k.id}</span><span>${esc(k.Titre)} <span class="t-sub">(${esc(sCode(refId(k.Structure_porteuse)))})</span></span><button class="btn small" onclick="openModal(${k.id}, 'instr')">Ouvrir</button>${versee ? '' : `<button class="btn small danger" onclick="doDefusion(${k.id})">Défusionner</button>`}</div>` + treeRows(k.id, depth + 1, versee)).join('');
+}
+function paneInstr(p){
+  const st = statutOf(p), fd = fusionDans(p), kids = fusionnees(p.id), desc = descendants(p.id), versee = isVersee(p), fused = st === 'Fusionnée', gv = groupeVerse(p);
+  const opts = (fused ? STATUTS : STATUTS.filter(s => s !== 'Fusionnée')).map(s => opt(s, s, st)).join('');
+  const warns = [];
+  if (isRouge(p)) warns.push('Cette proposition présente une incompatibilité rédhibitoire.');
+  // une proposition principale (même issue de fusions) peut être fusionnée dans une autre ; le groupe suit
+  const cand = P.filter(x => x.id !== p.id && statutOf(x) !== 'Fusionnée' && !fusionDans(x) && !isVersee(x));
+  const main = fd ? P.find(x => x.id === fd) : null, top = racine(p);
+  return `<div class="panel"><h3>Statut et décision</h3>
+    ${versee ? '<div class="note">Cette proposition a été versée dans le catalogue des actions : son statut n\'est plus modifiable ici.</div>' : ''}
+    ${fused ? `<div class="note">Fusionnée dans la proposition n° ${fd}${main ? ' « ' + esc(main.Titre) + ' »' : ''}${top.id !== fd ? ` (principale de tête du groupe : n° ${top.id})` : ''}${gv ? ' — le groupe a été versé dans le catalogue des actions' : ''}. <button class="btn small" onclick="openModal(${fd}, 'instr')">Ouvrir</button></div>` : ''}
+    <div class="grid-f"><div class="fld"><label>Statut d'instruction</label><select id="in-statut" ${(versee || fused) ? 'disabled' : ''}>${opts}</select></div></div>
+    <div class="fld" style="margin-top:8px"><label>Commentaire de la chefferie (interne)</label><textarea id="in-com">${esc(p.Commentaire_chefferie || '')}</textarea></div>
+    <div class="fld" style="margin-top:8px"><label>Motif de la décision (interne)</label><textarea id="in-motif">${esc(p.Motif_decision || '')}</textarea></div>
+    ${warns.length && !fused ? `<div class="warn" style="margin-top:8px">${warns.map(esc).join('<br>')} Le statut « Retenue » reste possible.</div>` : ''}
+    <div class="row" style="margin-top:10px"><button class="btn primary" onclick="saveInstr()">Enregistrer</button></div></div>
+    ${kids.length ? `<div class="panel"><h3>Propositions fusionnées dans celle-ci (${desc.length}${desc.length !== kids.length ? ', dont ' + kids.length + ' directement' : ''})</h3>${treeRows(p.id, 0, gv)}
+      <div class="t-sub">Défusionner remet la proposition en « En cours d'instruction » (avec celles qui lui sont rattachées) ; les contenus déjà repris dans la proposition principale ne sont pas retirés automatiquement.</div></div>` : ''}
+    ${(!fused && !versee) ? `<div class="panel"><h3>Fusionner cette proposition dans une autre</h3>
+      <div class="t-sub" style="margin-bottom:8px">La proposition courante${kids.length ? ' et celles qui sont déjà fusionnées dans elle' : ''} rejoignent la proposition principale choisie. Celle-ci conserve son statut et reste celle qui sera versée ; elle pourra à son tour être fusionnée dans une autre.</div>
+      ${cand.length ? `<div class="grid-f"><div class="fld"><label>Proposition principale</label><select id="fu-main"><option value="0">— choisir —</option>${cand.map(x => opt(x.id, `n° ${x.id} — ${x.Titre || 'Sans titre'} (${sCode(refId(x.Structure_porteuse))})${fusionnees(x.id).length ? ' · ' + descendants(x.id).length + ' fusionnée(s)' : ''}`, 0)).join('')}</select></div></div>
+      <div class="row" style="margin-top:8px"><span class="section-title" style="margin:0">Reprendre dans la principale</span>
+        <label class="chk"><input type="checkbox" id="fu-obj" checked>les objectifs</label><label class="chk"><input type="checkbox" id="fu-pub" checked>les publics cibles</label><label class="chk"><input type="checkbox" id="fu-eff" checked>l'effectif et la durée (maximum des deux)</label></div>
+      <div class="row" style="margin-top:8px"><button class="btn" onclick="doFusion()">Fusionner</button></div>` : '<div class="t-sub">Aucune autre proposition n\'est disponible comme proposition principale.</div>'}</div>` : ''}`;
+}
+async function saveInstr(){
+  const p = cur(), sel = document.getElementById('in-statut'), fields = {};
+  if (!sel.disabled && sel.value !== statutOf(p)) fields.Statut_instruction = sel.value;
+  const com = document.getElementById('in-com').value, motif = document.getElementById('in-motif').value;
+  if (com !== (p.Commentaire_chefferie || '')) fields.Commentaire_chefferie = com;
+  if (motif !== (p.Motif_decision || '')) fields.Motif_decision = motif;
+  if (!Object.keys(fields).length) { toast('Aucune modification à enregistrer.'); return; }
+  await writeFields(p.id, fields, 'Instruction enregistrée.');
+}
+async function doFusion(){
+  const src = cur(), mainId = Number(document.getElementById('fu-main').value);
+  if (!mainId) { toast('Choisis la proposition principale.', true); return; }
+  const main = P.find(x => x.id === mainId); if (!main || statutOf(main) === 'Fusionnée' || fusionDans(main) || isVersee(main) || mainId === src.id) { toast('Proposition principale non valide.', true); return; }
+  const acts = [['UpdateRecord', PROP, src.id, { Fusionnee_dans: mainId, Statut_instruction: 'Fusionnée' }]], upd = {};
+  if (document.getElementById('fu-obj').checked && clean(src.C_Objectifs ?? src.Objectifs)) upd.C_Objectifs = `${main.C_Objectifs ?? main.Objectifs ?? ''}\n\n— Issu de la fusion avec « ${src.C_Titre ?? src.Titre} » (${sCode(refId(src.C_Structure_porteuse ?? src.Structure_porteuse))}) —\n${src.C_Objectifs ?? src.Objectifs}`.trim();
+  if (document.getElementById('fu-pub').checked) { const u = [...new Set([...asIds(main.C_Publics ?? main.Public_cible), ...asIds(src.C_Publics ?? src.Public_cible)])]; if (u.join() !== asIds(main.C_Publics).join()) upd.C_Publics = ['L', ...u]; }
+  if (document.getElementById('fu-eff').checked) {                // effectif et durée : maximum des deux (jamais cumulés)
+    const eMax = Math.max(num(cEff(main)) || 0, num(cEff(src)) || 0), dMax = Math.max(num(cDuree(main)) || 0, num(cDuree(src)) || 0);
+    if (eMax > 0 && eMax !== (num(cEff(main)) || 0)) upd.C_Effectif_previsionnel = eMax;
+    if (dMax > 0 && dMax !== (num(cDuree(main)) || 0)) upd.C_Duree_jours = dMax;
+  }
+  if (Object.keys(upd).length) acts.push(['UpdateRecord', PROP, mainId, upd]);
+  try { await grist.docApi.applyUserActions(acts); await loadAll(); renderAll(); toast(`Proposition n° ${src.id} fusionnée dans n° ${mainId}.`); }
+  catch (e) { console.error(e); toast('Échec de la fusion : ' + (e.message || e), true); }
+}
+async function doDefusion(id){
+  const q = P.find(x => x.id === id); if (!q || groupeVerse(q)) { toast('Défusion impossible : le groupe a déjà été versé.', true); return; }
+  try { await grist.docApi.applyUserActions([['UpdateRecord', PROP, id, { Fusionnee_dans: 0, Statut_instruction: "En cours d'instruction" }]]); await loadAll(); renderAll(); toast(`Proposition n° ${id} défusionnée.`); }
+  catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
+}
+
+/* ----- onglet Fiche de retour (copier le texte uniquement) ----- */
+const mot = s => s === null || s === undefined ? 'non évaluée' : (s >= 8 ? 'très bon' : s >= 6 ? 'bon' : s >= 4 ? 'moyen' : 'à renforcer');
+function retourText(p, e){
+  const L = [], b = (e && e.blocs) || {}, st = sFull(refId(p.Structure_porteuse)) || sCode(refId(p.Structure_porteuse));
+  const g = num(p.Score_global), an = PARAMS.annee_cible || '2027-2028';
+  L.push(`Objet : PNF ${an} — retour sur votre proposition « ${p.Titre || ''} »`, '', 'Bonjour,', '',
+    `Nous avons bien reçu votre proposition d'action de formation « ${p.Titre || ''} » (déposée le ${fmtDate(p.Date_depot)}${st ? ', ' + st : ''}).`,
+    'Elle a fait l\'objet d\'une première analyse au regard du cahier des charges du PNF, de l\'arrêté du 1er août 2023 relatif à la formation et à l\'accompagnement personnalisé des agents publics et du schéma directeur de la politique de formation continue 2025-2029.', '');
+  if (!e) { L.push('(Cotation indisponible.)', ''); }
+  else {
+    if (isRouge(p)) L.push('⚠ Votre proposition présente une incompatibilité avec le cahier des charges :', ...(e.veto_motifs || []).map(m => '   - ' + m), '');
+    L.push(`Note globale : ${fmtN(g)} / 10`,
+      `   - Complétude de la proposition : ${fmtN(b.Completude)} / 10 (${mot(b.Completude)})`,
+      `   - Conformité au cahier des charges et à l'arrêté de 2023 : ${fmtN(b.Conformite)} / 10 (${mot(b.Conformite)})`,
+      `   - Alignement avec les orientations du schéma directeur : ${fmtN(b.Alignement)} / 10 (bonus, ne pénalise pas)`);
+    L.push('');
+    const amel = (e.criteres || []).filter(c => ['Completude', 'Conformite'].includes(c.bloc) && c.res !== null && c.res < 1 && !c.redhibitoire);
+    if (amel.length) { L.push('Points à préciser ou à compléter :'); amel.forEach(c => L.push(`   - ${c.libelle}${c.motif ? ' : ' + c.motif : ''}`)); L.push(''); }
+    else L.push('Aucun point à compléter n\'a été relevé sur la complétude et la conformité.', '');
+  }
+  L.push('Pour toute correction ou précision, merci de répondre à ce message : la chefferie procédera aux modifications.', '', 'Cordialement,', 'La chefferie du bureau');
+  return L.join('\n');
+}
+function paneRetour(p, e){
+  return `<div class="t-sub">Texte à relire et à adapter avant de le copier dans votre messagerie. Les commentaires internes n'y figurent pas.</div>
+    <textarea class="retour" id="retour-text">${esc(retourText(p, e))}</textarea>
+    <div class="row"><button class="btn primary" onclick="copyRetour()">Copier le texte</button></div>`;
+}
+function copyRetour(){
+  const ta = document.getElementById('retour-text'); ta.focus(); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  const done = () => toast('Texte copié.');
+  if (ok) { done(); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, () => toast('Copie impossible : sélectionne le texte et copie-le (Ctrl+C).', true));
+  else toast('Copie impossible : sélectionne le texte et copie-le (Ctrl+C).', true);
+}
+
+
+/* ============================== onglet Versement ============================== */
+const lc = x => String(x || '').trim().toLowerCase();
+const groupMembers = p => [p, ...descendants(p.id)];
+const contactByEmail = e => { const k = lc(e); return k ? CONTACTS.find(c => lc(c.email) === k) || null : null; };
+const contactName = c => clean(c.nom_prenom) || clean([c.NOM, c.PRENOM].filter(Boolean).join(' ')) || c.email;
+function versePlan(p){
+  const members = groupMembers(p), act = refId(p.C_Action_SD ?? p.Action_SD), duree = num(cDuree(p)) || 0, eff = num(cEff(p)) || 0;
+  const structs = [...new Set(members.map(m => refId(m.C_Structure_porteuse ?? m.Structure_porteuse)).filter(Boolean))];
+  const emails = []; members.forEach(m => { const e = lc(m.C_Email_contact || m.Email_contact); if (e && !emails.some(x => x.email === e)) emails.push({ email: e, struct: refId(m.C_Structure_porteuse ?? m.Structure_porteuse) }); });
+  return { members, structs, emails, act, axe: axeOf(act), modalite: refId(p.C_Modalite ?? p.Modalite), publics: asIds(p.C_Publics ?? p.Public_cible),
+    heures: duree * jourHeures(), js: duree * eff, annee: refId(p.Annee_scolaire), titre: clean(p.C_Titre ?? p.Titre), objectif: String(p.C_Objectifs ?? p.Objectifs ?? '').trim() };
+}
+function paneVerse(p){
+  const st = statutOf(p), fd = fusionDans(p);
+  if (isVersee(p)) { const a = AF.find(x => x.id === refId(p.Id_action_creee)); return `<div class="note">Cette proposition a été versée dans <b>le catalogue des actions</b> : action n° <b>${refId(p.Id_action_creee)}</b>${a ? ' « ' + esc(a.titre) + ' »' : ''}.</div><div class="t-sub">Les modifications se font désormais depuis le widget de pilotage des actions.</div>`; }
+  if (fd) return `<div class="warn">Cette proposition est fusionnée dans la proposition n° ${fd}. Le versement se fait depuis la proposition principale de tête (n° ${racine(p).id}).</div>`;
+  if (st !== 'Retenue') return `<div class="warn">Seule une proposition au statut « Retenue » peut être versée. Statut actuel : ${esc(st)}. Change-le dans l'onglet Instruction.</div>`;
+  const pl = versePlan(p), grp = pl.members.length > 1;
+  const dups = AF.filter(a => norm(a.titre) === norm(pl.titre) && refId(a.Annee_scolaire) === pl.annee);
+  const sum = [['Titre', pl.titre || '–'], ['Objectifs', pl.objectif || '–'], ['Action du schéma directeur', pl.act ? aLib(pl.act) + '\n(' + axeLib(pl.act) + ')' : '–'],
+    ['Structure(s) porteuse(s)', pl.structs.map(sFull).join('\n') || '–'], ['Modalité', modLib(pl.modalite) || '–'], ['Publics cibles', pubLibs(['L', ...pl.publics]).join(', ') || '–'],
+    ['Heures de formation', fmtN(pl.heures)], ['Journées stagiaires (JS)', fmtN(pl.js)], ['Année scolaire', (ANNEE[pl.annee] || {}).libelle || '–'], ['Statut', '(vide)']];
+  const perio = (p.C_Periode && p.Periode && p.C_Periode !== p.Periode) ? `${p.C_Periode} (déposée : ${p.Periode})` : (p.C_Periode || p.Periode || '');
+  const lieuxOpts = Object.values(LIEUX).filter(l => clean(l.Site) || clean(l.ville)).map(l => `<label class="chk"><input type="checkbox" data-lieu="${l.id}">${esc(clean(l.Site) || '—')}${clean(l.ville) ? ' (' + esc(clean(l.ville)) + ')' : ''}</label>`).join('');
+  const contacts = pl.emails.length ? pl.emails.map((e, i) => { const c = contactByEmail(e.email);
+    return `<div class="ct-row"><div><b>${esc(e.email)}</b></div>${c ? `<div class="note" style="grid-column:2/4">Contact existant : ${esc(contactName(c))}</div>` : `<input type="text" id="vs-nom-${i}" placeholder="NOM (obligatoire)"><input type="text" id="vs-pre-${i}" placeholder="Prénom (obligatoire)">`}</div>`; }).join('')
+    : '<div class="warn">Aucune adresse électronique de contact : aucun contact ne sera rattaché à l\'action.</div>';
+  return `${grp ? `<div class="note">Cette proposition regroupe ${pl.members.length} propositions (fusions) : leurs structures et leurs contacts seront tous rattachés à l'action.</div>` : ''}
+    ${dups.length ? `<div class="warn">Une action de même titre existe déjà pour cette année dans le catalogue des actions (n° ${dups.map(a => a.id).join(', ')}). Vérifie qu'il ne s'agit pas d'un doublon.</div>` : ''}
+    <div class="panel"><h3>Valeurs reprises (issues des corrections)</h3><dl class="vs-sum">${sum.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+      <div class="t-sub" style="margin-top:6px">Pour changer l'une de ces valeurs, corrige-la dans l'onglet « Déposé / corrigé » avant de verser.</div></div>
+    <div class="panel"><h3>À compléter par la chefferie</h3>
+      <div class="grid-f"><div class="fld"><label>Date de début *</label><input type="date" id="vs-debut"></div><div class="fld"><label>Date de fin *</label><input type="date" id="vs-fin"></div>
+        <div class="fld"><label>Volet *</label><select id="vs-volet"><option value="0">— choisir —</option>${Object.values(VOLETS).map(v => opt(v.id, clean(v.libelle) + (clean(v.description) ? ' — ' + clean(v.description) : ''), 0)).join('')}</select></div></div>
+      <div class="t-sub" style="margin-top:6px">Période indiquée par le porteur : <b>${esc(perio || '–')}</b> · Lieu indiqué : <b>${esc(p.C_Lieu ?? p.Lieu ?? '–')}</b></div>
+      <div class="section-title" style="margin-top:10px">Degré(s) (facultatif)</div><div class="chk-grid">${Object.values(DEGRES).map(d => `<label class="chk"><input type="checkbox" data-deg="${d.id}">${esc(clean(d.nom_deg))}</label>`).join('')}</div>
+      <div class="section-title" style="margin-top:10px">Lieu(x) de la table Lieux (facultatif)</div><div class="chk-grid">${lieuxOpts || '<span class="t-sub">Aucun lieu dans la table.</span>'}</div></div>
+    <div class="panel"><h3>Contacts rattachés à l'action</h3><div class="t-sub" style="margin-bottom:6px">Une adresse déjà présente dans la table Contacts est reprise. Sinon, le nom et le prénom sont demandés pour créer le contact (structure : celle du porteur).</div>${contacts}</div>
+    <div id="vs-zone"><button class="btn primary" id="vs-go" onclick="askVerse()">Verser dans le catalogue des actions</button></div>`;
+}
+const dateSec = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 1000 : null; };
+function readVerse(p){
+  const pl = versePlan(p), d1 = dateSec(document.getElementById('vs-debut').value), d2 = dateSec(document.getElementById('vs-fin').value), volet = Number(document.getElementById('vs-volet').value) || 0;
+  if (!pl.titre) return { err: 'Le titre est vide (onglet Déposé / corrigé).' };
+  if (!pl.act) return { err: 'Aucune action du schéma directeur : corrige-la dans l\'onglet Déposé / corrigé.' };
+  if (!pl.annee) return { err: 'Année scolaire absente sur la proposition.' };
+  if (d1 === null || d2 === null) return { err: 'Renseigne la date de début et la date de fin.' };
+  if (d2 < d1) return { err: 'La date de fin est antérieure à la date de début.' };
+  if (!volet) return { err: 'Choisis le volet.' };
+  const contacts = [];
+  for (let i = 0; i < pl.emails.length; i++) {
+    const e = pl.emails[i], c = contactByEmail(e.email);
+    if (c) { contacts.push({ email: e.email, existing: c.id }); continue; }
+    const nom = clean(document.getElementById('vs-nom-' + i).value), pre = clean(document.getElementById('vs-pre-' + i).value);
+    if (!nom || !pre) return { err: `Renseigne le nom et le prénom du contact ${e.email}.` };
+    contacts.push({ email: e.email, struct: e.struct, nom: nom.toUpperCase(), prenom: pre });
+  }
+  const deg = [...document.querySelectorAll('input[data-deg]:checked')].map(i => Number(i.dataset.deg)), lieux = [...document.querySelectorAll('input[data-lieu]:checked')].map(i => Number(i.dataset.lieu));
+  return { pl, d1, d2, volet, contacts, deg, lieux };
+}
+function askVerse(){
+  const p = cur(), v = readVerse(p); if (v.err) { toast(v.err, true); return; }
+  const neu = v.contacts.filter(c => !c.existing).length;
+  document.getElementById('vs-zone').innerHTML = `<div class="warn">Confirmer le versement ? Une action sera créée dans le catalogue des actions${neu ? ' et ' + neu + ' contact(s) ajouté(s) à la table Contacts' : ''}. Cette opération ne s'annule pas depuis ce widget.</div>
+    <div class="row" style="margin-top:8px"><button class="btn primary" id="vs-confirm" onclick="doVerse()">Oui, verser</button><button class="btn" onclick="renderModal()">Annuler</button></div>`;
+}
+async function doVerse(){
+  if (VERSING) return; VERSING = true;
+  const btn = document.getElementById('vs-confirm'); if (btn) btn.disabled = true;
+  const zone = document.getElementById('vs-zone'); if (zone) zone.insertAdjacentHTML('afterbegin', '<div class="note" id="vs-busy">Versement en cours (plusieurs étapes, quelques secondes)… ne ferme pas cette fiche.</div>');
+  let createdId = 0;
+  try {
+    const id = MODAL.id; await loadAll();                       // état frais avant toute écriture
+    const p = P.find(x => x.id === id);
+    if (!p || isVersee(p) || fusionDans(p) || statutOf(p) !== 'Retenue') throw new Error('La proposition n\'est plus versable (déjà versée, fusionnée ou plus « Retenue »). Recharge la fiche.');
+    const v = readVerse(p); if (v.err) throw new Error(v.err);
+    const pl = v.pl, nouveaux = v.contacts.filter(c => !c.existing);
+    if (nouveaux.length) {                                       // 1. contacts manquants
+      await grist.docApi.applyUserActions(nouveaux.map(c => ['AddRecord', 'Contacts', null, { nom_prenom: `${c.nom} ${c.prenom}`, email: c.email, structure: c.struct || 0, NOM: c.nom, PRENOM: c.prenom }]));
+      await loadAll();
+    }
+    const contactIds = pl.emails.map(e => (contactByEmail(e.email) || {}).id).filter(Boolean);
+    if (contactIds.length !== pl.emails.length) throw new Error('Un contact est introuvable après sa création : rien n\'a été versé.');
+    const before = new Set((await fetchRows('Actions_formation')).map(r => r.id));
+    const fields = { titre: pl.titre, objectif: pl.objectif, date_debut: v.d1, date_fin: v.d2, id_volet: v.volet, id_axe: pl.axe, id_action_axe: pl.act, id_structure: ['L', ...pl.structs],
+      id_modalite: pl.modalite, id_lieu: ['L', ...v.lieux], Annee_scolaire: pl.annee, Contacts: ['L', ...contactIds], id_publics: ['L', ...pl.publics], Degre: ['L', ...v.deg], JS_prevision: pl.js, heures_formation: pl.heures };
+    await grist.docApi.applyUserActions([['AddRecord', 'Actions_formation', null, fields]]);   // 2. l'action
+    const created = (await fetchRows('Actions_formation')).filter(r => !before.has(r.id));
+    if (created.length !== 1) throw new Error(`Impossible d'identifier l'action créée (${created.length} nouvelle(s) ligne(s)) : vérifie le catalogue des actions avant de recommencer.`);
+    createdId = created[0].id;
+    await grist.docApi.applyUserActions([['UpdateRecord', PROP, id, { Id_action_creee: createdId }]]);   // 3. lien
+    await loadAll();
+    const a = AF.find(x => x.id === createdId), bad = [];
+    if (!a) bad.push('action'); else {
+      if (a.titre !== pl.titre) bad.push('titre'); if (num(a.date_debut) !== v.d1 || num(a.date_fin) !== v.d2) bad.push('dates'); if (refId(a.id_action_axe) !== pl.act) bad.push('action SD');
+      if (asIds(a.id_structure).sort().join() !== pl.structs.slice().sort().join()) bad.push('structures'); if (asIds(a.Contacts).sort().join() !== contactIds.slice().sort().join()) bad.push('contacts');
+      if (num(a.heures_formation) !== pl.heures || num(a.JS_prevision) !== pl.js) bad.push('heures/JS');
+    }
+    renderAll();
+    if (refId(P.find(x => x.id === id).Id_action_creee) !== createdId) bad.push('lien');
+    bad.length ? toast(`Action n° ${createdId} créée, mais écriture non confirmée pour : ${bad.join(', ')}. Vérifie le catalogue des actions.`, true) : toast(`Versé : action n° ${createdId} créée dans le catalogue des actions.`);
+  } catch (e) {
+    console.error(e);
+    toast((createdId ? `Action n° ${createdId} créée MAIS non reliée à la proposition (note ce numéro). ` : '') + 'Échec du versement : ' + (e.message || e), true);
+    if (btn) btn.disabled = false;
+    const busy = document.getElementById('vs-busy'); if (busy) busy.remove();
+  } finally { VERSING = false; }
+}
+
+/* ============================== export CSV ============================== */
+const G = { ID:'Identification', DEP:'Description déposée', COR:'Valeurs corrigées', CAL:'Calculées', ARR:'Conformité à l\'arrêté (déclaré)', ORI:'Orientations du schéma directeur', COT:'Cotation', INS:'Instruction' };
+const lst = v => Array.isArray(v) ? v : [];
+const oriOf = p => lst(Array.isArray(p.Orientation_SD) && p.Orientation_SD[0] === 'L' ? p.Orientation_SD.slice(1) : p.Orientation_SD);
+function critNon(p){ const e = ev(p); return e ? (e.criteres || []).filter(c => c.bloc !== 'Alignement' && c.res !== null && c.res < 1).map(c => c.libelle + (c.motif ? ' (' + c.motif + ')' : '')) : []; }
+const EXPORT_COLS = [
+  { k:'id', g:G.ID, l:'N°', v:p => p.id }, { k:'date_depot', g:G.ID, l:'Date de dépôt', d:1, v:p => p.Date_depot },
+  { k:'annee', g:G.ID, l:'Année scolaire', v:p => (ANNEE[refId(p.Annee_scolaire)] || {}).libelle || '' }, { k:'email', g:G.ID, l:'Adresse électronique de contact', v:p => p.Email_contact },
+  { k:'structure_code', g:G.ID, l:'Structure porteuse (code)', v:p => sCode(refId(p.Structure_porteuse)) }, { k:'structure_lib', g:G.ID, l:'Structure porteuse (libellé)', v:p => clean((STRUCT[refId(p.Structure_porteuse)] || {}).libelle) },
+  { k:'titre', g:G.DEP, l:'Titre', v:p => p.Titre }, { k:'objectifs', g:G.DEP, l:'Objectifs', v:p => p.Objectifs }, { k:'contexte', g:G.DEP, l:'Contexte de la demande', v:p => p.Contexte },
+  { k:'action_num', g:G.DEP, l:'Action du schéma directeur (n°)', v:p => aNum(refId(p.Action_SD)) }, { k:'action_lib', g:G.DEP, l:'Action du schéma directeur (libellé)', v:p => aLib(refId(p.Action_SD)) },
+  { k:'axe', g:G.DEP, l:'Axe du schéma directeur', v:p => axeLib(refId(p.Action_SD)) }, { k:'indicateur', g:G.DEP, l:'Indicateur du schéma directeur', v:p => p.Indicateur_SD },
+  { k:'pluriannuelle', g:G.DEP, l:'Action pluriannuelle', v:p => p.Action_pluriannuelle }, { k:'report', g:G.DEP, l:'Report d\'une action du PNF précédent', v:p => p[REPCOL] },
+  { k:'periode', g:G.DEP, l:'Période calendaire envisagée', v:p => p.Periode }, { k:'modalite', g:G.DEP, l:'Modalité de formation', v:p => modLib(refId(p.Modalite)) },
+  { k:'publics', g:G.DEP, l:'Public cible', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, l:'Durée (jours)', v:p => p.Duree_jours }, { k:'effectif', g:G.DEP, l:'Effectif prévisionnel', v:p => p.Effectif_previsionnel },
+  { k:'lieu', g:G.DEP, l:'Lieu prévisionnel', v:p => p.Lieu }, { k:'commentaire_porteur', g:G.DEP, l:'Commentaire du porteur', v:p => p.Commentaire_porteur },
+  { k:'c_titre', g:G.COR, l:'Titre (corrigé)', v:p => p.C_Titre }, { k:'c_objectifs', g:G.COR, l:'Objectifs (corrigés)', v:p => p.C_Objectifs },
+  { k:'c_action_num', g:G.COR, l:'Action du schéma directeur (n°, corrigée)', v:p => aNum(refId(p.C_Action_SD)) }, { k:'c_action_lib', g:G.COR, l:'Action du schéma directeur (libellé, corrigé)', v:p => aLib(refId(p.C_Action_SD)) },
+  { k:'c_axe', g:G.COR, l:'Axe du schéma directeur (corrigé)', v:p => axeLib(refId(p.C_Action_SD)) },
+  { k:'c_structure_code', g:G.COR, l:'Structure porteuse (code, corrigée)', v:p => sCode(refId(p.C_Structure_porteuse)) }, { k:'c_structure_lib', g:G.COR, l:'Structure porteuse (libellé, corrigé)', v:p => clean((STRUCT[refId(p.C_Structure_porteuse)] || {}).libelle) },
+  { k:'c_modalite', g:G.COR, l:'Modalité (corrigée)', v:p => modLib(refId(p.C_Modalite)) }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) },
+  { k:'c_periode', g:G.COR, l:'Période (corrigée)', v:p => p.C_Periode }, { k:'c_duree', g:G.COR, l:'Durée en jours (corrigée)', v:p => p.C_Duree_jours },
+  { k:'c_effectif', g:G.COR, l:'Effectif prévisionnel (corrigé)', v:p => p.C_Effectif_previsionnel }, { k:'c_lieu', g:G.COR, l:'Lieu (corrigé)', v:p => p.C_Lieu },
+  { k:'c_email', g:G.COR, l:'Adresse électronique de contact (corrigée)', v:p => p.C_Email_contact }, { k:'c_pluriannuelle', g:G.COR, l:'Action pluriannuelle (corrigée)', v:p => p.C_Action_pluriannuelle },
+  { k:'c_report', g:G.COR, l:'Report d\'une action du PNF précédent (corrigé)', v:p => p.C_Report },
+  { k:'heures', g:G.CAL, l:'Heures de formation (déposées)', v:p => p.Heures_prevues }, { k:'js', g:G.CAL, l:'Journées stagiaires (déposées)', v:p => p.JS_prevues },
+  { k:'c_heures', g:G.CAL, l:'Heures de formation (corrigées)', v:p => (num(cDuree(p)) || 0) * jourHeures() }, { k:'c_js', g:G.CAL, l:'Journées stagiaires (corrigées)', v:p => (num(cDuree(p)) || 0) * (num(cEff(p)) || 0) },
+  ...ARR.map(([k, l]) => ({ k:k.toLowerCase(), g:G.ARR, l, v:p => p[k] })),
+  { k:'orientations', g:G.ORI, l:'Orientations du schéma directeur', v:p => oriOf(p) },
+  { k:'note_globale', g:G.COT, cot:1, l:'Note globale (/10)', v:p => p.Score_global }, { k:'note_completude', g:G.COT, cot:1, l:'Complétude (/10)', v:p => p.Score_completude },
+  { k:'note_conformite', g:G.COT, cot:1, l:'Conformité (/10)', v:p => p.Score_conformite }, { k:'note_alignement', g:G.COT, cot:1, l:'Alignement schéma directeur (/10)', v:p => p.Score_alignement },
+  { k:'redhibitoire', g:G.COT, cot:1, l:'Rédhibitoire', v:p => (p.Redhibitoire ? 'Oui' : 'Non') }, { k:'veto', g:G.COT, cot:1, l:'Incompatibilité constatée par la chefferie', v:p => (p.Veto_chefferie ? 'Oui' : 'Non') },
+  { k:'criteres_non', g:G.COT, cot:1, l:'Critères non satisfaits', v:p => critNon(p) },
+  { k:'statut', g:G.INS, cot:1, l:'Statut d\'instruction', v:p => statutOf(p) }, { k:'fusionnee_dans', g:G.INS, cot:1, l:'Fusionnée dans (n°)', v:p => fusionDans(p) || '' },
+  { k:'fusionnees', g:G.INS, cot:1, l:'Propositions fusionnées dans celle-ci (n°)', v:p => descendants(p.id).map(x => x.id) },
+  { k:'commentaire_chefferie', g:G.INS, cot:1, l:'Commentaire de la chefferie', v:p => p.Commentaire_chefferie }, { k:'motif', g:G.INS, cot:1, l:'Motif de la décision', v:p => p.Motif_decision },
+  { k:'action_creee', g:G.INS, cot:1, l:'Action créée dans le catalogue des actions (n°)', v:p => refId(p.Id_action_creee) || '' }
+];
+const availCols = mode => EXPORT_COLS.filter(c => mode === 'Avec cotation' || !c.cot);
+const BUILTIN = {
+  'std-sans':    { nom:'Sans cotation (standard)', mode:'Sans cotation', cols:() => availCols('Sans cotation').map(c => c.k) },
+  'std-interne': { nom:'Interne complet', mode:'Avec cotation', cols:() => availCols('Avec cotation').map(c => c.k) }
+};
+function applyPreset(key){
+  EX.preset = key;
+  if (BUILTIN[key]) { EX.mode = BUILTIN[key].mode; EX.cols = new Set(BUILTIN[key].cols()); return; }
+  const m = MODELES.find(x => 'm' + x.id === key); if (!m) return;
+  EX.mode = m.mode === 'Avec cotation' ? 'Avec cotation' : 'Sans cotation';
+  let ks = []; try { ks = JSON.parse(m.colonnes || '[]'); } catch (e) { ks = []; }
+  const ok = new Set(availCols(EX.mode).map(c => c.k)); EX.cols = new Set(ks.filter(k => ok.has(k)));
+  try { const f = JSON.parse(m.format || '{}'); EX.fmt = { ...EX.fmt, ...f }; } catch (e) { /* format par défaut */ }
+}
+function setMode(m){ EX.mode = m; const ok = new Set(availCols(m).map(c => c.k)); EX.cols = new Set([...EX.cols].filter(k => ok.has(k))); EX.preset = ''; renderExport(); }
+function toggleCol(k, on){ on ? EX.cols.add(k) : EX.cols.delete(k); EX.preset = ''; renderExportPreview(); markPreset(); }
+function setGroup(g, on){ availCols(EX.mode).filter(c => c.g === g).forEach(c => on ? EX.cols.add(c.k) : EX.cols.delete(c.k)); EX.preset = ''; renderExport(); }
+function setFmt(k, v){ EX.fmt[k] = v; renderExportPreview(); }
+function toggleRow(id, on){ on ? EX.excluded.delete(id) : EX.excluded.add(id); renderExportPreview(); }
+function setAllRows(on){ const ids = P.filter(p => matches(p, FE)).map(p => p.id); ids.forEach(id => on ? EX.excluded.delete(id) : EX.excluded.add(id)); renderExportBody(); }
+function markPreset(){ const s = document.getElementById('ex-preset'); if (s) s.value = EX.preset; }
+
+function cellText(col, p){
+  let v = col.v(p);
+  if (col.d) return v ? (EX.fmt.dateFr ? fmtDate(v) : isoDate(v)) : '';
+  if (Array.isArray(v)) return v.join(EX.fmt.listSep);
+  if (typeof v === 'number') return EX.fmt.decComma ? String(v).replace('.', ',') : String(v);
+  if (typeof v === 'boolean') return v ? 'Oui' : 'Non';
+  return v === null || v === undefined ? '' : String(v);
+}
+function exportRows(){ return P.filter(p => matches(p, FE) && !EX.excluded.has(p.id)).sort((a, b) => a.id - b.id); }
+function selectedCols(){ return availCols(EX.mode).filter(c => EX.cols.has(c.k)); }
+const csvEsc = (v, sep) => { const s = String(v ?? '').replace(/\r?\n/g, ' | '); return (s.includes(sep) || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+function downloadExport(){
+  const cols = selectedCols(), rows = exportRows(), sep = EX.fmt.sep === 'tab' ? '\t' : EX.fmt.sep;
+  if (!cols.length) { toast('Coche au moins une colonne.', true); return; }
+  if (!rows.length) { toast('Aucune ligne à exporter.', true); return; }
+  const head = cols.map(c => csvEsc(EX.fmt.headers === 'codes' ? c.k : c.l, sep)).join(sep);
+  const body = rows.map(p => cols.map(c => csvEsc(cellText(c, p), sep)).join(sep));
+  const csv = (EX.fmt.bom ? '\uFEFF' : '') + [head, ...body].join('\r\n');
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' }), url = URL.createObjectURL(blob), a = document.createElement('a');
+  const an = String(PARAMS.annee_cible || 'PNF').replace(/\s+/g, '');
+  a.href = url; a.download = `PNF${an}_propositions_${EX.mode === 'Sans cotation' ? 'sans-cotation' : 'interne'}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  toast(`${rows.length} proposition(s) exportée(s) — ${cols.length} colonne(s).`);
+}
+
+/* ----- modèles partagés ----- */
+function presetOptions(){
+  return `<optgroup label="Modèles standards">${Object.keys(BUILTIN).map(k => opt(k, BUILTIN[k].nom, EX.preset)).join('')}</optgroup>` +
+    (MODELES.length ? `<optgroup label="Modèles partagés">${MODELES.map(m => opt('m' + m.id, m.nom, EX.preset)).join('')}</optgroup>` : '') + `<option value="" ${EX.preset === '' ? 'selected' : ''}>Sélection personnalisée</option>`;
+}
+function choosePreset(k){ if (!k) return; applyPreset(k); renderExport(); }
+function modelPayload(){ return { colonnes: JSON.stringify([...EX.cols]), format: JSON.stringify(EX.fmt), mode: EX.mode, maj: Date.now() / 1000 }; }
+async function saveModelAs(){
+  const nom = clean(document.getElementById('ex-newname').value); if (!nom) { toast('Donne un nom au modèle.', true); return; }
+  if (MODELES.some(m => norm(m.nom) === norm(nom)) || Object.values(BUILTIN).some(b => norm(b.nom) === norm(nom))) { toast('Ce nom existe déjà : choisis un autre nom ou mets à jour le modèle.', true); return; }
+  try { await grist.docApi.applyUserActions([['AddRecord', MODELES_T, null, { nom, cree_par: '', ...modelPayload() }]]); await loadAll(); const m = MODELES.find(x => norm(x.nom) === norm(nom)); EX.preset = m ? 'm' + m.id : ''; renderExport(); toast('Modèle partagé enregistré.'); }
+  catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
+}
+async function updateModel(){
+  const m = MODELES.find(x => 'm' + x.id === EX.preset); if (!m) return;
+  try { await grist.docApi.applyUserActions([['UpdateRecord', MODELES_T, m.id, modelPayload()]]); await loadAll(); renderExport(); toast('Modèle mis à jour.'); }
+  catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
+}
+function askDeleteModel(){ const b = document.getElementById('ex-del'); b.outerHTML = '<span id="ex-del">Supprimer ce modèle partagé ? <button class="btn small danger" onclick="deleteModel()">Oui, supprimer</button> <button class="btn small" onclick="renderExport()">Annuler</button></span>'; }
+async function deleteModel(){
+  const m = MODELES.find(x => 'm' + x.id === EX.preset); if (!m) return;
+  try { await grist.docApi.applyUserActions([['RemoveRecord', MODELES_T, m.id]]); await loadAll(); applyPreset('std-sans'); renderExport(); toast('Modèle supprimé.'); }
+  catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
+}
+
+/* ----- rendu de l'onglet Export ----- */
+function renderExport(){
+  if (!EX.cols.size && EX.preset) applyPreset(EX.preset);
+  const shared = EX.preset.startsWith('m'), avail = availCols(EX.mode), groups = [...new Set(avail.map(c => c.g))];
+  document.getElementById('page').innerHTML = `
+    <div class="panel"><h3>1. Modèle et destinataire</h3>
+      <div class="row"><div class="fld" style="min-width:260px"><label>Modèle d'export</label><select id="ex-preset" onchange="choosePreset(this.value)">${presetOptions()}</select></div>
+        <div class="fld"><label>Destinataire</label><div class="row" style="padding-top:5px">
+          <label class="chk"><input type="radio" name="ex-mode" ${EX.mode === 'Sans cotation' ? 'checked' : ''} onchange="setMode('Sans cotation')">Sans cotation</label>
+          <label class="chk"><input type="radio" name="ex-mode" ${EX.mode === 'Avec cotation' ? 'checked' : ''} onchange="setMode('Avec cotation')">Avec cotation (interne)</label></div></div></div>
+      ${EX.mode === 'Sans cotation' ? '<div class="note" style="margin-top:8px">Mode « Sans cotation » : les notes, le détail de l\'évaluation et toutes les colonnes d\'instruction (statut, fusion, commentaires, motif) sont retirés de la liste des colonnes.</div>' : '<div class="warn" style="margin-top:8px">Mode « Avec cotation » : ce fichier contient des données internes. Il ne doit pas être transmis à la DGRH.</div>'}
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="ex-newname" placeholder="Nom du nouveau modèle partagé" style="width:240px"><button class="btn small" onclick="saveModelAs()">Enregistrer sous ce nom</button>
+        ${shared ? '<button class="btn small" onclick="updateModel()">Mettre à jour le modèle sélectionné</button><span id="ex-del"><button class="btn small danger" onclick="askDeleteModel()">Supprimer le modèle</button></span>' : ''}
+        <span class="t-sub">Un modèle enregistre le mode, les colonnes cochées et le format ; il est partagé avec la chefferie et les propriétaires.</span></div></div>
+    <details class="panel" open><summary>2. Lignes à exporter — filtres</summary>${filterPanel('e')}</details>
+    <div class="panel"><h3>3. Colonnes à exporter</h3><div class="cols-grid">${groups.map(g => {
+      const cs = avail.filter(c => c.g === g), n = cs.filter(c => EX.cols.has(c.k)).length;
+      return `<div class="grp"><div class="grp-h"><b>${esc(g)} <span class="t-sub">(${n}/${cs.length})</span></b><span><button class="btn small" onclick="setGroup('${g.replace(/'/g, "\\'")}',true)">Tout</button> <button class="btn small" onclick="setGroup('${g.replace(/'/g, "\\'")}',false)">Aucun</button></span></div>
+        <div class="cols-list">${cs.map(c => `<label class="chk"><input type="checkbox" ${EX.cols.has(c.k) ? 'checked' : ''} onchange="toggleCol('${c.k}',this.checked)">${esc(c.l)}</label>`).join('')}</div></div>`;
+    }).join('')}</div></div>
+    <div class="panel"><h3>4. Format du fichier</h3><div class="row">
+      <div class="fld"><label>Séparateur</label><select onchange="setFmt('sep',this.value)">${opt(';', 'Point-virgule (Excel français)', EX.fmt.sep)}${opt(',', 'Virgule', EX.fmt.sep)}${opt('tab', 'Tabulation', EX.fmt.sep)}</select></div>
+      <div class="fld"><label>En-têtes</label><select onchange="setFmt('headers',this.value)">${opt('labels', 'Libellés lisibles', EX.fmt.headers)}${opt('codes', 'Codes courts', EX.fmt.headers)}</select></div>
+      <div class="fld"><label>Séparateur des listes</label><select onchange="setFmt('listSep',this.value)">${opt(' | ', 'Barre verticale ( | )', EX.fmt.listSep)}${opt('; ', 'Point-virgule + espace', EX.fmt.listSep)}${opt(', ', 'Virgule + espace', EX.fmt.listSep)}</select></div>
+      <label class="chk" style="margin-top:16px"><input type="checkbox" ${EX.fmt.bom ? 'checked' : ''} onchange="setFmt('bom',this.checked)">UTF-8 avec BOM (accents dans Excel)</label>
+      <label class="chk" style="margin-top:16px"><input type="checkbox" ${EX.fmt.dateFr ? 'checked' : ''} onchange="setFmt('dateFr',this.checked)">Dates JJ/MM/AAAA</label>
+      <label class="chk" style="margin-top:16px"><input type="checkbox" ${EX.fmt.decComma ? 'checked' : ''} onchange="setFmt('decComma',this.checked)">Décimale avec virgule</label></div></div>
+    <div id="ex-body"></div>`;
+  renderExportBody();
+}
+function renderExportBody(){
+  const body = document.getElementById('ex-body'); if (!body) return;
+  const matching = P.filter(p => matches(p, FE)).sort((a, b) => a.id - b.id);
+  body.innerHTML = `<div class="panel"><h3>5. Lignes retenues pour l'export</h3>
+    <div class="row"><span id="ex-count" class="count"></span><button class="btn small" onclick="setAllRows(true)">Tout cocher</button><button class="btn small" onclick="setAllRows(false)">Tout décocher</button><span class="t-sub">Décoche une ligne pour l'exclure de l'export.</span></div>
+    ${matching.length ? `<div class="tbl-wrap" style="margin-top:8px;max-height:260px;overflow-y:auto"><table class="t" style="min-width:560px"><thead><tr><th></th><th>N°</th><th>Titre</th><th>Structure</th><th>Action</th></tr></thead><tbody>${matching.map(p => `<tr><td><input type="checkbox" style="width:auto" ${EX.excluded.has(p.id) ? '' : 'checked'} onchange="toggleRow(${p.id},this.checked)"></td><td>${p.id}</td><td>${esc(p.Titre || 'Sans titre')}</td><td>${esc(sCode(refId(p.Structure_porteuse)))}</td><td>${refId(p.Action_SD) ? 'Action ' + esc(aNum(refId(p.Action_SD))) : '–'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty" style="padding:20px">Aucune proposition ne correspond aux filtres.</div>'}</div>
+    <div class="panel"><h3>6. Aperçu</h3><div id="ex-preview"></div><div class="row" style="margin-top:10px"><button class="btn primary" id="ex-dl" onclick="downloadExport()">Télécharger le CSV</button></div></div>`;
+  renderExportPreview();
+}
+function renderExportPreview(){
+  const rows = exportRows(), cols = selectedCols(), c = document.getElementById('ex-count'), pv = document.getElementById('ex-preview'); if (!pv) return;
+  document.getElementById('count').textContent = `${rows.length} ligne(s) · ${cols.length} colonne(s)`;
+  if (c) c.textContent = `${rows.length} proposition(s) sélectionnée(s) sur ${P.length}`;
+  const dl = document.getElementById('ex-dl'); if (dl) dl.disabled = !rows.length || !cols.length;
+  if (!cols.length || !rows.length) { pv.innerHTML = `<div class="t-sub">${!cols.length ? 'Aucune colonne cochée.' : 'Aucune ligne à exporter.'}</div>`; return; }
+  pv.innerHTML = `<div class="tbl-wrap"><table class="t" style="min-width:${Math.max(560, cols.length * 130)}px"><thead><tr>${cols.map(x => `<th>${esc(EX.fmt.headers === 'codes' ? x.k : x.l)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 5).map(p => `<tr>${cols.map(x => { const t = cellText(x, p); return `<td title="${esc(t)}">${esc(t.length > 90 ? t.slice(0, 90) + '…' : t)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div><div class="t-sub" style="margin-top:4px">Aperçu des ${Math.min(5, rows.length)} premières lignes sur ${rows.length}.</div>`;
+}
+
+/* ============================== démarrage ============================== */
+async function start(){
+  showLoader(true);
+  try {
+    let n = 0; while (!grist.docApi && n < 20) { await new Promise(r => setTimeout(r, 100)); n++; }
+    if (!(await checkAccess())) {
+      document.getElementById('toolbar').style.display = 'none';
+      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie et aux Propriétaires.</span></div>`; return;
+    }
+    await loadAll(); applyPreset('std-sans'); renderAll();
+  } catch (e) { console.error(e); document.getElementById('page').innerHTML = `<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
+  finally { showLoader(false); }
+}
+grist.ready({ requiredAccess:'full', columns:[] });
+let _started = false;
+grist.onRecords(() => { if (!_started) { _started = true; start(); } else scheduleReload(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && MODAL) closeModal(); });
+</script>
+</body>
+</html>
