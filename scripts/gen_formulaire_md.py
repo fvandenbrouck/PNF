@@ -71,6 +71,7 @@ STRUCTURES = [(r["fields"]["code"], clean(r["fields"]["libelle"])) for r in recs
 AXES = {r["id"]: (clean(r["fields"]["libelle"]), clean(r["fields"]["description"])) for r in recs("Axes")}
 ACTIONS = [(r["fields"]["id_axe"], clean(r["fields"]["libelle"])) for r in recs("Actions_axes")]
 MODALITES = [clean(r["fields"]["libelle"]) for r in recs("Modalites")]
+FORMATS = [clean(r["fields"]["libelle"]) for r in recs("Formats")]
 PUBLICS = [(clean(r["fields"]["categorie"]), clean(r["fields"]["libelle"])) for r in recs("Publics")]
 DATE_LIMITE = next((r["fields"]["valeur"] for r in recs("Parametres_recueil")
                     if r["fields"]["cle"] == "date_limite"), "")
@@ -91,6 +92,8 @@ def expand(ftype, cwo):
         return [f"- {c} — {lib}" for c, lib in STRUCTURES]
     if ftype == "Ref:Modalites":
         return ["- " + m for m in MODALITES]
+    if ftype == "Ref:Formats":
+        return ["- " + m for m in FORMATS]
     if ftype == "Ref:Actions_axes":
         lines, cur = [], None
         for ax, lib in ACTIONS:

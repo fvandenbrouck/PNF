@@ -13,6 +13,7 @@
 <!-- Version v2.5 : fiche de retour supprimée (onglet, texte généré et bouton de copie) -->
 <!-- Version v3.0 : modalité et format séparés (table Formats, questions Magistère/Mentor) : champs corrigeables, filtre et export du format, versement de id_format et des articulations vers le catalogue -->
 <!-- Version v3.1 : articulation Magistère / Mentor : une seule question à trois choix (Magistère, Mentor, Ni l'un ni l'autre) à la place de deux questions Oui/Non -->
+<!-- Version v3.2 : durée saisie en heures (colonnes Duree_heures / C_Duree_heures) ; journées stagiaires = effectif × heures / 6 (paramètre jour_heures) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -151,7 +152,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.1 chargé');
+console.info('[widget-recueil-arbitrage] v3.2 chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -224,7 +225,7 @@ const groupeVerse = p => isVersee(racine(p));
 function gaugeColor(s){ const v = Math.max(0, Math.min(10, s || 0)); return `hsl(${Math.round(v * 12)},62%,45%)`; }
 function gauge(s){ return `<div class="gauge"><i style="width:${s === null || s === undefined ? 0 : Math.max(0, Math.min(10, s)) * 10}%;background:${gaugeColor(s)}"></i></div>`; }
 const cEff = p => (p.C_Effectif_previsionnel ?? p.Effectif_previsionnel);
-const cDuree = p => (p.C_Duree_jours ?? p.Duree_jours);
+const cDuree = p => (p.C_Duree_heures ?? p.Duree_heures);
 
 /* ============================== chargement ============================== */
 async function fetchRows(t){ try { return toRows(await grist.docApi.fetchTable(t)); } catch (e) { console.warn('[arbitrage] lecture impossible :', t, e); return []; } }
@@ -385,7 +386,7 @@ const EDITS = [
   { k:'Titre', c:'C_Titre', l:'Titre', t:'text' }, { k:'Objectifs', c:'C_Objectifs', l:'Objectifs', t:'area' },
   { k:'Action_SD', c:'C_Action_SD', l:'Action du schéma directeur', t:'action' }, { k:'Structure_porteuse', c:'C_Structure_porteuse', l:'Structure porteuse', t:'struct' },
   { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Format', c:'C_Format', l:'Format', t:'format' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' },
-  { k:'Periode', c:'C_Periode', l:'Période', t:'periode' }, { k:'Duree_jours', c:'C_Duree_jours', l:'Durée (en jours)', t:'num' },
+  { k:'Periode', c:'C_Periode', l:'Période', t:'periode' }, { k:'Duree_heures', c:'C_Duree_heures', l:'Durée (en heures)', t:'num' },
   { k:'Effectif_previsionnel', c:'C_Effectif_previsionnel', l:'Effectif prévisionnel', t:'int' }, { k:'Lieu', c:'C_Lieu', l:'Lieu', t:'text' },
   { k:'Articulation_parcours', c:'C_Articulation_parcours', l:'Articulation à un parcours', t:'parcours' },
   { k:'Email_contact', c:'C_Email_contact', l:'Adresse électronique du porteur', t:'text' }, { k:'Action_pluriannuelle', c:'C_Action_pluriannuelle', l:'Action pluriannuelle', t:'oui' },
@@ -558,7 +559,7 @@ async function doFusion(){
   if (document.getElementById('fu-eff').checked) {                // effectif et durée : maximum des deux (jamais cumulés)
     const eMax = Math.max(num(cEff(main)) || 0, num(cEff(src)) || 0), dMax = Math.max(num(cDuree(main)) || 0, num(cDuree(src)) || 0);
     if (eMax > 0 && eMax !== (num(cEff(main)) || 0)) upd.C_Effectif_previsionnel = eMax;
-    if (dMax > 0 && dMax !== (num(cDuree(main)) || 0)) upd.C_Duree_jours = dMax;
+    if (dMax > 0 && dMax !== (num(cDuree(main)) || 0)) upd.C_Duree_heures = dMax;
   }
   if (Object.keys(upd).length) acts.push(['UpdateRecord', PROP, mainId, upd]);
   try { await grist.docApi.applyUserActions(acts); await loadAll(); renderAll(); toast(`Proposition n° ${src.id} fusionnée dans n° ${mainId}.`); }
@@ -580,7 +581,7 @@ function versePlan(p){
   const structs = [...new Set(members.map(m => refId(m.C_Structure_porteuse ?? m.Structure_porteuse)).filter(Boolean))];
   const emails = []; members.forEach(m => { const e = lc(m.C_Email_contact || m.Email_contact); if (e && !emails.some(x => x.email === e)) emails.push({ email: e, struct: refId(m.C_Structure_porteuse ?? m.Structure_porteuse) }); });
   return { members, structs, emails, act, axe: axeOf(act), modalite: refId(p.C_Modalite ?? p.Modalite), format: refId(p.C_Format ?? p.Format), articulation: (p.C_Articulation_parcours ?? p.Articulation_parcours) || '', publics: asIds(p.C_Publics ?? p.Public_cible),
-    heures: duree * jourHeures(), js: duree * eff, annee: refId(p.Annee_scolaire), titre: clean(p.C_Titre ?? p.Titre), objectif: String(p.C_Objectifs ?? p.Objectifs ?? '').trim() };
+    heures: duree, js: Math.round(duree * eff / jourHeures() * 100) / 100, annee: refId(p.Annee_scolaire), titre: clean(p.C_Titre ?? p.Titre), objectif: String(p.C_Objectifs ?? p.Objectifs ?? '').trim() };
 }
 function paneVerse(p){
   const st = statutOf(p), fd = fusionDans(p);
@@ -696,7 +697,7 @@ const EXPORT_COLS = [
   { k:'pluriannuelle', g:G.DEP, l:'Action pluriannuelle', v:p => p.Action_pluriannuelle }, { k:'report', g:G.DEP, l:'Report d\'une action du PNF précédent', v:p => p[REPCOL] },
   { k:'periode', g:G.DEP, l:'Période calendaire envisagée', v:p => p.Periode }, { k:'modalite', g:G.DEP, l:'Modalité de formation', v:p => modLib(refId(p.Modalite)) },
   { k:'format', g:G.DEP, l:'Format de formation', v:p => fmtLib(refId(p.Format)) }, { k:'articulation', g:G.DEP, l:'Articulation à un parcours (Magistère / Mentor)', v:p => p.Articulation_parcours },
-  { k:'publics', g:G.DEP, l:'Public cible', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, l:'Durée (jours)', v:p => p.Duree_jours }, { k:'effectif', g:G.DEP, l:'Effectif prévisionnel', v:p => p.Effectif_previsionnel },
+  { k:'publics', g:G.DEP, l:'Public cible', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, l:'Durée (heures)', v:p => p.Duree_heures }, { k:'effectif', g:G.DEP, l:'Effectif prévisionnel', v:p => p.Effectif_previsionnel },
   { k:'lieu', g:G.DEP, l:'Lieu prévisionnel', v:p => p.Lieu }, { k:'commentaire_porteur', g:G.DEP, l:'Commentaire du porteur', v:p => p.Commentaire_porteur },
   { k:'c_titre', g:G.COR, l:'Titre (corrigé)', v:p => p.C_Titre }, { k:'c_objectifs', g:G.COR, l:'Objectifs (corrigés)', v:p => p.C_Objectifs },
   { k:'c_action_num', g:G.COR, l:'Action du schéma directeur (n°, corrigée)', v:p => aNum(refId(p.C_Action_SD)) }, { k:'c_action_lib', g:G.COR, l:'Action du schéma directeur (libellé, corrigé)', v:p => aLib(refId(p.C_Action_SD)) },
@@ -704,12 +705,12 @@ const EXPORT_COLS = [
   { k:'c_structure_code', g:G.COR, l:'Structure porteuse (code, corrigée)', v:p => sCode(refId(p.C_Structure_porteuse)) }, { k:'c_structure_lib', g:G.COR, l:'Structure porteuse (libellé, corrigé)', v:p => clean((STRUCT[refId(p.C_Structure_porteuse)] || {}).libelle) },
   { k:'c_modalite', g:G.COR, l:'Modalité (corrigée)', v:p => modLib(refId(p.C_Modalite)) },
   { k:'c_format', g:G.COR, l:'Format (corrigé)', v:p => fmtLib(refId(p.C_Format)) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours (corrigée)', v:p => p.C_Articulation_parcours }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) },
-  { k:'c_periode', g:G.COR, l:'Période (corrigée)', v:p => p.C_Periode }, { k:'c_duree', g:G.COR, l:'Durée en jours (corrigée)', v:p => p.C_Duree_jours },
+  { k:'c_periode', g:G.COR, l:'Période (corrigée)', v:p => p.C_Periode }, { k:'c_duree', g:G.COR, l:'Durée en heures (corrigée)', v:p => p.C_Duree_heures },
   { k:'c_effectif', g:G.COR, l:'Effectif prévisionnel (corrigé)', v:p => p.C_Effectif_previsionnel }, { k:'c_lieu', g:G.COR, l:'Lieu (corrigé)', v:p => p.C_Lieu },
   { k:'c_email', g:G.COR, l:'Adresse électronique de contact (corrigée)', v:p => p.C_Email_contact }, { k:'c_pluriannuelle', g:G.COR, l:'Action pluriannuelle (corrigée)', v:p => p.C_Action_pluriannuelle },
   { k:'c_report', g:G.COR, l:'Report d\'une action du PNF précédent (corrigé)', v:p => p.C_Report },
   { k:'heures', g:G.CAL, l:'Heures de formation (déposées)', v:p => p.Heures_prevues }, { k:'js', g:G.CAL, l:'Journées stagiaires (déposées)', v:p => p.JS_prevues },
-  { k:'c_heures', g:G.CAL, l:'Heures de formation (corrigées)', v:p => (num(cDuree(p)) || 0) * jourHeures() }, { k:'c_js', g:G.CAL, l:'Journées stagiaires (corrigées)', v:p => (num(cDuree(p)) || 0) * (num(cEff(p)) || 0) },
+  { k:'c_heures', g:G.CAL, l:'Heures de formation (corrigées)', v:p => num(cDuree(p)) || 0 }, { k:'c_js', g:G.CAL, l:'Journées stagiaires (corrigées)', v:p => Math.round((num(cDuree(p)) || 0) * (num(cEff(p)) || 0) / jourHeures() * 100) / 100 },
   ...ARR.map(([k, l]) => ({ k:k.toLowerCase(), g:G.ARR, l, v:p => p[k] })),
   { k:'orientations', g:G.ORI, l:'Orientations du schéma directeur', v:p => oriOf(p) },
   { k:'note_globale', g:G.COT, cot:1, l:'Note globale (/10)', v:p => p.Score_global }, { k:'note_completude', g:G.COT, cot:1, l:'Complétude (/10)', v:p => p.Score_completude },
