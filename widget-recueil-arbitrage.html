@@ -10,6 +10,7 @@
 <!-- Version v2.2 : note de pertinence supprimée (note globale 100 % automatique, filtre « Pertinence à noter » retiré) ; la case « Incompatibilité constatée » est conservée -->
 <!-- Version v2.3 : à la fusion, l'effectif et la durée de la proposition principale prennent le maximum des deux (et non plus leur somme) -->
 <!-- Version v2.4 : champs texte corrigés nettoyés des espaces superflus ; message « Versement en cours » pendant le versement -->
+<!-- Version v2.5 : fiche de retour supprimée (onglet, texte généré et bouton de copie) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -106,7 +107,6 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 .crit { display:grid; grid-template-columns:22px 1fr 150px 40px; gap:4px 8px; font-size:11.5px; padding:4px 0; border-bottom:1px dashed var(--border); align-items:start; }
 .crit .m { color:var(--danger); font-size:10.5px; grid-column:2/5; }
 .ic-ok { color:var(--ok); font-weight:700; } .ic-bad { color:var(--danger); font-weight:700; } .ic-mid { color:#a06a10; font-weight:700; } .ic-na { color:var(--ink3); }
-.retour { width:100%; min-height:380px; font-family:'DM Mono',monospace; font-size:11.5px; line-height:1.55; }
 .warn { background:var(--danger-l); color:var(--danger); border-radius:8px; padding:8px 10px; font-size:11.5px; }
 .note { background:var(--ok-l); color:var(--ok); border-radius:8px; padding:8px 10px; font-size:11.5px; }
 .grp { border:1px solid var(--border); border-radius:10px; padding:8px 10px; background:var(--white); }
@@ -149,7 +149,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v2.4 chargé');
+console.info('[widget-recueil-arbitrage] v2.5 chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -365,12 +365,11 @@ function renderModal(){
     <div class="modal-head"><div><h2>${esc(p.Titre || 'Sans titre')}</h2>
       <div class="modal-meta">N° ${p.id} · déposée le ${esc(fmtDate(p.Date_depot) || '–')} · ${esc(p.Email_contact || '')} · <span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? ' · versée dans le catalogue des actions' : ''}</div></div>
       <button class="btn-close" onclick="closeModal()">×</button></div>
-    <div class="modal-tabs">${[['dep', 'Déposé / corrigé'], ['eval', 'Évaluation'], ['instr', 'Instruction'], ['retour', 'Fiche de retour'], ['verse', 'Versement']].map(([t, l]) => `<button class="mtab${MODAL.tab === t ? ' active' : ''}" data-t="${t}" onclick="setMTab('${t}')">${l}</button>`).join('')}</div>
+    <div class="modal-tabs">${[['dep', 'Déposé / corrigé'], ['eval', 'Évaluation'], ['instr', 'Instruction'], ['verse', 'Versement']].map(([t, l]) => `<button class="mtab${MODAL.tab === t ? ' active' : ''}" data-t="${t}" onclick="setMTab('${t}')">${l}</button>`).join('')}</div>
     <div class="modal-body">
       <div class="pane${MODAL.tab === 'dep' ? ' active' : ''}" data-t="dep">${paneDep(p)}</div>
       <div class="pane${MODAL.tab === 'eval' ? ' active' : ''}" data-t="eval">${paneEval(p, e)}</div>
       <div class="pane${MODAL.tab === 'instr' ? ' active' : ''}" data-t="instr">${paneInstr(p)}</div>
-      <div class="pane${MODAL.tab === 'retour' ? ' active' : ''}" data-t="retour">${paneRetour(p, e)}</div>
       <div class="pane${MODAL.tab === 'verse' ? ' active' : ''}" data-t="verse">${paneVerse(p)}</div>
     </div>`;
 }
@@ -560,44 +559,6 @@ async function doDefusion(id){
   try { await grist.docApi.applyUserActions([['UpdateRecord', PROP, id, { Fusionnee_dans: 0, Statut_instruction: "En cours d'instruction" }]]); await loadAll(); renderAll(); toast(`Proposition n° ${id} défusionnée.`); }
   catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
 }
-
-/* ----- onglet Fiche de retour (copier le texte uniquement) ----- */
-const mot = s => s === null || s === undefined ? 'non évaluée' : (s >= 8 ? 'très bon' : s >= 6 ? 'bon' : s >= 4 ? 'moyen' : 'à renforcer');
-function retourText(p, e){
-  const L = [], b = (e && e.blocs) || {}, st = sFull(refId(p.Structure_porteuse)) || sCode(refId(p.Structure_porteuse));
-  const g = num(p.Score_global), an = PARAMS.annee_cible || '2027-2028';
-  L.push(`Objet : PNF ${an} — retour sur votre proposition « ${p.Titre || ''} »`, '', 'Bonjour,', '',
-    `Nous avons bien reçu votre proposition d'action de formation « ${p.Titre || ''} » (déposée le ${fmtDate(p.Date_depot)}${st ? ', ' + st : ''}).`,
-    'Elle a fait l\'objet d\'une première analyse au regard du cahier des charges du PNF, de l\'arrêté du 1er août 2023 relatif à la formation et à l\'accompagnement personnalisé des agents publics et du schéma directeur de la politique de formation continue 2025-2029.', '');
-  if (!e) { L.push('(Cotation indisponible.)', ''); }
-  else {
-    if (isRouge(p)) L.push('⚠ Votre proposition présente une incompatibilité avec le cahier des charges :', ...(e.veto_motifs || []).map(m => '   - ' + m), '');
-    L.push(`Note globale : ${fmtN(g)} / 10`,
-      `   - Complétude de la proposition : ${fmtN(b.Completude)} / 10 (${mot(b.Completude)})`,
-      `   - Conformité au cahier des charges et à l'arrêté de 2023 : ${fmtN(b.Conformite)} / 10 (${mot(b.Conformite)})`,
-      `   - Alignement avec les orientations du schéma directeur : ${fmtN(b.Alignement)} / 10 (bonus, ne pénalise pas)`);
-    L.push('');
-    const amel = (e.criteres || []).filter(c => ['Completude', 'Conformite'].includes(c.bloc) && c.res !== null && c.res < 1 && !c.redhibitoire);
-    if (amel.length) { L.push('Points à préciser ou à compléter :'); amel.forEach(c => L.push(`   - ${c.libelle}${c.motif ? ' : ' + c.motif : ''}`)); L.push(''); }
-    else L.push('Aucun point à compléter n\'a été relevé sur la complétude et la conformité.', '');
-  }
-  L.push('Pour toute correction ou précision, merci de répondre à ce message : la chefferie procédera aux modifications.', '', 'Cordialement,', 'La chefferie du bureau');
-  return L.join('\n');
-}
-function paneRetour(p, e){
-  return `<div class="t-sub">Texte à relire et à adapter avant de le copier dans votre messagerie. Les commentaires internes n'y figurent pas.</div>
-    <textarea class="retour" id="retour-text">${esc(retourText(p, e))}</textarea>
-    <div class="row"><button class="btn primary" onclick="copyRetour()">Copier le texte</button></div>`;
-}
-function copyRetour(){
-  const ta = document.getElementById('retour-text'); ta.focus(); ta.select();
-  let ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-  const done = () => toast('Texte copié.');
-  if (ok) { done(); return; }
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, () => toast('Copie impossible : sélectionne le texte et copie-le (Ctrl+C).', true));
-  else toast('Copie impossible : sélectionne le texte et copie-le (Ctrl+C).', true);
-}
-
 
 /* ============================== onglet Versement ============================== */
 const lc = x => String(x || '').trim().toLowerCase();
