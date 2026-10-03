@@ -24,6 +24,7 @@
 <!-- Version v75 : statut automatiquement défini sur "Prévu" dès qu'un responsable de suivi est désigné (sauf changement explicite du statut dans la même modification) -->
 <!-- Version v76 : Format (table Formats) et articulations Magistère/Mentor : saisie dans la modale (création et édition), filtre, export CSV, étiquettes sur les cartes -->
 <!-- Version v77 : articulation Magistère / Mentor : une seule liste (Magistère, Mentor, Ni l'un ni l'autre) dans la modale, colonne articulation_parcours -->
+<!-- Version v78 : la rubrique « Contact(s) / pilote(s) » de la modale devient « Contact(s) porteur(s) de l'action » (colonne Contacts, distincte des référents IGÉSR) -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -888,7 +889,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v77 format et articulation Magistère/Mentor chargé');
+console.info('[widget-cartes] v78 libellé « Contact(s) porteur(s) de l\'action » chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
@@ -2585,7 +2586,7 @@ function buildModalForm(a) {
       </div>
     </div>
     <div class="mfield full">
-      <label>Contact(s) / pilote(s)</label>
+      <label>Contact(s) porteur(s) de l'action</label>
       <div class="mchips" id="m-contacts">
         ${contactOptions.map(o => `<label class="mchip"><input type="checkbox" value="${esc(o.value)}"${checked(selectedContactIds, o.value)}><span>${esc(o.label)}</span></label>`).join('')}
       </div>
