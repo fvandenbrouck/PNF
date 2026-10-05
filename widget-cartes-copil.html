@@ -21,6 +21,7 @@
 <!-- Version v10 : filtres alignés widget-cartes-public + recherche enrichie -->
 <!-- Version v26 : Format (table Formats) et articulations Magistère/Mentor : filtre, export CSV, étiquettes sur les cartes et dans la fiche -->
 <!-- Version v27 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
+<!-- Version v28 : export CSV protégé contre l'injection de formules -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -247,7 +248,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v27 format et articulation Magistère/Mentor chargé');
+console.info('[widget-cartes-copil] v28 export CSV protégé contre l\'injection de formules chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};
@@ -799,8 +800,9 @@ async function refreshReferentsTableAndFilters(){
   buildFilterControls();
 }
 
+const csvSafe = s => /^[=+\-@\t\r]/.test(s) ? "'" + s : s;   // neutralise l'injection de formules (tableur) sur les cellules texte
 function csvCell(value){
-  const s = String(value ?? '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+  const s = csvSafe(String(value ?? '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim());
   return '"' + s.replace(/"/g, '""') + '"';
 }
 

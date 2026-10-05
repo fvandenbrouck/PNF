@@ -7,6 +7,7 @@
 <!-- Version v1 : vue Alertes avec deux onglets Suivi / Données clôturées -->
 <!-- Version v2 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) -->
 <!-- Version v3 : libellés Statut de suivi et Chefferie résolus (au lieu d'identifiants bruts) ; détail des données manquantes affiché au lieu de « AlerteData = True » -->
+<!-- Version v4 : export CSV protégé contre l'injection de formules -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -125,7 +126,7 @@ select option { color:var(--ink); background:var(--white); }
   </div>
 </div>
 <script>
-console.info('[widget-alertes] v3 libellés statut/chefferie et détail des données manquantes chargé');
+console.info('[widget-alertes] v4 export CSV protégé contre l\'injection de formules chargé');
 
 let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
 let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
@@ -342,7 +343,8 @@ function openModal(id){
   document.getElementById('overlay').classList.remove('hidden');
 }
 function closeModal(e){ if(e && e.target!==document.getElementById('overlay')) return; document.getElementById('overlay').classList.add('hidden'); CURRENT_ACTION=null; }
-function csvEscape(v){ const s=String(v??'').replace(/\r?\n/g,' | '); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+const csvSafe = s => /^[=+\-@\t\r]/.test(s) ? "'" + s : s;   // neutralise l'injection de formules (tableur) sur les cellules texte
+function csvEscape(v){ const s=csvSafe(String(v??'').replace(/\r?\n/g,' | ')); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function downloadCsv(){
   const headers=['onglet','titre','annee','code_gaia','statut_suivi','date_derniere_entree','responsables_suivi','chefferie','donnees_manquantes','compte_rendu','prochaine_etape','echeance'];
   const rows=FILTERED.map(a=>{ const j=a._latest||{}; return { onglet:CURRENT_TAB==='suivi'?'Suivi':'Données clôturées', titre:getTitre(a), annee:getAnnee(a), code_gaia:getGaia(a), statut_suivi:a._statusText||'', date_derniere_entree:formatDateValue(j.Date), responsables_suivi:getResponsables(a).join(', '), chefferie:getChefferie(a), donnees_manquantes:(a._missing||[]).join(' | '), compte_rendu:j.Compte_rendu||'', prochaine_etape:j.Prochaine_etape||'', echeance:formatDateValue(j.Echeance) }; });

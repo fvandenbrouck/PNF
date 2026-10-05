@@ -25,6 +25,7 @@
 <!-- Version v76 : Format (table Formats) et articulations Magistère/Mentor : saisie dans la modale (création et édition), filtre, export CSV, étiquettes sur les cartes -->
 <!-- Version v77 : articulation Magistère / Mentor : une seule liste (Magistère, Mentor, Ni l'un ni l'autre) dans la modale, colonne articulation_parcours -->
 <!-- Version v78 : la rubrique « Contact(s) / pilote(s) » de la modale devient « Contact(s) porteur(s) de l'action » (colonne Contacts, distincte des référents IGÉSR) -->
+<!-- Version v79 : export CSV protégé contre l'injection de formules -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -889,7 +890,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v78 libellé « Contact(s) porteur(s) de l\'action » chargé');
+console.info('[widget-cartes] v79 export CSV protégé contre l\'injection de formules chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
@@ -2955,8 +2956,9 @@ async function saveRecord() {
 
 
 // ── Export CSV de la sélection filtrée ─────────────────────────────────────
+const csvSafe = s => /^[=+\-@\t\r]/.test(s) ? "'" + s : s;   // neutralise l'injection de formules (tableur) sur les cellules texte
 function csvEscape(value) {
-  const s = String(value ?? '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+  const s = csvSafe(String(value ?? '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim());
   return '"' + s.replace(/"/g, '""') + '"';
 }
 
