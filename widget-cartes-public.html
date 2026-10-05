@@ -17,8 +17,9 @@
 <!-- Version v50 : lecture robuste du booléen Actions_formation.JourneeIG -->
 <!-- Version v57 : Format (table Formats) et articulations Magistère/Mentor : filtre, étiquettes sur les cartes et dans la fiche -->
 <!-- Version v58 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
-<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Version v59 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -581,7 +582,7 @@ html, body, input, select, textarea, button {
 </div>
 
 <script>
-console.info('[widget-cartes-public] v58 format et articulation Magistère/Mentor chargé');
+console.info('[widget-cartes-public] v59 polices et plugin locaux chargé');
 
 // Widget public — lecture seule.
 // Important : ce widget ne demande que l'accès « read table » et ne contient aucune action AddRecord/UpdateRecord.

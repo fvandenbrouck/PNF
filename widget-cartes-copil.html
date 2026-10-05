@@ -22,8 +22,9 @@
 <!-- Version v26 : Format (table Formats) et articulations Magistère/Mentor : filtre, export CSV, étiquettes sur les cartes et dans la fiche -->
 <!-- Version v27 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
 <!-- Version v28 : export CSV protégé contre l'injection de formules -->
-<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Version v29 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -248,7 +249,7 @@ html, body, input, select, textarea, button {
   </div>
 </div>
 <script>
-console.info('[widget-cartes-copil] v28 export CSV protégé contre l\'injection de formules chargé');
+console.info('[widget-cartes-copil] v29 polices et plugin locaux chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null;
 let CONTACT_ROWS = [], STRUCT_ROWS = [], REFERENT_ROWS = [], ANNEE_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_EMAIL = {};

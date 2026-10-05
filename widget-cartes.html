@@ -26,8 +26,9 @@
 <!-- Version v77 : articulation Magistère / Mentor : une seule liste (Magistère, Mentor, Ni l'un ni l'autre) dans la modale, colonne articulation_parcours -->
 <!-- Version v78 : la rubrique « Contact(s) / pilote(s) » de la modale devient « Contact(s) porteur(s) de l'action » (colonne Contacts, distincte des référents IGÉSR) -->
 <!-- Version v79 : export CSV protégé contre l'injection de formules -->
-<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Version v80 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -890,7 +891,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v79 export CSV protégé contre l\'injection de formules chargé');
+console.info('[widget-cartes] v80 polices et plugin locaux chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];

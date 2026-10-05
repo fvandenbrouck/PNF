@@ -8,8 +8,9 @@
 <!-- Version v2 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .grid-wrap) -->
 <!-- Version v3 : libellés Statut de suivi et Chefferie résolus (au lieu d'identifiants bruts) ; détail des données manquantes affiché au lieu de « AlerteData = True » -->
 <!-- Version v4 : export CSV protégé contre l'injection de formules -->
-<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Version v5 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
 :root {
@@ -126,7 +127,7 @@ select option { color:var(--ink); background:var(--white); }
   </div>
 </div>
 <script>
-console.info('[widget-alertes] v4 export CSV protégé contre l\'injection de formules chargé');
+console.info('[widget-alertes] v5 polices et plugin locaux chargé');
 
 let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
 let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];

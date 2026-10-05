@@ -16,8 +16,9 @@
 <!-- Version v3.2 : durée saisie en heures (colonnes Duree_heures / C_Duree_heures) ; journées stagiaires = effectif × heures / 6 (paramètre jour_heures) -->
 <!-- Version v3.3 : la déclaration « document attestant le suivi » (Arr_attestation) est retirée de la liste des déclarations de l'arrêté -->
 <!-- Version v3.4 : export CSV protégé contre l'injection de formules (cellule texte commençant par = + - @ préfixée d'une apostrophe) -->
-<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Version v3.5 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
 :root {
@@ -154,7 +155,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.4 chargé');
+console.info('[widget-recueil-arbitrage] v3.5 polices et plugin locaux chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';

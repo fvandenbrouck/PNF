@@ -7,10 +7,11 @@
 <!-- Version v1 : gestion des classes d'accès (Utilisateurs / Structure / Classe) -->
 <!-- Version v2 : défilement mobile corrigé (page scrollable au lieu d'une hauteur fixe pour .main) -->
 <!-- Version v3 : filtre par Classe ajouté dans la barre d'outils, combinable avec le filtre Structure -->
+<!-- Version v4 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère -->
 <!-- Accès réservé aux Propriétaires : protégé par une règle ACL sur les tables Utilisateurs et Classe,
      pas par ce script. Voir onglet Access Rules du document. -->
-<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
