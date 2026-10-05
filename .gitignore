@@ -3,3 +3,27 @@
 .env
 table_backup/
 logs/
+
+# --- Travail non public : le dépôt est public (GitHub Pages sert les widgets) ---
+# Documentation interne (droits d'accès, architecture, analyses de sécurité)
+docs/
+# Guide utilisateur (publié sur Docs, pas sur GitHub)
+wiki/
+tutoriel/
+# Sauvegardes, essais et anciennes versions
+backup/
+discard/
+update/
+tables/
+widget-*_old.html
+# Configuration locale de l'assistant
+.claude/
+# Documents de travail et sources (textes réglementaires, cahier des charges, formulaire)
+*.pdf
+*.wav
+*.docx
+*.pptx
+*.xlsx
+~$*
+/*.md
+!/README.md
