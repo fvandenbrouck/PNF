@@ -149,7 +149,8 @@ def render(mode):
         req_flags.append((counter[0], required))
         kind, hint = kind_of(ftype, f["cwo"])
         star = " \\*" if required else ""
-        out.append(f"#### {counter[0]}. {clean(f['label'])}{star}\n")
+        title = json.loads(f['cwo'] or '{}').get('question') or f['label']   # titre saisi dans l'éditeur du formulaire, sinon libellé de la colonne
+        out.append(f"#### {counter[0]}. {clean(title)}{star}\n")
         if mode == "relecture":
             out.append(f"*Type de réponse : {kind}{' — obligatoire' if required else ' — facultatif'}*"
                        f" — colonne `{f['colId']}`\n")
