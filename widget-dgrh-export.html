@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Propositions PNF — Export DGRH</title>
 <!-- Version v1.1 : message « liste vide » (aucune proposition déposée) au lieu d'un chargement sans fin ; démarrage sans attendre onRecords -->
+<!-- Version v1.2 : nombre prévisionnel de sessions de formation (colonnes d'export) -->
 <!-- Version v1 : export Excel (.xlsx) des propositions d'actions de formation, avec filtres de lignes et choix des colonnes ; lecture seule, sans cotation ni instruction ; réservé à la DGRH, à la chefferie et aux propriétaires -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
@@ -138,7 +139,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 <div id="loader"><div class="spinner"></div><p>Chargement des propositions…</p></div>
 <div id="toast"></div>
 <script>
-console.info('[widget-dgrh-export] v1.1 chargé');
+console.info('[widget-dgrh-export] v1.2 chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF';
@@ -275,7 +276,7 @@ const EXPORT_COLS = [
   { k:'pluriannuelle', g:G.DEP, l:'Action pluriannuelle (déposée)', v:p => p.Action_pluriannuelle }, { k:'report', g:G.DEP, l:'Report d\'une action du PNF précédent (déposé)', v:p => p[REPCOL] },
   { k:'periode', g:G.DEP, l:'Période calendaire envisagée (déposée)', v:p => p.Periode }, { k:'modalite', g:G.DEP, l:'Modalité de formation (déposée)', v:p => modLib(refId(p.Modalite)) },
   { k:'format', g:G.DEP, l:'Modalité pédagogique (déposée)', v:p => fmtLib(refId(p.Format)) }, { k:'articulation', g:G.DEP, l:'Articulation à un parcours Magistère / Mentor (déposée)', v:p => p.Articulation_parcours },
-  { k:'publics', g:G.DEP, l:'Public cible (déposé)', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, n:1, l:'Durée en heures (déposée)', v:p => p.Duree_heures }, { k:'effectif', g:G.DEP, n:1, l:'Effectif prévisionnel (déposé)', v:p => p.Effectif_previsionnel },
+  { k:'publics', g:G.DEP, l:'Public cible (déposé)', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, n:1, l:'Durée en heures (déposée)', v:p => p.Duree_heures }, { k:'effectif', g:G.DEP, n:1, l:'Effectif prévisionnel (déposé)', v:p => p.Effectif_previsionnel }, { k:'sessions', g:G.DEP, n:1, l:'Nombre prévisionnel de sessions (déposé)', v:p => p.Nb_sessions },
   { k:'lieu', g:G.DEP, l:'Lieu prévisionnel (déposé)', v:p => p.Lieu }, { k:'commentaire_porteur', g:G.DEP, l:'Commentaire du porteur', v:p => p.Commentaire_porteur },
   { k:'c_titre', g:G.COR, l:'Titre', v:p => p.C_Titre || p.Titre }, { k:'c_objectifs', g:G.COR, l:'Objectifs', v:p => p.C_Objectifs || p.Objectifs },
   { k:'c_action_num', g:G.COR, n:1, l:'Action du schéma directeur (n°)', v:p => aNum(refCur(p, 'C_Action_SD', 'Action_SD')) }, { k:'c_action_lib', g:G.COR, l:'Action du schéma directeur (libellé)', v:p => aLib(refCur(p, 'C_Action_SD', 'Action_SD')) },
@@ -283,7 +284,7 @@ const EXPORT_COLS = [
   { k:'c_modalite', g:G.COR, l:'Modalité de formation', v:p => modLib(refCur(p, 'C_Modalite', 'Modalite')) },
   { k:'c_format', g:G.COR, l:'Modalité pédagogique', v:p => fmtLib(refCur(p, 'C_Format', 'Format')) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours Magistère / Mentor', v:p => p.C_Articulation_parcours || p.Articulation_parcours },
   { k:'c_publics', g:G.COR, l:'Public cible', v:p => pubLibs(asIds(p.C_Publics).length ? p.C_Publics : p.Public_cible) }, { k:'c_periode', g:G.COR, l:'Période calendaire envisagée', v:p => p.C_Periode || p.Periode },
-  { k:'c_duree', g:G.COR, n:1, l:'Durée en heures', v:p => num(cDuree(p)) }, { k:'c_effectif', g:G.COR, n:1, l:'Effectif prévisionnel', v:p => num(cEff(p)) },
+  { k:'c_duree', g:G.COR, n:1, l:'Durée en heures', v:p => num(cDuree(p)) }, { k:'c_effectif', g:G.COR, n:1, l:'Effectif prévisionnel', v:p => num(cEff(p)) }, { k:'c_sessions', g:G.COR, n:1, l:'Nombre prévisionnel de sessions', v:p => num(p.C_Nb_sessions ?? p.Nb_sessions) },
   { k:'c_lieu', g:G.COR, l:'Lieu prévisionnel', v:p => p.C_Lieu ?? p.Lieu },
   { k:'c_pluriannuelle', g:G.COR, l:'Action pluriannuelle', v:p => p.C_Action_pluriannuelle || p.Action_pluriannuelle }, { k:'c_report', g:G.COR, l:'Report d\'une action du PNF précédent', v:p => p.C_Report || p[REPCOL] },
   { k:'heures', g:G.CAL, n:1, l:'Heures de formation (déposées)', v:p => p.Heures_prevues }, { k:'js', g:G.CAL, n:1, l:'Journées stagiaires (déposées)', v:p => p.JS_prevues },
