@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Propositions PNF — Export DGRH</title>
+<!-- Version v1 : export Excel (.xlsx) des propositions d'actions de formation, avec filtres de lignes et choix des colonnes ; lecture seule, sans cotation ni instruction ; réservé à la DGRH, à la chefferie et aux propriétaires -->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --turquoise:#A8DDD8; --peach:#F9C59A; --strawberry:#F5A0A8; --lilas:#E8E8F5;
+  --navy:#1B3A6B; --navy-l:#e8edf5; --bg:#F7F5F2; --white:#fff;
+  --ink:#1a1208; --ink2:#4a3f2f; --ink3:#8a8070; --border:#E0D8CC;
+  --danger:#8a2030; --danger-l:rgba(245,160,168,.28); --ok:#1a6b65; --ok-l:rgba(168,221,216,.35);
+}
+/* Défilement naturel de la page (pas de hauteur calculée) ; barre d'outils sticky seulement au-dessus de 760px. */
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); color-scheme:light; font-size:13px; }
+.toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:10px 12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; position:sticky; top:0; z-index:10; }
+.tabs { display:flex; gap:6px; background:var(--bg); padding:4px; border:1px solid var(--border); border-radius:10px; flex-wrap:wrap; }
+.tab { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; border:0; background:transparent; color:var(--ink3); padding:8px 12px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+.tab.active { background:var(--navy); color:#fff; }
+.count { font-family:'DM Mono',monospace; font-size:11px; color:var(--ink3); background:var(--lilas); padding:6px 12px; border-radius:999px; }
+.page { padding:14px; display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+.pane > *, .modal-body { min-width:0; }
+.panel { background:var(--white); border:1.5px solid var(--border); border-radius:12px; padding:12px 14px; }
+.panel > summary { cursor:pointer; font-weight:700; font-size:12px; color:var(--navy); }
+.panel h3 { font-family:'Fraunces',serif; font-size:15px; margin-bottom:8px; }
+.section-title { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:10px; font-weight:600; margin-bottom:6px; }
+.grid-f { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; margin-top:10px; }
+.fld { display:flex; flex-direction:column; gap:3px; }
+.fld > label { font-size:10px; font-weight:700; color:var(--ink3); text-transform:uppercase; letter-spacing:.05em; }
+input[type=text], input[type=number], input[type=date], select, textarea { font-family:'DM Sans',sans-serif; font-size:12px; color:var(--ink)!important; -webkit-text-fill-color:var(--ink)!important; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 9px; outline:none; width:100%; }
+textarea { min-height:90px; resize:vertical; line-height:1.5; }
+input:focus, select:focus, textarea:focus { border-color:var(--navy); background:#fff; }
+select option { color:var(--ink); background:var(--white); }
+input, select, textarea, button { color-scheme:light; }
+.chk { display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; }
+.chk input { width:auto; accent-color:var(--navy); }
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.btn { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; padding:8px 12px; border-radius:8px; cursor:pointer; white-space:nowrap; border:1px solid var(--border); background:var(--white); color:var(--ink2); }
+.btn:hover { border-color:var(--navy); color:var(--navy); }
+.btn.primary { border:1.5px solid var(--navy); background:var(--navy); color:#fff; }
+.btn.primary:hover { background:#0d2a52; color:#fff; }
+.btn.danger { color:var(--danger); }
+.btn.danger:hover { border-color:var(--danger); }
+.btn.small { padding:5px 9px; font-size:11px; }
+.btn[disabled] { opacity:.45; cursor:not-allowed; }
+/* tableau */
+.tbl-wrap { overflow-x:auto; border:1.5px solid var(--border); border-radius:12px; background:var(--white); }
+table.t { border-collapse:collapse; width:100%; min-width:860px; }
+table.t th { text-align:left; font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink3); padding:9px 10px; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; }
+table.t td { padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:top; font-size:12px; }
+table.t tbody tr.clickable { cursor:pointer; }
+table.t tbody tr.clickable:hover { background:var(--navy-l); }
+.t-title { font-family:'Fraunces',serif; font-size:13.5px; font-weight:600; line-height:1.3; }
+.t-sub { font-size:10.5px; color:var(--ink3); margin-top:2px; }
+.chip { font-family:'DM Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; display:inline-block; }
+.st-Reçue { background:var(--lilas); color:var(--navy); }
+.st-En-cours { background:rgba(249,197,154,.45); color:#8a4a10; }
+.st-Retenue { background:var(--ok-l); color:var(--ok); }
+.st-Refusée { background:var(--danger-l); color:var(--danger); }
+.st-Fusionnée { background:#ece7dd; color:var(--ink2); }
+.flag { font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; margin-left:4px; }
+.flag.bad { background:var(--danger-l); color:var(--danger); }
+.flag.good { background:var(--ok-l); color:var(--ok); }
+.gauge { height:8px; background:#ece7dd; border-radius:4px; overflow:hidden; min-width:54px; }
+.gauge > i { display:block; height:100%; border-radius:4px; }
+.g-row { display:flex; align-items:center; gap:8px; margin:3px 0; }
+.g-row .g-l { min-width:210px; font-size:12px; }
+.g-row .g-n { font-family:'DM Mono',monospace; font-size:11px; min-width:44px; text-align:right; }
+.g-row .gauge { flex:1; height:11px; }
+.mini { display:grid; gap:3px; min-width:96px; }
+.mini .gauge { height:5px; }
+.big-n { font-family:'Fraunces',serif; font-size:17px; font-weight:700; }
+.empty { text-align:center; padding:60px 20px; color:var(--ink3); }
+.empty p { font-family:'Fraunces',serif; font-size:22px; margin-bottom:8px; }
+/* modale */
+.overlay { position:fixed; inset:0; background:rgba(27,58,107,.45); backdrop-filter:blur(3px); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; }
+.overlay.hidden { display:none; }
+.modal { background:var(--white); border-radius:15px; width:100%; max-width:1020px; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(27,58,107,.25); margin:auto 0; }
+.modal-head { padding:16px 22px 12px; border-bottom:1px solid var(--border); display:flex; gap:12px; align-items:flex-start; }
+.modal-head h2 { font-family:'Fraunces',serif; font-size:19px; line-height:1.3; }
+.modal-meta { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-top:5px; letter-spacing:.04em; }
+.btn-close { margin-left:auto; border:none; background:transparent; font-size:24px; color:var(--ink3); cursor:pointer; padding:2px 6px; }
+.modal-tabs { padding:8px 22px 0; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+.mtab { font-size:12px; font-weight:700; border:0; background:transparent; color:var(--ink3); padding:8px 12px; border-bottom:3px solid transparent; cursor:pointer; }
+.mtab.active { color:var(--navy); border-bottom-color:var(--navy); }
+.modal-body { padding:16px 22px 22px; }
+.pane { display:none; gap:14px; }
+.pane.active { display:grid; }
+.cmp { display:grid; grid-template-columns:150px 1fr 1fr 70px; gap:8px 12px; align-items:start; }
+.cmp .h { font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink3); }
+.cmp .lab { font-size:11px; font-weight:700; color:var(--ink2); padding-top:7px; }
+.cmp .dep { font-size:12px; color:var(--ink2); background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 9px; white-space:pre-wrap; line-height:1.5; }
+.mod-flag { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--strawberry); margin-left:6px; vertical-align:middle; }
+.box { border:1.5px solid var(--border); border-radius:9px; background:var(--bg); padding:10px 12px; font-size:12px; line-height:1.55; }
+.pub-list { max-height:150px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:6px 8px; display:grid; gap:2px; }
+.pub-cat { font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; color:var(--ink3); margin-top:4px; }
+.crit { display:grid; grid-template-columns:22px 1fr 150px 40px; gap:4px 8px; font-size:11.5px; padding:4px 0; border-bottom:1px dashed var(--border); align-items:start; }
+.crit .m { color:var(--danger); font-size:10.5px; grid-column:2/5; }
+.ic-ok { color:var(--ok); font-weight:700; } .ic-bad { color:var(--danger); font-weight:700; } .ic-mid { color:#a06a10; font-weight:700; } .ic-na { color:var(--ink3); }
+.warn { background:var(--danger-l); color:var(--danger); border-radius:8px; padding:8px 10px; font-size:11.5px; }
+.note { background:var(--ok-l); color:var(--ok); border-radius:8px; padding:8px 10px; font-size:11.5px; }
+.grp { border:1px solid var(--border); border-radius:10px; padding:8px 10px; background:var(--white); }
+.grp-h { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
+.grp-h b { font-size:12px; color:var(--navy); }
+.cols-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
+.cols-list { display:grid; gap:3px; }
+.vs-sum { display:grid; grid-template-columns:170px 1fr; gap:4px 12px; font-size:12px; }
+.vs-sum dt { color:var(--ink3); font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.06em; padding-top:3px; }
+.vs-sum dd { margin:0; white-space:pre-wrap; }
+.chk-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:3px 12px; }
+.ct-row { display:grid; grid-template-columns:minmax(180px,1.2fr) 1fr 1fr; gap:8px; align-items:center; padding:6px 0; border-bottom:1px dashed var(--border); }
+@media (max-width:760px) { .vs-sum, .ct-row { grid-template-columns:1fr; } }
+#toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:10px; font-size:12px; z-index:600; opacity:0; pointer-events:none; transition:.2s; max-width:90vw; }
+#toast.show { opacity:1; } #toast.err { background:var(--danger); }
+#loader { position:fixed; inset:0; background:rgba(247,245,242,.92); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:500; }
+#loader.hidden { display:none; }
+.spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (max-width:760px) {
+  .toolbar { position:static; align-items:stretch; }
+  .cmp { grid-template-columns:1fr; } .cmp .h { display:none; }
+  .crit { grid-template-columns:22px 1fr 40px; } .crit .src { display:none; }
+  .g-row .g-l { min-width:120px; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar" id="toolbar">
+  <div class="tabs"><span class="tab active" style="cursor:default">Export des propositions (Excel)</span></div>
+  <span class="count" id="count">–</span>
+</div>
+<div class="page" id="page"></div>
+<div id="loader"><div class="spinner"></div><p>Chargement des propositions…</p></div>
+<div id="toast"></div>
+<script>
+console.info('[widget-dgrh-export] v1 chargé');
+
+/* ============================== constantes ============================== */
+const PROP = 'Propositions_PNF';
+const PARCOURS_LIB = { 'Magistère':1, 'Mentor':1 };
+const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr_apports','Apports théoriques et pratiques (art. 2, 1°)'],['Arr_activite','Séquences de mise en activité (art. 2, 2°)'],['Arr_acquis','Évaluation des acquis (art. 2, 3°)'],['Arr_prerequis','Prérequis précisés (art. 3, 2°)'],['Arr_programme','Programme et séquencement (art. 3, 4° et 5°)']];
+
+/* ============================== état ============================== */
+let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, PARAMS = {}, PERIODES = [];
+let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1', RELOAD_TIMER = null, ALLOWED = false;
+const newF = () => ({ q:'', axe:'', action:'', structure:'', modalite:'', format:'', periode:'', du:'', au:'' });
+let FE = newF();
+let EX = { cols:new Set(), fmt:{ headers:'labels', listSep:' | ', dateXls:true }, excluded:new Set(), preset:'std-corrigees' };
+
+/* ============================== utilitaires ============================== */
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const norm = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const clean = s => String(s ?? '').replace(/\s+/g, ' ').trim();
+function toRows(t){ return (t && t.id || []).map((id,i) => { const r = { id }; Object.keys(t).forEach(k => { if (k !== 'id') r[k] = t[k][i]; }); return r; }); }
+function asIds(v){ if (v == null || v === '' || v === 0) return []; if (Array.isArray(v)) return (v[0] === 'L' ? v.slice(1) : v).map(Number).filter(n => n > 0); const n = Number(v); return n > 0 ? [n] : []; }
+const refId = v => { const a = asIds(v); return a.length ? a[0] : 0; };
+const num = v => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+function toDate(v){ if (v === null || v === undefined || v === '') return null; const ms = v > 20000000000 ? v : v * 1000; const d = new Date(ms); return isNaN(d.getTime()) ? null : d; }
+const fmtDate = v => { const d = toDate(v); return d ? d.toLocaleDateString('fr-FR') : ''; };
+const isoDate = v => { const d = toDate(v); return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : ''; };
+function toast(msg, err){ const t = document.getElementById('toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : ''); clearTimeout(toast._t); toast._t = setTimeout(() => t.className = '', err ? 6000 : 2800); }
+const showLoader = v => document.getElementById('loader').classList.toggle('hidden', !v);
+function opt(v, label, sel){ return `<option value="${esc(v)}"${String(sel) === String(v) ? ' selected' : ''}>${esc(label)}</option>`; }
+const jourHeures = () => num(PARAMS.jour_heures) || 6;
+
+/* ============================== libellés ============================== */
+const sCode = id => STRUCT[id] ? STRUCT[id].code : '';
+const aLib = id => ACTION[id] ? clean(ACTION[id].libelle) : '';
+const aNum = id => ACTION[id] ? ACTION[id].num_action : '';
+const axeOf = aid => ACTION[aid] ? ACTION[aid].id_axe : 0;
+const axeLib = aid => { const x = AXE[axeOf(aid)]; return x ? clean(x.libelle) : ''; };
+const modLib = id => MODALITE[id] ? clean(MODALITE[id].libelle) : '';
+const fmtLib = id => FORMAT[id] ? clean(FORMAT[id].libelle) : '';
+const pubLibs = v => asIds(v).map(id => PUBLIC[id] ? clean(PUBLIC[id].libelle) : '').filter(Boolean);
+const lst = v => Array.isArray(v) ? v : [];
+const oriOf = p => lst(Array.isArray(p.Orientation_SD) && p.Orientation_SD[0] === 'L' ? p.Orientation_SD.slice(1) : p.Orientation_SD);
+/* valeur retenue = valeur corrigée par la chefferie, à défaut la valeur déposée */
+const refCur = (p, c, k) => refId(p[c]) || refId(p[k]);
+const cDuree = p => (p.C_Duree_heures ?? p.Duree_heures);
+const cEff = p => (p.C_Effectif_previsionnel ?? p.Effectif_previsionnel);
+
+/* ============================== chargement ============================== */
+async function fetchRows(t){ try { return toRows(await grist.docApi.fetchTable(t)); } catch (e) { console.warn('[dgrh] lecture impossible :', t, e); return []; } }
+async function loadAll(){
+  const props = toRows(await grist.docApi.fetchTable(PROP));                      // une erreur ici = droits insuffisants, signalée à l'écran
+  const [structs, axes, acts, mods, pubs, annees, formats, params] = await Promise.all([
+    fetchRows('Structures'), fetchRows('Axes'), fetchRows('Actions_axes'), fetchRows('Modalites'), fetchRows('Publics'), fetchRows('Annees'), fetchRows('Formats'), fetchRows('Parametres_recueil')
+  ]);
+  P = props; STRUCT = Object.fromEntries(structs.map(r => [r.id, r])); AXE = Object.fromEntries(axes.map(r => [r.id, r]));
+  ACTION = Object.fromEntries(acts.map(r => [r.id, r])); MODALITE = Object.fromEntries(mods.map(r => [r.id, r])); PUBLIC = Object.fromEntries(pubs.map(r => [r.id, r]));
+  ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); FORMAT = Object.fromEntries(formats.map(r => [r.id, r]));
+  PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur]));                // vide pour la DGRH (table non lisible) : valeurs par défaut
+  if (P.length) { const k = Object.keys(P[0]).find(x => x.startsWith('Report')); if (k) REPCOL = k; }
+  PERIODES = [...new Set(P.map(p => p.C_Periode || p.Periode).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+}
+function scheduleReload(){ clearTimeout(RELOAD_TIMER); RELOAD_TIMER = setTimeout(async () => { try { await loadAll(); renderExport(); } catch (e) { console.warn(e); } }, 350); }
+
+/* ============================== accès ============================== */
+// Garde-fou d'affichage (la vraie barrière reste l'ACL) : la DGRH ne lit que sa propre ligne de Utilisateurs ; plusieurs lignes = Owner ou chefferie.
+async function checkAccess(){
+  try {
+    const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
+    if (rows.length > 1) return true;
+    if (rows.length === 1) return ['DGRH', 'Chefferie', 'Proprietaire'].includes(rows[0].ClasseNom);
+    return false;
+  } catch (e) { console.warn('[dgrh] vérification des droits impossible :', e); return false; }
+}
+
+/* ============================== filtres ============================== */
+function matches(p, f){
+  const act = refCur(p, 'C_Action_SD', 'Action_SD');
+  if (f.q && !norm([p.id, p.C_Titre || p.Titre, p.C_Email_contact || p.Email_contact, sCode(refCur(p, 'C_Structure_porteuse', 'Structure_porteuse')), p.C_Objectifs || p.Objectifs].join(' ')).includes(norm(f.q))) return false;
+  if (f.axe && String(axeOf(act)) !== f.axe) return false;
+  if (f.action && String(act) !== f.action) return false;
+  if (f.structure && String(refCur(p, 'C_Structure_porteuse', 'Structure_porteuse')) !== f.structure) return false;
+  if (f.modalite && String(refCur(p, 'C_Modalite', 'Modalite')) !== f.modalite) return false;
+  if (f.format && String(refCur(p, 'C_Format', 'Format')) !== f.format) return false;
+  if (f.periode && (p.C_Periode || p.Periode) !== f.periode) return false;
+  const d = isoDate(p.Date_depot);
+  if (f.du && !(d && d >= f.du)) return false;
+  if (f.au && !(d && d <= f.au)) return false;
+  return true;
+}
+let _qTimer = null;
+function setF(k, v){ FE[k] = v; renderExportBody(); }
+function setFQ(v){ FE.q = v; clearTimeout(_qTimer); _qTimer = setTimeout(renderExportBody, 250); }
+function resetF(){ FE = newF(); renderExport(); }
+function filterPanel(){
+  const f = FE;
+  const structIds = [...new Set(P.map(p => refCur(p, 'C_Structure_porteuse', 'Structure_porteuse')).filter(Boolean))].sort((a, b) => sCode(a).localeCompare(sCode(b), 'fr', { numeric:true }));
+  const acts = Object.values(ACTION).sort((a, b) => a.num_action - b.num_action);
+  return `<div class="grid-f">
+    <div class="fld"><label>Recherche</label><input type="text" value="${esc(f.q)}" placeholder="Titre, structure, adresse…" oninput="setFQ(this.value)"></div>
+    <div class="fld"><label>Axe</label><select onchange="setF('axe',this.value)"><option value="">Tous</option>${Object.values(AXE).map(a => opt(a.id, clean(a.libelle), f.axe)).join('')}</select></div>
+    <div class="fld"><label>Action</label><select onchange="setF('action',this.value)"><option value="">Toutes</option>${acts.map(a => opt(a.id, 'Action ' + a.num_action, f.action)).join('')}</select></div>
+    <div class="fld"><label>Structure porteuse</label><select onchange="setF('structure',this.value)"><option value="">Toutes</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
+    <div class="fld"><label>Modalité</label><select onchange="setF('modalite',this.value)"><option value="">Toutes</option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), f.modalite)).join('')}</select></div>
+    <div class="fld"><label>Modalité pédagogique</label><select onchange="setF('format',this.value)"><option value="">Toutes</option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), f.format)).join('')}</select></div>
+    <div class="fld"><label>Période</label><select onchange="setF('periode',this.value)"><option value="">Toutes</option>${PERIODES.map(x => opt(x, x, f.periode)).join('')}</select></div>
+    <div class="fld"><label>Déposée du / au</label><div class="row"><input type="date" style="width:128px" value="${esc(f.du)}" onchange="setF('du',this.value)"><input type="date" style="width:128px" value="${esc(f.au)}" onchange="setF('au',this.value)"></div></div>
+  </div>
+  <div class="row" style="margin-top:8px"><button class="btn small" onclick="resetF()">Réinitialiser les filtres</button></div>`;
+}
+function filtersText(){
+  const f = FE, out = [];
+  if (f.q) out.push('Recherche : ' + f.q);
+  if (f.axe) out.push('Axe : ' + clean((AXE[f.axe] || {}).libelle));
+  if (f.action) out.push('Action : ' + (ACTION[f.action] ? 'Action ' + ACTION[f.action].num_action : f.action));
+  if (f.structure) out.push('Structure : ' + sCode(Number(f.structure)));
+  if (f.modalite) out.push('Modalité : ' + modLib(Number(f.modalite)));
+  if (f.format) out.push('Modalité pédagogique : ' + fmtLib(Number(f.format)));
+  if (f.periode) out.push('Période : ' + f.periode);
+  if (f.du) out.push('Déposée à partir du ' + f.du.split('-').reverse().join('/'));
+  if (f.au) out.push('Déposée jusqu\'au ' + f.au.split('-').reverse().join('/'));
+  if (EX.excluded.size) out.push(EX.excluded.size + ' ligne(s) exclue(s) manuellement');
+  return out;
+}
+
+/* ============================== colonnes ============================== */
+const G = { ID:'Identification', DEP:'Description déposée', COR:'Valeurs retenues (corrigées par la chefferie)', CAL:'Calculées', ARR:'Conformité à l\'arrêté (déclaré)', ORI:'Principes et orientations du schéma directeur' };
+const EXPORT_COLS = [
+  { k:'id', g:G.ID, n:1, l:'N°', v:p => p.id }, { k:'date_depot', g:G.ID, d:1, l:'Date de dépôt', v:p => p.Date_depot },
+  { k:'annee', g:G.ID, l:'Année scolaire', v:p => (ANNEE[refId(p.Annee_scolaire)] || {}).libelle || '' },
+  { k:'c_email', g:G.ID, l:'Adresse électronique de contact', v:p => p.C_Email_contact || p.Email_contact },
+  { k:'c_structure_code', g:G.ID, l:'Structure porteuse (code)', v:p => sCode(refCur(p, 'C_Structure_porteuse', 'Structure_porteuse')) },
+  { k:'c_structure_lib', g:G.ID, l:'Structure porteuse (libellé)', v:p => clean((STRUCT[refCur(p, 'C_Structure_porteuse', 'Structure_porteuse')] || {}).libelle) },
+  { k:'titre', g:G.DEP, l:'Titre (déposé)', v:p => p.Titre }, { k:'objectifs', g:G.DEP, l:'Objectifs (déposés)', v:p => p.Objectifs }, { k:'contexte', g:G.DEP, l:'Contexte de la demande', v:p => p.Contexte },
+  { k:'action_num', g:G.DEP, n:1, l:'Action du schéma directeur (n°, déposée)', v:p => aNum(refId(p.Action_SD)) }, { k:'action_lib', g:G.DEP, l:'Action du schéma directeur (libellé, déposé)', v:p => aLib(refId(p.Action_SD)) },
+  { k:'axe', g:G.DEP, l:'Axe du schéma directeur (déposé)', v:p => axeLib(refId(p.Action_SD)) }, { k:'indicateur', g:G.DEP, l:'Indicateur du schéma directeur', v:p => p.Indicateur_SD },
+  { k:'pluriannuelle', g:G.DEP, l:'Action pluriannuelle (déposée)', v:p => p.Action_pluriannuelle }, { k:'report', g:G.DEP, l:'Report d\'une action du PNF précédent (déposé)', v:p => p[REPCOL] },
+  { k:'periode', g:G.DEP, l:'Période calendaire envisagée (déposée)', v:p => p.Periode }, { k:'modalite', g:G.DEP, l:'Modalité de formation (déposée)', v:p => modLib(refId(p.Modalite)) },
+  { k:'format', g:G.DEP, l:'Modalité pédagogique (déposée)', v:p => fmtLib(refId(p.Format)) }, { k:'articulation', g:G.DEP, l:'Articulation à un parcours Magistère / Mentor (déposée)', v:p => p.Articulation_parcours },
+  { k:'publics', g:G.DEP, l:'Public cible (déposé)', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, n:1, l:'Durée en heures (déposée)', v:p => p.Duree_heures }, { k:'effectif', g:G.DEP, n:1, l:'Effectif prévisionnel (déposé)', v:p => p.Effectif_previsionnel },
+  { k:'lieu', g:G.DEP, l:'Lieu prévisionnel (déposé)', v:p => p.Lieu }, { k:'commentaire_porteur', g:G.DEP, l:'Commentaire du porteur', v:p => p.Commentaire_porteur },
+  { k:'c_titre', g:G.COR, l:'Titre', v:p => p.C_Titre || p.Titre }, { k:'c_objectifs', g:G.COR, l:'Objectifs', v:p => p.C_Objectifs || p.Objectifs },
+  { k:'c_action_num', g:G.COR, n:1, l:'Action du schéma directeur (n°)', v:p => aNum(refCur(p, 'C_Action_SD', 'Action_SD')) }, { k:'c_action_lib', g:G.COR, l:'Action du schéma directeur (libellé)', v:p => aLib(refCur(p, 'C_Action_SD', 'Action_SD')) },
+  { k:'c_axe', g:G.COR, l:'Axe du schéma directeur', v:p => axeLib(refCur(p, 'C_Action_SD', 'Action_SD')) },
+  { k:'c_modalite', g:G.COR, l:'Modalité de formation', v:p => modLib(refCur(p, 'C_Modalite', 'Modalite')) },
+  { k:'c_format', g:G.COR, l:'Modalité pédagogique', v:p => fmtLib(refCur(p, 'C_Format', 'Format')) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours Magistère / Mentor', v:p => p.C_Articulation_parcours || p.Articulation_parcours },
+  { k:'c_publics', g:G.COR, l:'Public cible', v:p => pubLibs(asIds(p.C_Publics).length ? p.C_Publics : p.Public_cible) }, { k:'c_periode', g:G.COR, l:'Période calendaire envisagée', v:p => p.C_Periode || p.Periode },
+  { k:'c_duree', g:G.COR, n:1, l:'Durée en heures', v:p => num(cDuree(p)) }, { k:'c_effectif', g:G.COR, n:1, l:'Effectif prévisionnel', v:p => num(cEff(p)) },
+  { k:'c_lieu', g:G.COR, l:'Lieu prévisionnel', v:p => p.C_Lieu ?? p.Lieu },
+  { k:'c_pluriannuelle', g:G.COR, l:'Action pluriannuelle', v:p => p.C_Action_pluriannuelle || p.Action_pluriannuelle }, { k:'c_report', g:G.COR, l:'Report d\'une action du PNF précédent', v:p => p.C_Report || p[REPCOL] },
+  { k:'heures', g:G.CAL, n:1, l:'Heures de formation (déposées)', v:p => p.Heures_prevues }, { k:'js', g:G.CAL, n:1, l:'Journées stagiaires (déposées)', v:p => p.JS_prevues },
+  { k:'c_heures', g:G.CAL, n:1, l:'Heures de formation', v:p => num(cDuree(p)) || 0 },
+  { k:'c_js', g:G.CAL, n:1, l:'Journées stagiaires', v:p => Math.round((num(cDuree(p)) || 0) * (num(cEff(p)) || 0) / jourHeures() * 100) / 100 },
+  ...ARR.map(([k, l]) => ({ k:k.toLowerCase(), g:G.ARR, l, v:p => p[k] })),
+  { k:'orientations', g:G.ORI, l:'Principes et orientations du schéma directeur', v:p => oriOf(p) }
+];
+const byGroup = gs => EXPORT_COLS.filter(c => gs.includes(c.g)).map(c => c.k);
+const BUILTIN = {
+  'std-corrigees': { nom:'Valeurs retenues (standard)', cols:() => EXPORT_COLS.filter(c => [G.ID, G.COR, G.ORI].includes(c.g) || ['c_heures','c_js'].includes(c.k)).map(c => c.k) },
+  'std-deposees':  { nom:'Valeurs déposées par les porteurs', cols:() => EXPORT_COLS.filter(c => [G.ID, G.DEP, G.ORI].includes(c.g) || ['heures','js'].includes(c.k)).map(c => c.k) },
+  'std-complet':   { nom:'Tout (déposé et retenu)', cols:() => EXPORT_COLS.map(c => c.k) }
+};
+function applyPreset(key){ EX.preset = key; if (BUILTIN[key]) EX.cols = new Set(BUILTIN[key].cols()); }
+function choosePreset(k){ if (!k) return; applyPreset(k); renderExport(); }
+function toggleCol(k, on){ on ? EX.cols.add(k) : EX.cols.delete(k); EX.preset = ''; renderExportPreview(); const s = document.getElementById('ex-preset'); if (s) s.value = ''; }
+function setGroup(g, on){ EXPORT_COLS.filter(c => c.g === g).forEach(c => on ? EX.cols.add(c.k) : EX.cols.delete(c.k)); EX.preset = ''; renderExport(); }
+function setFmt(k, v){ EX.fmt[k] = v; renderExportPreview(); }
+function toggleRow(id, on){ on ? EX.excluded.delete(id) : EX.excluded.add(id); renderExportPreview(); }
+function setAllRows(on){ P.filter(p => matches(p, FE)).forEach(p => on ? EX.excluded.delete(p.id) : EX.excluded.add(p.id)); renderExportBody(); }
+const selectedCols = () => EXPORT_COLS.filter(c => EX.cols.has(c.k));
+const exportRows = () => P.filter(p => matches(p, FE) && !EX.excluded.has(p.id)).sort((a, b) => a.id - b.id);
+
+/* valeur typée pour Excel : { t:'s'|'n'|'d', v } */
+function cellValue(col, p){
+  let v = col.v(p);
+  if (col.d) { const d = toDate(v); if (!d) return { t:'s', v:'' }; return EX.fmt.dateXls ? { t:'d', v:(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000 } : { t:'s', v:isoDate(v) }; }
+  if (Array.isArray(v)) return { t:'s', v:v.join(EX.fmt.listSep) };
+  if (typeof v === 'boolean') return { t:'s', v:v ? 'Oui' : 'Non' };
+  if (col.n && v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v))) return { t:'n', v:Number(v) };
+  return { t:'s', v:v === null || v === undefined ? '' : String(v) };
+}
+function cellText(col, p){ const c = cellValue(col, p); if (c.t === 'd') return fmtDate(col.v(p)); if (c.t === 'n') return String(c.v).replace('.', ','); return c.v; }
+
+/* ============================== écriture du fichier .xlsx (sans bibliothèque externe) ============================== */
+const ENC = new TextEncoder();
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(files){                                    // archive ZIP sans compression (suffisant pour un classeur)
+  const chunks = [], central = []; let offset = 0;
+  const now = new Date(), dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF, dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  files.forEach(f => {
+    const name = ENC.encode(f.name), crc = crc32(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true);
+    chunks.push(new Uint8Array(lh.buffer), name, f.data);
+    const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + size;
+  });
+  const cdSize = central.reduce((a, c) => a + c.length, 0);
+  const end = new DataView(new ArrayBuffer(22)); end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+const xmlEsc = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const colName = i => { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+const MAX_CELL = 32000;                                      // limite d'Excel : 32 767 caractères par cellule
+function sheetXml(rows, opt){                                // rows : tableau de lignes de cellules { t, v }, la première est l'en-tête si opt.header
+  const widths = [];
+  rows.slice(0, 60).forEach(r => r.forEach((c, i) => { const len = c.t === 's' ? Math.min(String(c.v).length, 70) : 12; widths[i] = Math.max(widths[i] || 8, Math.min(60, len + 2)); }));
+  const cols = `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>`;
+  const data = rows.map((r, ri) => `<row r="${ri + 1}">${r.map((c, ci) => {
+    const ref = colName(ci) + (ri + 1), head = opt.header && ri === 0;
+    if (c.t === 'n') return `<c r="${ref}"><v>${c.v}</v></c>`;
+    if (c.t === 'd') return `<c r="${ref}" s="2"><v>${c.v}</v></c>`;
+    let s = String(c.v); if (s.length > MAX_CELL) s = s.slice(0, MAX_CELL) + '… [texte tronqué]';
+    if (s === '') return head ? `<c r="${ref}" s="1"/>` : '';
+    return `<c r="${ref}" t="inlineStr"${head ? ' s="1"' : ''}><is><t xml:space="preserve">${xmlEsc(s)}</t></is></c>`;
+  }).join('')}</row>`).join('');
+  const last = colName(Math.max(0, (rows[0] || []).length - 1)) + rows.length;
+  const view = opt.header ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' : '<sheetViews><sheetView workbookViewId="0"/></sheetViews>';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${view}${cols}<sheetData>${data}</sheetData>${opt.header && rows.length > 1 ? `<autoFilter ref="A1:${last}"/>` : ''}</worksheet>`;
+}
+function buildXlsx(sheet1Name, rows1, infoRows){
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main', RN = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships', PR = 'http://schemas.openxmlformats.org/package/2006/relationships';
+  const last = colName(Math.max(0, rows1[0].length - 1)) + rows1.length;
+  const files = [
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RN}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="${NS}" xmlns:r="${RN}"><sheets><sheet name="${xmlEsc(sheet1Name)}" sheetId="1" r:id="rId1"/><sheet name="Informations" sheetId="2" r:id="rId2"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${xmlEsc(sheet1Name)}'!$A$1:$${last.replace(/^([A-Z]+)(\d+)$/, '$1$$$2')}</definedName></definedNames></workbook>`],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RN}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RN}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="${RN}/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="${NS}"><numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1B3A6B"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
+    ['xl/worksheets/sheet1.xml', sheetXml(rows1, { header:true })],
+    ['xl/worksheets/sheet2.xml', sheetXml(infoRows, { header:false })]
+  ].map(([name, xml]) => ({ name, data:ENC.encode(xml) }));
+  return zipStore(files);
+}
+function downloadExport(){
+  const cols = selectedCols(), rows = exportRows();
+  if (!cols.length) { toast('Coche au moins une colonne.', true); return; }
+  if (!rows.length) { toast('Aucune ligne à exporter.', true); return; }
+  const head = cols.map(c => ({ t:'s', v:EX.fmt.headers === 'codes' ? c.k : c.l }));
+  const body = rows.map(p => cols.map(c => cellValue(c, p)));
+  const now = new Date(), stamp = now.toLocaleString('fr-FR');
+  const flt = filtersText();
+  const info = [
+    [{ t:'s', v:'Propositions d\'actions de formation — Plan national de formation' }],
+    [{ t:'s', v:'Extraction' }, { t:'s', v:stamp }],
+    [{ t:'s', v:'Nombre de propositions' }, { t:'n', v:rows.length }],
+    [{ t:'s', v:'Nombre de colonnes' }, { t:'n', v:cols.length }],
+    [{ t:'s', v:'Filtres appliqués' }, { t:'s', v:flt.length ? flt.join(' ; ') : 'Aucun' }],
+    [{ t:'s', v:'Valeurs' }, { t:'s', v:'Les colonnes sans mention « déposé » sont les valeurs retenues après examen par la chefferie.' }],
+    [{ t:'s', v:'Source' }, { t:'s', v:'Outil de suivi du PNF (Dgesco A3-1)' }]
+  ];
+  const blob = buildXlsx('Propositions', [head, ...body], info), url = URL.createObjectURL(blob), a = document.createElement('a');
+  const an = String((ANNEE[refId((P[0] || {}).Annee_scolaire)] || {}).libelle || '').replace(/\s+/g, '');
+  a.href = url; a.download = `PNF${an}_propositions_${isoDate(now.getTime() / 1000)}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`${rows.length} proposition(s) exportée(s) — ${cols.length} colonne(s).`);
+}
+
+/* ============================== rendu ============================== */
+function presetOptions(){ return `<optgroup label="Modèles standards">${Object.keys(BUILTIN).map(k => opt(k, BUILTIN[k].nom, EX.preset)).join('')}</optgroup><option value="" ${EX.preset === '' ? 'selected' : ''}>Sélection personnalisée</option>`; }
+function renderExport(){
+  if (!EX.cols.size && EX.preset) applyPreset(EX.preset);
+  const groups = [...new Set(EXPORT_COLS.map(c => c.g))];
+  document.getElementById('page').innerHTML = `
+    <div class="note">Cette page est en <b>lecture seule</b> : elle ne modifie aucune donnée. Elle produit un fichier Excel (.xlsx) des propositions déposées, avec les filtres et les colonnes de votre choix.</div>
+    <div class="panel"><h3>1. Modèle de colonnes</h3>
+      <div class="row"><div class="fld" style="min-width:280px"><label>Modèle</label><select id="ex-preset" onchange="choosePreset(this.value)">${presetOptions()}</select></div>
+      <span class="t-sub">Le modèle standard reprend les valeurs retenues (après corrections éventuelles de la chefferie). Vous pouvez ensuite cocher ou décocher des colonnes.</span></div></div>
+    <details class="panel" open><summary>2. Lignes à exporter — filtres</summary>${filterPanel()}</details>
+    <div class="panel"><h3>3. Colonnes à exporter</h3><div class="cols-grid">${groups.map(g => {
+      const cs = EXPORT_COLS.filter(c => c.g === g), n = cs.filter(c => EX.cols.has(c.k)).length;
+      return `<div class="grp"><div class="grp-h"><b>${esc(g)} <span class="t-sub">(${n}/${cs.length})</span></b><span><button class="btn small" onclick="setGroup('${g.replace(/'/g, "\\'")}',true)">Tout</button> <button class="btn small" onclick="setGroup('${g.replace(/'/g, "\\'")}',false)">Aucun</button></span></div>
+        <div class="cols-list">${cs.map(c => `<label class="chk"><input type="checkbox" ${EX.cols.has(c.k) ? 'checked' : ''} onchange="toggleCol('${c.k}',this.checked)">${esc(c.l)}</label>`).join('')}</div></div>`;
+    }).join('')}</div></div>
+    <div class="panel"><h3>4. Options du fichier</h3><div class="row">
+      <div class="fld"><label>En-têtes</label><select onchange="setFmt('headers',this.value)">${opt('labels', 'Libellés lisibles', EX.fmt.headers)}${opt('codes', 'Codes courts', EX.fmt.headers)}</select></div>
+      <div class="fld"><label>Séparateur des listes (publics, orientations)</label><select onchange="setFmt('listSep',this.value)">${opt(' | ', 'Barre verticale ( | )', EX.fmt.listSep)}${opt('; ', 'Point-virgule + espace', EX.fmt.listSep)}${opt(', ', 'Virgule + espace', EX.fmt.listSep)}${opt('\n', 'Retour à la ligne', EX.fmt.listSep)}</select></div>
+      <label class="chk" style="margin-top:16px"><input type="checkbox" ${EX.fmt.dateXls ? 'checked' : ''} onchange="setFmt('dateXls',this.checked)">Dates au format Excel (JJ/MM/AAAA, triables)</label></div></div>
+    <div id="ex-body"></div>`;
+  renderExportBody();
+}
+function renderExportBody(){
+  const body = document.getElementById('ex-body'); if (!body) return;
+  const matching = P.filter(p => matches(p, FE)).sort((a, b) => a.id - b.id);
+  body.innerHTML = `<div class="panel"><h3>5. Lignes retenues pour l'export</h3>
+    <div class="row"><span id="ex-count" class="count"></span><button class="btn small" onclick="setAllRows(true)">Tout cocher</button><button class="btn small" onclick="setAllRows(false)">Tout décocher</button><span class="t-sub">Décochez une ligne pour l'exclure de l'export.</span></div>
+    ${matching.length ? `<div class="tbl-wrap" style="margin-top:8px;max-height:260px;overflow-y:auto"><table class="t" style="min-width:560px"><thead><tr><th></th><th>N°</th><th>Titre</th><th>Structure</th><th>Action</th></tr></thead><tbody>${matching.map(p => `<tr><td><input type="checkbox" style="width:auto" ${EX.excluded.has(p.id) ? '' : 'checked'} onchange="toggleRow(${p.id},this.checked)"></td><td>${p.id}</td><td>${esc(p.C_Titre || p.Titre || 'Sans titre')}</td><td>${esc(sCode(refCur(p, 'C_Structure_porteuse', 'Structure_porteuse')))}</td><td>${refCur(p, 'C_Action_SD', 'Action_SD') ? 'Action ' + esc(aNum(refCur(p, 'C_Action_SD', 'Action_SD'))) : '–'}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty" style="padding:20px">${P.length ? 'Aucune proposition ne correspond aux filtres.' : 'Aucune proposition déposée pour le moment.'}</div>`}</div>
+    <div class="panel"><h3>6. Aperçu et téléchargement</h3><div id="ex-preview"></div><div class="row" style="margin-top:10px"><button class="btn primary" id="ex-dl" onclick="downloadExport()">Télécharger le fichier Excel (.xlsx)</button></div></div>`;
+  renderExportPreview();
+}
+function renderExportPreview(){
+  const rows = exportRows(), cols = selectedCols(), c = document.getElementById('ex-count'), pv = document.getElementById('ex-preview'); if (!pv) return;
+  document.getElementById('count').textContent = `${rows.length} ligne(s) · ${cols.length} colonne(s)`;
+  if (c) c.textContent = `${rows.length} proposition(s) sélectionnée(s) sur ${P.length}`;
+  const dl = document.getElementById('ex-dl'); if (dl) dl.disabled = !rows.length || !cols.length;
+  if (!cols.length || !rows.length) { pv.innerHTML = `<div class="t-sub">${!cols.length ? 'Aucune colonne cochée.' : 'Aucune ligne à exporter.'}</div>`; return; }
+  pv.innerHTML = `<div class="tbl-wrap"><table class="t" style="min-width:${Math.max(560, cols.length * 130)}px"><thead><tr>${cols.map(x => `<th>${esc(EX.fmt.headers === 'codes' ? x.k : x.l)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 5).map(p => `<tr>${cols.map(x => { const t = cellText(x, p); return `<td title="${esc(t)}">${esc(t.length > 90 ? t.slice(0, 90) + '…' : t)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div><div class="t-sub" style="margin-top:4px">Aperçu des ${Math.min(5, rows.length)} premières lignes sur ${rows.length}.</div>`;
+}
+
+/* ============================== démarrage ============================== */
+async function start(){
+  showLoader(true);
+  try {
+    let n = 0; while (!grist.docApi && n < 20) { await new Promise(r => setTimeout(r, 100)); n++; }
+    ALLOWED = await checkAccess();
+    if (!ALLOWED) {
+      document.getElementById('toolbar').style.display = 'none';
+      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la DGRH et à la chefferie.</span></div>`; return;
+    }
+    await loadAll(); applyPreset('std-corrigees'); renderExport();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('toolbar').style.display = 'none';
+    document.getElementById('page').innerHTML = `<div class="empty"><p>Lecture impossible</p><span>Vos droits ne permettent pas de lire les propositions. Contactez la chefferie. (${esc(e.message || e)})</span></div>`;
+  } finally { showLoader(false); }
+}
+grist.ready({ requiredAccess:'full', columns:[] });
+let _started = false;
+grist.onRecords(() => { if (!_started) { _started = true; start(); } else if (ALLOWED) scheduleReload(); });
+</script>
+</body>
+</html>
