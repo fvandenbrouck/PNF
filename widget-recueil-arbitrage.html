@@ -18,6 +18,7 @@
 <!-- Version v3.4 : export CSV protégé contre l'injection de formules (cellule texte commençant par = + - @ préfixée d'une apostrophe) -->
 <!-- Version v3.5 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v3.6 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) -->
+<!-- Version v3.7 : « Orientations du schéma directeur » devient « Principes et orientations du schéma directeur » (fiche et export CSV) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -156,7 +157,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.6 modalité pédagogique chargé');
+console.info('[widget-recueil-arbitrage] v3.7 principes et orientations chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -452,7 +453,7 @@ function paneDep(p){
     <div class="box"><b>Contexte de la demande</b><br>${esc(p.Contexte || '–')}</div>
     <div class="box">Pluriannuelle : <b>${esc(p.Action_pluriannuelle || '–')}</b> · Report d'une action prévue au PNF précédent : <b>${esc(p[REPCOL] || '–')}</b> · Indicateur du schéma directeur : <b>${esc(p.Indicateur_SD || '–')}</b></div>
     <div class="box"><b>Conformité à l'arrêté du 1er août 2023 (déclaré)</b><br>${arr}</div>
-    <div class="box"><b>Orientations du schéma directeur</b> : ${ori.length ? esc(ori.join(' · ')) : '–'}</div>
+    <div class="box"><b>Principes et orientations du schéma directeur</b> : ${ori.length ? esc(ori.join(' · ')) : '–'}</div>
     ${p.Commentaire_porteur ? `<div class="box"><b>Commentaire du porteur</b><br>${esc(p.Commentaire_porteur)}</div>` : ''}`;
 }
 function resetField(c){
@@ -687,7 +688,7 @@ async function doVerse(){
 }
 
 /* ============================== export CSV ============================== */
-const G = { ID:'Identification', DEP:'Description déposée', COR:'Valeurs corrigées', CAL:'Calculées', ARR:'Conformité à l\'arrêté (déclaré)', ORI:'Orientations du schéma directeur', COT:'Cotation', INS:'Instruction' };
+const G = { ID:'Identification', DEP:'Description déposée', COR:'Valeurs corrigées', CAL:'Calculées', ARR:'Conformité à l\'arrêté (déclaré)', ORI:'Principes et orientations du schéma directeur', COT:'Cotation', INS:'Instruction' };
 const lst = v => Array.isArray(v) ? v : [];
 const oriOf = p => lst(Array.isArray(p.Orientation_SD) && p.Orientation_SD[0] === 'L' ? p.Orientation_SD.slice(1) : p.Orientation_SD);
 function critNon(p){ const e = ev(p); return e ? (e.criteres || []).filter(c => c.bloc !== 'Alignement' && c.res !== null && c.res < 1).map(c => c.libelle + (c.motif ? ' (' + c.motif + ')' : '')) : []; }
@@ -716,7 +717,7 @@ const EXPORT_COLS = [
   { k:'heures', g:G.CAL, l:'Heures de formation (déposées)', v:p => p.Heures_prevues }, { k:'js', g:G.CAL, l:'Journées stagiaires (déposées)', v:p => p.JS_prevues },
   { k:'c_heures', g:G.CAL, l:'Heures de formation (corrigées)', v:p => num(cDuree(p)) || 0 }, { k:'c_js', g:G.CAL, l:'Journées stagiaires (corrigées)', v:p => Math.round((num(cDuree(p)) || 0) * (num(cEff(p)) || 0) / jourHeures() * 100) / 100 },
   ...ARR.map(([k, l]) => ({ k:k.toLowerCase(), g:G.ARR, l, v:p => p[k] })),
-  { k:'orientations', g:G.ORI, l:'Orientations du schéma directeur', v:p => oriOf(p) },
+  { k:'orientations', g:G.ORI, l:'Principes et orientations du schéma directeur', v:p => oriOf(p) },
   { k:'note_globale', g:G.COT, cot:1, l:'Note globale (/10)', v:p => p.Score_global }, { k:'note_completude', g:G.COT, cot:1, l:'Complétude (/10)', v:p => p.Score_completude },
   { k:'note_conformite', g:G.COT, cot:1, l:'Conformité (/10)', v:p => p.Score_conformite }, { k:'note_alignement', g:G.COT, cot:1, l:'Alignement schéma directeur (/10)', v:p => p.Score_alignement },
   { k:'redhibitoire', g:G.COT, cot:1, l:'Rédhibitoire', v:p => (p.Redhibitoire ? 'Oui' : 'Non') }, { k:'veto', g:G.COT, cot:1, l:'Incompatibilité constatée par la chefferie', v:p => (p.Veto_chefferie ? 'Oui' : 'Non') },
