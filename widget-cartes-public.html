@@ -18,6 +18,7 @@
 <!-- Version v57 : Format (table Formats) et articulations Magistère/Mentor : filtre, étiquettes sur les cartes et dans la fiche -->
 <!-- Version v58 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
 <!-- Version v59 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<!-- Version v60 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -551,7 +552,7 @@ html, body, input, select, textarea, button {
   <div class="tb-sel"><select id="f-public" onchange="applyFilters()"><option value="">Publics</option></select></div>
   <div class="tb-sel"><select id="f-degre"  onchange="applyFilters()"><option value="">Degrés</option></select></div>
   <div class="tb-sel"><select id="f-modal"  onchange="applyFilters()"><option value="">Modalités</option></select></div>
-  <div class="tb-sel"><select id="f-format" onchange="applyFilters()"><option value="">Formats</option></select></div>
+  <div class="tb-sel"><select id="f-format" onchange="applyFilters()"><option value="">Modalités pédagogiques</option></select></div>
   <div class="tb-sel"><select id="f-statut" onchange="applyFilters()"><option value="">Statuts</option></select></div>
   <label class="tb-check" title="Afficher uniquement les journées IG">
     <input type="checkbox" id="f-journee-ig" onchange="applyFilters()">
@@ -582,7 +583,7 @@ html, body, input, select, textarea, button {
 </div>
 
 <script>
-console.info('[widget-cartes-public] v59 polices et plugin locaux chargé');
+console.info('[widget-cartes-public] v60 modalité pédagogique chargé');
 
 // Widget public — lecture seule.
 // Important : ce widget ne demande que l'accès « read table » et ne contient aucune action AddRecord/UpdateRecord.
@@ -1576,7 +1577,7 @@ function openModal(a) {
       ${section('Axe', axeLib ? `<div class="detail-tags"><span class="tag tag-axe">${esc(axeLib)}</span></div>` : '')}
       ${section('Action du schéma directeur', actionAxe ? `<div class="detail-text">${esc(actionAxe)}</div>` : '')}
       ${section('Modalité', modalite ? `<div class="detail-tags"><span class="tag tag-modal">${esc(modalite)}</span></div>` : '')}
-      ${section('Format', formatLib ? `<div class="detail-tags"><span class="tag tag-format">${esc(formatLib)}</span></div>` : '')}
+      ${section('Modalité pédagogique', formatLib ? `<div class="detail-tags"><span class="tag tag-format">${esc(formatLib)}</span></div>` : '')}
       ${section('Articulation', tagList(artic, 'tag-artic'))}
       ${section('Lieux', tagList(lieux, 'tag-days'))}
       ${section('Statut', statut ? `<div class="detail-tags"><span class="tag tag-days">${esc(statut)}</span></div>` : '')}
@@ -1640,7 +1641,7 @@ function cardHtml(a, i) {
           ${structs.length ? `<div class="meta-row"><span class="meta-label">Structure</span><div class="meta-value tags">${structs.map(s => `<span class="tag tag-struct">${esc(s)}</span>`).join('')}</div></div>` : ''}
           ${periode ? `<div class="meta-row"><span class="meta-label">Période</span><div class="meta-value"><span class="tag tag-periode">📅 ${esc(periode)}</span></div></div>` : ''}
           ${modalLib ? `<div class="meta-row"><span class="meta-label">Modalité</span><div class="meta-value"><span class="tag tag-modal">${esc(modalLib)}</span></div></div>` : ''}
-          ${formatLib ? `<div class="meta-row"><span class="meta-label">Format</span><div class="meta-value"><span class="tag tag-format">${esc(formatLib)}</span></div></div>` : ''}
+          ${formatLib ? `<div class="meta-row"><span class="meta-label">Modalité pédagogique</span><div class="meta-value"><span class="tag tag-format">${esc(formatLib)}</span></div></div>` : ''}
           ${artic.length ? `<div class="meta-row"><span class="meta-label">Articulation</span><div class="meta-value tags">${artic.map(x => `<span class="tag tag-artic">${esc(x)}</span>`).join('')}</div></div>` : ''}
           ${lieux.length ? `<div class="meta-row"><span class="meta-label">Lieux</span><div class="meta-value tags">${lieux.map(l => `<span class="tag tag-days">${esc(l)}</span>`).join('')}</div></div>` : ''}
           ${statut ? `<div class="meta-row"><span class="meta-label">Statut</span><div class="meta-value"><span class="tag tag-days">${esc(statut)}</span></div></div>` : ''}

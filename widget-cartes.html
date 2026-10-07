@@ -27,6 +27,7 @@
 <!-- Version v78 : la rubrique « Contact(s) / pilote(s) » de la modale devient « Contact(s) porteur(s) de l'action » (colonne Contacts, distincte des référents IGÉSR) -->
 <!-- Version v79 : export CSV protégé contre l'injection de formules -->
 <!-- Version v80 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<!-- Version v81 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) ; colonne CSV « modalite_pedagogique » -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -849,7 +850,7 @@ html, body {
     <div id="f-degre-menu" class="multi-menu hidden"></div>
   </div>
   <div class="tb-sel"><select id="f-modal"  onchange="applyFilters()"><option value="">Modalités</option></select></div>
-  <div class="tb-sel"><select id="f-format" onchange="applyFilters()"><option value="">Formats</option></select></div>
+  <div class="tb-sel"><select id="f-format" onchange="applyFilters()"><option value="">Modalités pédagogiques</option></select></div>
   <div class="tb-sel"><select id="f-statut" onchange="applyFilters()"><option value="">Statuts</option></select></div>
   <label class="tb-check" title="Afficher uniquement les journées IG">
     <input type="checkbox" id="f-journee-ig" onchange="applyFilters()">
@@ -891,7 +892,7 @@ html, body {
 </div>
 
 <script>
-console.info('[widget-cartes] v80 polices et plugin locaux chargé');
+console.info('[widget-cartes] v81 modalité pédagogique chargé');
 
 // ── Données ──────────────────────────────────────────────────────────────
 let ALL = [], FILTERED = [];
@@ -2506,7 +2507,7 @@ function buildModalForm(a) {
     </div>
     <div class="modal-row">
       <div class="mfield">
-        <label>Format</label>
+        <label>Modalité pédagogique</label>
         <select id="m-format">
           <option value="">—</option>
           ${formatOptions.map(v=>`<option value="${esc(v)}"${selectedMapped(a.id_format, v, FORMAT_MAP, 'Formats')}>${esc(v)}</option>`).join('')}
@@ -2994,7 +2995,7 @@ function downloadFilteredCSV() {
     'action_referentiel',
     'structure',
     'modalite',
-    'format',
+    'modalite_pedagogique',
     'articulation_parcours',
     'statut',
     'journee_ig',
@@ -3017,7 +3018,7 @@ function downloadFilteredCSV() {
     action_referentiel: actionAxeDisplay(getActionAxe(a)),
     structure: csvJoinList(asList(a.id_structure).filter(Boolean)),
     modalite: a.id_modalite || '',
-    format: labelFromRefValue(a.id_format, FORMAT_MAP, 'Formats'),
+    modalite_pedagogique: labelFromRefValue(a.id_format, FORMAT_MAP, 'Formats'),
     articulation_parcours: a.articulation_parcours || '',
     statut: statutLabelFromValue(getStatut(a)),
     journee_ig: getJourneeIG(a) ? 'oui' : '',
@@ -3143,7 +3144,7 @@ function render() {
 
           ${formatLib ? `
           <div class="meta-row">
-            <span class="meta-label">Format</span>
+            <span class="meta-label">Modalité pédagogique</span>
             <div class="meta-value"><span class="tag tag-format">${esc(formatLib)}</span></div>
           </div>` : ''}
 

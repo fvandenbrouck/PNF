@@ -16,6 +16,7 @@
 <!-- Version v10 : Format (table Formats) et articulations Magistère/Mentor affichés dans la fiche récapitulative -->
 <!-- Version v11 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
 <!-- Version v12 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<!-- Version v13 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -203,7 +204,7 @@ details.agenda-past .agenda-list { margin-top:12px; }
 </div>
 
 <script>
-console.info('[widget-copil-calendrier] v12 polices et plugin locaux chargé');
+console.info('[widget-copil-calendrier] v13 modalité pédagogique chargé');
 let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
 let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};
@@ -514,7 +515,7 @@ function buildModalBody(a){
     <div class="identity-item"><span class="identity-label">Code GAIA</span><span class="identity-value">${esc(code)}</span></div>
     <div class="identity-item"><span class="identity-label">Structure</span><span class="identity-value">${esc(structs)}</span></div>
     <div class="identity-item"><span class="identity-label">Modalité</span><span class="identity-value">${esc(modal)}</span></div>
-    <div class="identity-item"><span class="identity-label">Format</span><span class="identity-value">${esc(formatLib)}</span></div>
+    <div class="identity-item"><span class="identity-label">Modalité pédagogique</span><span class="identity-value">${esc(formatLib)}</span></div>
     <div class="identity-item"><span class="identity-label">Articulation</span><span class="identity-value">${esc(artic)}</span></div>
     <div class="identity-item"><span class="identity-label">Publics</span><span class="identity-value">${esc(publics)}</span></div>
     <div class="identity-item"><span class="identity-label">Responsable(s) du suivi</span><span class="identity-value">${esc(resp)}</span></div>

@@ -17,6 +17,7 @@
 <!-- Version v3.3 : la déclaration « document attestant le suivi » (Arr_attestation) est retirée de la liste des déclarations de l'arrêté -->
 <!-- Version v3.4 : export CSV protégé contre l'injection de formules (cellule texte commençant par = + - @ préfixée d'une apostrophe) -->
 <!-- Version v3.5 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<!-- Version v3.6 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -155,7 +156,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.5 polices et plugin locaux chargé');
+console.info('[widget-recueil-arbitrage] v3.6 modalité pédagogique chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -303,7 +304,7 @@ function filterPanel(c){
     <div class="fld"><label>Action</label><select onchange="setF('${c}','action',this.value)"><option value="">Toutes</option>${acts.map(a => opt(a.id, 'Action ' + a.num_action, f.action)).join('')}</select></div>
     <div class="fld"><label>Structure porteuse</label><select onchange="setF('${c}','structure',this.value)"><option value="">Toutes</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
     <div class="fld"><label>Modalité</label><select onchange="setF('${c}','modalite',this.value)"><option value="">Toutes</option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), f.modalite)).join('')}</select></div>
-    <div class="fld"><label>Format</label><select onchange="setF('${c}','format',this.value)"><option value="">Tous</option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), f.format)).join('')}</select></div>
+    <div class="fld"><label>Modalité pédagogique</label><select onchange="setF('${c}','format',this.value)"><option value="">Tous</option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), f.format)).join('')}</select></div>
     <div class="fld"><label>Période</label><select onchange="setF('${c}','periode',this.value)"><option value="">Toutes</option>${PERIODES.map(x => opt(x, x, f.periode)).join('')}</select></div>
     <div class="fld"><label>Note globale (de / à)</label><div class="row"><input type="number" min="0" max="10" step="0.5" style="width:70px" value="${esc(f.noteMin)}" onchange="setF('${c}','noteMin',this.value)"><input type="number" min="0" max="10" step="0.5" style="width:70px" value="${esc(f.noteMax)}" onchange="setF('${c}','noteMax',this.value)"></div></div>
     <div class="fld"><label>Déposée du / au</label><div class="row"><input type="date" style="width:128px" value="${esc(f.du)}" onchange="setF('${c}','du',this.value)"><input type="date" style="width:128px" value="${esc(f.au)}" onchange="setF('${c}','au',this.value)"></div></div>
@@ -388,7 +389,7 @@ function renderModal(){
 const EDITS = [
   { k:'Titre', c:'C_Titre', l:'Titre', t:'text' }, { k:'Objectifs', c:'C_Objectifs', l:'Objectifs', t:'area' },
   { k:'Action_SD', c:'C_Action_SD', l:'Action du schéma directeur', t:'action' }, { k:'Structure_porteuse', c:'C_Structure_porteuse', l:'Structure porteuse', t:'struct' },
-  { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Format', c:'C_Format', l:'Format', t:'format' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' },
+  { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Format', c:'C_Format', l:'Modalité pédagogique', t:'format' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' },
   { k:'Periode', c:'C_Periode', l:'Période', t:'periode' }, { k:'Duree_heures', c:'C_Duree_heures', l:'Durée (en heures)', t:'num' },
   { k:'Effectif_previsionnel', c:'C_Effectif_previsionnel', l:'Effectif prévisionnel', t:'int' }, { k:'Lieu', c:'C_Lieu', l:'Lieu', t:'text' },
   { k:'Articulation_parcours', c:'C_Articulation_parcours', l:'Articulation à un parcours', t:'parcours' },
@@ -594,7 +595,7 @@ function paneVerse(p){
   const pl = versePlan(p), grp = pl.members.length > 1;
   const dups = AF.filter(a => norm(a.titre) === norm(pl.titre) && refId(a.Annee_scolaire) === pl.annee);
   const sum = [['Titre', pl.titre || '–'], ['Objectifs', pl.objectif || '–'], ['Action du schéma directeur', pl.act ? aLib(pl.act) + '\n(' + axeLib(pl.act) + ')' : '–'],
-    ['Structure(s) porteuse(s)', pl.structs.map(sFull).join('\n') || '–'], ['Modalité', modLib(pl.modalite) || '–'], ['Format', fmtLib(pl.format) || '–'], ['Articulation à un parcours', pl.articulation || '–'], ['Publics cibles', pubLibs(['L', ...pl.publics]).join(', ') || '–'],
+    ['Structure(s) porteuse(s)', pl.structs.map(sFull).join('\n') || '–'], ['Modalité', modLib(pl.modalite) || '–'], ['Modalité pédagogique', fmtLib(pl.format) || '–'], ['Articulation à un parcours', pl.articulation || '–'], ['Publics cibles', pubLibs(['L', ...pl.publics]).join(', ') || '–'],
     ['Heures de formation', fmtN(pl.heures)], ['Journées stagiaires (JS)', fmtN(pl.js)], ['Année scolaire', (ANNEE[pl.annee] || {}).libelle || '–'], ['Statut', '(vide)']];
   const perio = (p.C_Periode && p.Periode && p.C_Periode !== p.Periode) ? `${p.C_Periode} (déposée : ${p.Periode})` : (p.C_Periode || p.Periode || '');
   const lieuxOpts = Object.values(LIEUX).filter(l => clean(l.Site) || clean(l.ville)).map(l => `<label class="chk"><input type="checkbox" data-lieu="${l.id}">${esc(clean(l.Site) || '—')}${clean(l.ville) ? ' (' + esc(clean(l.ville)) + ')' : ''}</label>`).join('');
@@ -699,7 +700,7 @@ const EXPORT_COLS = [
   { k:'axe', g:G.DEP, l:'Axe du schéma directeur', v:p => axeLib(refId(p.Action_SD)) }, { k:'indicateur', g:G.DEP, l:'Indicateur du schéma directeur', v:p => p.Indicateur_SD },
   { k:'pluriannuelle', g:G.DEP, l:'Action pluriannuelle', v:p => p.Action_pluriannuelle }, { k:'report', g:G.DEP, l:'Report d\'une action du PNF précédent', v:p => p[REPCOL] },
   { k:'periode', g:G.DEP, l:'Période calendaire envisagée', v:p => p.Periode }, { k:'modalite', g:G.DEP, l:'Modalité de formation', v:p => modLib(refId(p.Modalite)) },
-  { k:'format', g:G.DEP, l:'Format de formation', v:p => fmtLib(refId(p.Format)) }, { k:'articulation', g:G.DEP, l:'Articulation à un parcours (Magistère / Mentor)', v:p => p.Articulation_parcours },
+  { k:'format', g:G.DEP, l:'Modalité pédagogique', v:p => fmtLib(refId(p.Format)) }, { k:'articulation', g:G.DEP, l:'Articulation à un parcours (Magistère / Mentor)', v:p => p.Articulation_parcours },
   { k:'publics', g:G.DEP, l:'Public cible', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, l:'Durée (heures)', v:p => p.Duree_heures }, { k:'effectif', g:G.DEP, l:'Effectif prévisionnel', v:p => p.Effectif_previsionnel },
   { k:'lieu', g:G.DEP, l:'Lieu prévisionnel', v:p => p.Lieu }, { k:'commentaire_porteur', g:G.DEP, l:'Commentaire du porteur', v:p => p.Commentaire_porteur },
   { k:'c_titre', g:G.COR, l:'Titre (corrigé)', v:p => p.C_Titre }, { k:'c_objectifs', g:G.COR, l:'Objectifs (corrigés)', v:p => p.C_Objectifs },
@@ -707,7 +708,7 @@ const EXPORT_COLS = [
   { k:'c_axe', g:G.COR, l:'Axe du schéma directeur (corrigé)', v:p => axeLib(refId(p.C_Action_SD)) },
   { k:'c_structure_code', g:G.COR, l:'Structure porteuse (code, corrigée)', v:p => sCode(refId(p.C_Structure_porteuse)) }, { k:'c_structure_lib', g:G.COR, l:'Structure porteuse (libellé, corrigé)', v:p => clean((STRUCT[refId(p.C_Structure_porteuse)] || {}).libelle) },
   { k:'c_modalite', g:G.COR, l:'Modalité (corrigée)', v:p => modLib(refId(p.C_Modalite)) },
-  { k:'c_format', g:G.COR, l:'Format (corrigé)', v:p => fmtLib(refId(p.C_Format)) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours (corrigée)', v:p => p.C_Articulation_parcours }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) },
+  { k:'c_format', g:G.COR, l:'Modalité pédagogique (corrigée)', v:p => fmtLib(refId(p.C_Format)) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours (corrigée)', v:p => p.C_Articulation_parcours }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) },
   { k:'c_periode', g:G.COR, l:'Période (corrigée)', v:p => p.C_Periode }, { k:'c_duree', g:G.COR, l:'Durée en heures (corrigée)', v:p => p.C_Duree_heures },
   { k:'c_effectif', g:G.COR, l:'Effectif prévisionnel (corrigé)', v:p => p.C_Effectif_previsionnel }, { k:'c_lieu', g:G.COR, l:'Lieu (corrigé)', v:p => p.C_Lieu },
   { k:'c_email', g:G.COR, l:'Adresse électronique de contact (corrigée)', v:p => p.C_Email_contact }, { k:'c_pluriannuelle', g:G.COR, l:'Action pluriannuelle (corrigée)', v:p => p.C_Action_pluriannuelle },
