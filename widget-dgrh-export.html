@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Propositions PNF — Export DGRH</title>
+<!-- Version v1.1 : message « liste vide » (aucune proposition déposée) au lieu d'un chargement sans fin ; démarrage sans attendre onRecords -->
 <!-- Version v1 : export Excel (.xlsx) des propositions d'actions de formation, avec filtres de lignes et choix des colonnes ; lecture seule, sans cotation ni instruction ; réservé à la DGRH, à la chefferie et aux propriétaires -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
@@ -137,7 +138,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 <div id="loader"><div class="spinner"></div><p>Chargement des propositions…</p></div>
 <div id="toast"></div>
 <script>
-console.info('[widget-dgrh-export] v1 chargé');
+console.info('[widget-dgrh-export] v1.1 chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF';
@@ -396,7 +397,13 @@ function downloadExport(){
 
 /* ============================== rendu ============================== */
 function presetOptions(){ return `<optgroup label="Modèles standards">${Object.keys(BUILTIN).map(k => opt(k, BUILTIN[k].nom, EX.preset)).join('')}</optgroup><option value="" ${EX.preset === '' ? 'selected' : ''}>Sélection personnalisée</option>`; }
+async function reloadNow(){ showLoader(true); try { await loadAll(); renderExport(); } catch (e) { toast('Actualisation impossible : ' + (e.message || e), true); } finally { showLoader(false); } }
+function renderEmpty(){
+  document.getElementById('count').textContent = '0 proposition';
+  document.getElementById('page').innerHTML = `<div class="empty"><p>Aucune proposition pour le moment</p><span>La liste des propositions d'actions de formation est vide : aucune proposition n'a encore été déposée. Cette page se remplira automatiquement dès les premiers dépôts, et l'export Excel sera alors disponible.</span><div style="margin-top:14px"><button class="btn" onclick="reloadNow()">Actualiser</button></div></div>`;
+}
 function renderExport(){
+  if (!P.length) { renderEmpty(); return; }
   if (!EX.cols.size && EX.preset) applyPreset(EX.preset);
   const groups = [...new Set(EXPORT_COLS.map(c => c.g))];
   document.getElementById('page').innerHTML = `
@@ -455,6 +462,8 @@ async function start(){
 grist.ready({ requiredAccess:'full', columns:[] });
 let _started = false;
 grist.onRecords(() => { if (!_started) { _started = true; start(); } else if (ALLOWED) scheduleReload(); });
+// Grist n'appelle pas toujours onRecords pour une table vide : on démarre quand même, sans attendre.
+setTimeout(() => { if (!_started) { _started = true; start(); } }, 800);
 </script>
 </body>
 </html>

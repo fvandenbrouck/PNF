@@ -19,6 +19,7 @@
 <!-- Version v3.5 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v3.6 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) -->
 <!-- Version v3.7 : « Orientations du schéma directeur » devient « Principes et orientations du schéma directeur » (fiche et export CSV) -->
+<!-- Version v3.8 : démarrage sans attendre onRecords (table Propositions_PNF vide : le message « Aucune proposition reçue » s'affiche au lieu d'un chargement sans fin) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -157,7 +158,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.7 principes et orientations chargé');
+console.info('[widget-recueil-arbitrage] v3.8 démarrage sur table vide chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -865,6 +866,8 @@ async function start(){
 grist.ready({ requiredAccess:'full', columns:[] });
 let _started = false;
 grist.onRecords(() => { if (!_started) { _started = true; start(); } else scheduleReload(); });
+// Grist n'appelle pas toujours onRecords pour une table vide : on démarre quand même, sans attendre.
+setTimeout(() => { if (!_started) { _started = true; start(); } }, 800);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && MODAL) closeModal(); });
 </script>
 </body>
