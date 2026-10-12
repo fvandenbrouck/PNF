@@ -31,6 +31,7 @@
 <!-- Version v58 : export CSV protégé contre l'injection de formules -->
 <!-- Version v59 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v60 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) ; colonne CSV « modalite_pedagogique » -->
+<!-- Version v61 : Statut de l'action (Prévu / Annulé / Reporté / Fusionné) affiché sur les cartes, à côté du statut de suivi -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -114,6 +115,8 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .tag-session { background:rgba(27,58,107,.06); color:var(--ink2); }
 .tag-date { background:rgba(249,197,154,.35); color:#8a4a10; }
 .tag-code { background:rgba(27,58,107,.10); color:var(--navy); font-family:'DM Mono',monospace; font-size:9px; font-weight:700; }
+.tag-statut-action { background:#fff; color:var(--ink2); border:1px solid var(--border); font-size:9px; font-weight:600; }
+.tag-statut-action.is-alt { background:rgba(249,197,154,.45); color:#8a4a10; border-color:transparent; }
 .tag-suivi { background:rgba(168,200,232,.45); color:#1B3A6B; font-family:'DM Mono',monospace; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
 .tag-copil { background:var(--purple-bg); color:var(--purple); font-family:'DM Mono',monospace; font-weight:700; }
 .tag-link { background:var(--navy-l); color:var(--navy); font-weight:600; text-decoration:none; cursor:pointer; align-self:flex-start; }
@@ -396,7 +399,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 </div>
 
 <script>
-console.info('[widget-journal-actions] v60 modalité pédagogique chargé');
+console.info('[widget-journal-actions] v61 statut de l\'action sur les cartes chargé');
 let ALL = [], FILTERED = [], CURRENT_ACTION = null, selectedId = null, EDITING_JOURNAL_ID = null;
 let CONTACT_ROWS = [], CONTACT_SUIVI_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], JOURNAL_ROWS = [], SESSION_ROWS = [];
 let CONTACT_MAP = {}, CONTACT_ID_BY_LABEL = {}, CONTACT_ID_BY_NORM_LABEL = {}, CHEFFERIE_MAP = {}, CHEFFERIE_ID_BY_LABEL = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {}, STATUS_ID_BY_LABEL = {};
@@ -686,6 +689,10 @@ function nextCopilChipHtml(a){
 }
 function statusTextFromEntry(j){ return j ? labelFor(j.Statut_suivi, STATUS_MAP) : ''; }
 function getStatutSuivi(a){ const latest=latestJournal(a && a.id); const fromLatest=statusTextFromEntry(latest); if(fromLatest) return fromLatest; return labelFor(a && (a.Statut_suivi || a.statut_suivi || a.StatutSuivi || a.statutSuivi), STATUS_MAP); }
+function getStatutActionLabel(a){ const id=refId(a && (a.Statut || a.statut || a.id_statut)); if(!id) return ''; const o=(STATUT_ACTION_OPTIONS||[]).find(x=>String(x.id)===String(id)); return o ? o.label : ''; }
+// Statut de l'action (table Statut : Prévu / Annulé / Reporté / Fusionné), distinct du statut de suivi du journal.
+// Teinté lorsqu'il n'est pas « Prévu » pour que les actions annulées, reportées ou fusionnées se repèrent d'un coup d'œil.
+function statutActionChipHtml(a){ const l=getStatutActionLabel(a); if(!l) return ''; const alt=!norm(l).includes('prevu'); return `<span class="tag tag-statut-action${alt?' is-alt':''}" title="Statut de l’action">${esc(l)}</span>`; }
 function statutSuiviChipHtml(a){ const stat=getStatutSuivi(a); return stat ? `<span class="tag tag-suivi">${esc(stat)}</span>` : ''; }
 function statusClass(label){ const s=norm(label); if(s.includes('en cours')) return 'status-green'; if(s.includes('blocage')) return 'status-orange'; if(s.includes('arbitrage')) return 'status-red'; if(s.includes('report')) return 'status-purple'; if(s.includes('cloture')) return 'status-grey'; return 'status-neutral'; }
 function sessionLieux(session){ return session ? labelsFor(session.Lieux, LIEU_MAP, 'Lieux') : []; }
@@ -941,7 +948,7 @@ function cardHtml(a,i){
   const session=getSessionForAction(a.id); const latest=latestJournal(a.id); const stat=statusTextFromEntry(latest); const annee=getAnnee(a); const volet=getVolet(a); const structs=getStructures(a); const modal=getModalite(a); const formatLib=getFormat(a); const artic=getArtic(a); const publics=getPublics(a); const code=getCodeGaia(a); const resp=getResponsablesAction(a); const chefferie=getChefferieLabel(a); const lieux=sessionStructuredLieux(session); const nb=sessionNb(session); const dateCount=sessionFilledDateCount(session); const notes=sessionComment(session); const lastDate=latest?formatDateValue(latest.Date):''; const ech=latest?formatDateValue(latest.Echeance):''; const obj=getObjectif(a).replace(/\n/g,' ').slice(0,230); const delay=Math.min(i*14,350); const isSel=a.id===selectedId;
   return `<div class="card${isSel?' selected':''}" data-id="${a.id}" style="animation-delay:${delay}ms" onclick="openModal(${a.id})">
     <div class="card-band"></div><div class="card-body">
-      <div class="card-top"><div class="card-top-left">${annee?`<span class="tag tag-year">${esc(annee)}</span>`:''}${voletChipHtml(volet)}${journeeIGChipHtml(a)}</div><div class="card-top-center">${statutSuiviChipHtml(a)}${alerteDataChipHtml(a)}</div><div class="card-top-right">${code?`<span class="tag tag-code">${esc(code)}</span>`:''}${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}</div></div>
+      <div class="card-top"><div class="card-top-left">${annee?`<span class="tag tag-year">${esc(annee)}</span>`:''}${voletChipHtml(volet)}${journeeIGChipHtml(a)}</div><div class="card-top-center">${statutActionChipHtml(a)}${statutSuiviChipHtml(a)}${alerteDataChipHtml(a)}</div><div class="card-top-right">${code?`<span class="tag tag-code">${esc(code)}</span>`:''}${ech?`<span class="tag tag-date">Échéance ${esc(ech)}</span>`:''}</div></div>
       <div class="card-title">${esc(getTitre(a))}</div>
       ${avancementBarHtml(a)}
       ${obj?`<div class="card-objectif">${esc(obj)}${getObjectif(a).length>230?'…':''}</div>`:''}
