@@ -11,6 +11,7 @@
 <!-- Version v5 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v6 : actions au Statut Annulé / Fusionné / Reporté exclues des deux onglets (pas de bilan ni de suivi à relancer) -->
 <!-- Version v7 : Statut de l'action (Prévu…) affiché sur les cartes, à côté du statut de suivi -->
+<!-- Version v8 : Statut de l'action également affiché dans la fiche détail (modale) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -131,7 +132,7 @@ select option { color:var(--ink); background:var(--white); }
   </div>
 </div>
 <script>
-console.info('[widget-alertes] v7 statut de l\'action sur les cartes chargé');
+console.info('[widget-alertes] v8 statut de l\'action sur les cartes et la fiche chargé');
 
 let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
 let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
@@ -248,9 +249,18 @@ function enrichedAction(a){
   return {...a, _latest:latest, _statusId:statusId, _statusText:statusText, _missing:missing};
 }
 // Statut de l'action (table Statut), distinct du statut de suivi du journal affiché dans la pastille principale.
-function statutActionChipHtml(a){
+function getStatutActionLabel(a){
   const id = refId(a.Statut || a.statut || a.id_statut);
-  const label = id ? (STATUT_ACTION_MAP[String(id)] || '') : '';
+  return id ? (STATUT_ACTION_MAP[String(id)] || '') : '';
+}
+function statutActionLabelOrDash(a){
+  const label = getStatutActionLabel(a);
+  if(!label) return '—';
+  const alt = !norm(label).includes('prevu');
+  return `<span class="tag ${alt?'tag-chef':'tag-ok'}">${esc(label)}</span>`;
+}
+function statutActionChipHtml(a){
+  const label = getStatutActionLabel(a);
   if(!label) return '';
   const alt = !norm(label).includes('prevu');
   return `<span class="chip chip-statut-action${alt?' is-alt':''}" title="Statut de l’action">${esc(label)}</span>`;
@@ -350,6 +360,7 @@ function openModal(id){
   const resp=getResponsables(a), chef=getChefferie(a);
   document.getElementById('modal-body').innerHTML=`
     <div class="info-grid">
+      <div><div class="section-title">Statut de l’action</div><div class="box tags">${statutActionLabelOrDash(a)}</div></div>
       <div><div class="section-title">Statut de suivi</div><div class="box tags"><span class="tag ${CURRENT_TAB==='suivi'?'tag-data':'tag-ok'}">${esc(a._statusText||'—')}</span></div></div>
       <div><div class="section-title">Dernière entrée</div><div class="box tags">${latest?`<span class="tag tag-ok">${esc(formatDateValue(latest.Date)||'Sans date')}</span>`:'—'}</div></div>
       <div><div class="section-title">Responsable de suivi</div><div class="box tags">${resp.length?resp.map(r=>`<span class="tag tag-resp">${esc(r)}</span>`).join(''):'—'}</div></div>
