@@ -9,6 +9,7 @@
 <!-- Version v3 : libellés Statut de suivi et Chefferie résolus (au lieu d'identifiants bruts) ; détail des données manquantes affiché au lieu de « AlerteData = True » -->
 <!-- Version v4 : export CSV protégé contre l'injection de formules -->
 <!-- Version v5 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
+<!-- Version v6 : actions au Statut Annulé / Fusionné / Reporté exclues des deux onglets (pas de bilan ni de suivi à relancer) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -127,11 +128,12 @@ select option { color:var(--ink); background:var(--white); }
   </div>
 </div>
 <script>
-console.info('[widget-alertes] v5 polices et plugin locaux chargé');
+console.info('[widget-alertes] v6 exclusion des statuts Annulé/Fusionné/Reporté chargé');
 
 let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
 let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
 let ANNEE_MAP = {}, CONTACT_MAP = {}, CHEFFERIE_MAP = {}, STATUS_MAP = {};
+let STATUT_ACTION_EXCLUDED_IDS = new Set();
 let ANNEE_VALUES = [], RESPONSABLE_VALUES = [], CHEFFERIE_VALUES = [];
 const ACTION_TABLE = 'Actions_formation';
 const JOURNAL_TABLE = 'Journal_Actions';
@@ -139,6 +141,10 @@ const SESSION_TABLE = 'Journal_sessions';
 const STATUS_BLOCAGE_ID = '2';
 const STATUS_ARBITRAGE_ID = '3';
 const STATUS_CLOTURE_ID = '5';
+// Statut de l'action (table Statut : Prévu / Annulé / Reporté / Fusionné), distinct du statut de suivi
+// du journal (Statuts_suivi). Une action annulée, fusionnée ou reportée n'a ni bilan à produire ni suivi
+// à relancer : elle sort des alertes. Résolution par mot-clé, jamais par identifiant en dur.
+const STATUT_ACTION_EXCLUDED_KEYWORDS = ['annul', 'fusionn', 'report'];
 
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function asList(v){ if(v===null||v===undefined||v==='') return []; if(Array.isArray(v)) return v[0]==='L'?v.slice(1):v; return [v]; }
@@ -238,8 +244,12 @@ function enrichedAction(a){
   const missing = sessionComputedMissing(sessionForAction(a.id));
   return {...a, _latest:latest, _statusId:statusId, _statusText:statusText, _missing:missing};
 }
+function isExcludedByStatut(a){
+  const id = refId(a.Statut || a.statut || a.id_statut);
+  return !!id && STATUT_ACTION_EXCLUDED_IDS.has(String(id));
+}
 function tabItems(tab){
-  const rows = ALL_ACTIONS.map(enrichedAction);
+  const rows = ALL_ACTIONS.filter(a=>!isExcludedByStatut(a)).map(enrichedAction);
   if(tab==='suivi') return rows.filter(a=>[STATUS_BLOCAGE_ID, STATUS_ARBITRAGE_ID].includes(String(a._statusId)));
   return rows.filter(a=>isDataAlert(a.id, a._latest));
 }
@@ -382,20 +392,24 @@ async function loadData(records){
     }
     if (toolbar) toolbar.style.display = '';
 
-    const [actionsFull, journal, sessions, contacts, chefferie, annees, statuses] = await Promise.all([
+    const [actionsFull, journal, sessions, contacts, chefferie, annees, statuses, statutsAction] = await Promise.all([
       grist.docApi.fetchTable(ACTION_TABLE).catch(()=>({id:[]})),
       grist.docApi.fetchTable(JOURNAL_TABLE).catch(()=>({id:[]})),
       grist.docApi.fetchTable(SESSION_TABLE).catch(()=>({id:[]})),
       grist.docApi.fetchTable('Contacts').catch(()=>({id:[]})),
       grist.docApi.fetchTable('Chefferie').catch(()=>({id:[]})),
       grist.docApi.fetchTable('Annees').catch(()=>({id:[]})),
-      grist.docApi.fetchTable('Statuts_suivi').catch(()=>({id:[]}))
+      grist.docApi.fetchTable('Statuts_suivi').catch(()=>({id:[]})),
+      grist.docApi.fetchTable('Statut').catch(()=>({id:[]}))
     ]);
     CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); JOURNAL_ROWS=toRows(journal); SESSION_ROWS=toRows(sessions);
     CONTACT_MAP=Object.fromEntries(CONTACT_ROWS.map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
     CHEFFERIE_MAP=Object.fromEntries(CHEFFERIE_ROWS.map(r=>[String(r.id),chefferieLabel(r)]).filter(([,v])=>v));
     ANNEE_MAP=Object.fromEntries(toRows(annees).map(r=>[String(r.id),anneeLabel(r)]).filter(([,v])=>v));
     STATUS_MAP=Object.fromEntries(toRows(statuses).map(r=>[String(r.id),statusLabel(r)]).filter(([,v])=>v));
+    STATUT_ACTION_EXCLUDED_IDS=new Set(toRows(statutsAction)
+      .filter(r=>{ const l=norm(statusLabel(r)); return l && STATUT_ACTION_EXCLUDED_KEYWORDS.some(k=>l.includes(k)); })
+      .map(r=>String(r.id)));
     const actionFullRows=toRows(actionsFull);
     const fullById=Object.fromEntries(actionFullRows.map(r=>[String(r.id),r]));
     const incoming=(records||[]).map(r=>({id:r.id,...r}));
