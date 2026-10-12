@@ -10,6 +10,7 @@
 <!-- Version v4 : export CSV protégé contre l'injection de formules -->
 <!-- Version v5 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v6 : actions au Statut Annulé / Fusionné / Reporté exclues des deux onglets (pas de bilan ni de suivi à relancer) -->
+<!-- Version v7 : Statut de l'action (Prévu…) affiché sur les cartes, à côté du statut de suivi -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -55,6 +56,8 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .chip-gaia { color:var(--ink3); background:var(--bg); }
 .chip-status { color:var(--danger); background:var(--danger-l); }
 .chip-status.cloture { color:var(--navy); background:var(--blue-l); }
+.chip-statut-action { color:var(--ink2); background:var(--white); border:1px solid var(--border); font-weight:600; }
+.chip-statut-action.is-alt { color:#8a4a10; background:rgba(249,197,154,.45); border-color:transparent; }
 .card-title { font-family:'Fraunces',serif; font-size:15px; font-weight:600; line-height:1.35; }
 .card-objectif { font-size:12px; color:var(--ink2); line-height:1.55; }
 .card-sep { height:1px; background:var(--border); margin-top:2px; }
@@ -128,12 +131,12 @@ select option { color:var(--ink); background:var(--white); }
   </div>
 </div>
 <script>
-console.info('[widget-alertes] v6 exclusion des statuts Annulé/Fusionné/Reporté chargé');
+console.info('[widget-alertes] v7 statut de l\'action sur les cartes chargé');
 
 let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
 let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
 let ANNEE_MAP = {}, CONTACT_MAP = {}, CHEFFERIE_MAP = {}, STATUS_MAP = {};
-let STATUT_ACTION_EXCLUDED_IDS = new Set();
+let STATUT_ACTION_EXCLUDED_IDS = new Set(), STATUT_ACTION_MAP = {};
 let ANNEE_VALUES = [], RESPONSABLE_VALUES = [], CHEFFERIE_VALUES = [];
 const ACTION_TABLE = 'Actions_formation';
 const JOURNAL_TABLE = 'Journal_Actions';
@@ -244,6 +247,14 @@ function enrichedAction(a){
   const missing = sessionComputedMissing(sessionForAction(a.id));
   return {...a, _latest:latest, _statusId:statusId, _statusText:statusText, _missing:missing};
 }
+// Statut de l'action (table Statut), distinct du statut de suivi du journal affiché dans la pastille principale.
+function statutActionChipHtml(a){
+  const id = refId(a.Statut || a.statut || a.id_statut);
+  const label = id ? (STATUT_ACTION_MAP[String(id)] || '') : '';
+  if(!label) return '';
+  const alt = !norm(label).includes('prevu');
+  return `<span class="chip chip-statut-action${alt?' is-alt':''}" title="Statut de l’action">${esc(label)}</span>`;
+}
 function isExcludedByStatut(a){
   const id = refId(a.Statut || a.statut || a.id_statut);
   return !!id && STATUT_ACTION_EXCLUDED_IDS.has(String(id));
@@ -310,7 +321,7 @@ function cardHtml(a){
   return `<div class="card${cls}" onclick="openModal(${Number(a.id)})">
     <div class="card-band"></div>
     <div class="card-body">
-      <div class="card-top"><div class="card-top-left">${annee?`<span class="chip chip-annee">${esc(annee)}</span>`:''}${gaia?`<span class="chip chip-gaia">GAIA ${esc(gaia)}</span>`:''}</div><div class="card-top-right"><span class="chip chip-status ${CURRENT_TAB==='donnees'?'cloture':''}">${esc(status)}</span></div></div>
+      <div class="card-top"><div class="card-top-left">${annee?`<span class="chip chip-annee">${esc(annee)}</span>`:''}${gaia?`<span class="chip chip-gaia">GAIA ${esc(gaia)}</span>`:''}</div><div class="card-top-right">${statutActionChipHtml(a)}<span class="chip chip-status ${CURRENT_TAB==='donnees'?'cloture':''}">${esc(status)}</span></div></div>
       <div class="card-title">${esc(getTitre(a))}</div>
       ${getObjectif(a)?`<div class="card-objectif">${esc(getObjectif(a))}</div>`:''}
       <div class="card-sep"></div>
@@ -407,6 +418,7 @@ async function loadData(records){
     CHEFFERIE_MAP=Object.fromEntries(CHEFFERIE_ROWS.map(r=>[String(r.id),chefferieLabel(r)]).filter(([,v])=>v));
     ANNEE_MAP=Object.fromEntries(toRows(annees).map(r=>[String(r.id),anneeLabel(r)]).filter(([,v])=>v));
     STATUS_MAP=Object.fromEntries(toRows(statuses).map(r=>[String(r.id),statusLabel(r)]).filter(([,v])=>v));
+    STATUT_ACTION_MAP=Object.fromEntries(toRows(statutsAction).map(r=>[String(r.id),statusLabel(r)]).filter(([,v])=>v));
     STATUT_ACTION_EXCLUDED_IDS=new Set(toRows(statutsAction)
       .filter(r=>{ const l=norm(statusLabel(r)); return l && STATUT_ACTION_EXCLUDED_KEYWORDS.some(k=>l.includes(k)); })
       .map(r=>String(r.id)));
