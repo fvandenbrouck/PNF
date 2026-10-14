@@ -12,6 +12,7 @@
 <!-- Version v6 : actions au Statut Annulé / Fusionné / Reporté exclues des deux onglets (pas de bilan ni de suivi à relancer) -->
 <!-- Version v7 : Statut de l'action (Prévu…) affiché sur les cartes, à côté du statut de suivi -->
 <!-- Version v8 : Statut de l'action également affiché dans la fiche détail (modale) -->
+<!-- Version v9 : correctif — le statut de l'action est reconnu qu'onRecords fournisse l'identifiant ou le libellé affiché (les actions annulées, fusionnées ou reportées restaient dans les alertes) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -132,7 +133,7 @@ select option { color:var(--ink); background:var(--white); }
   </div>
 </div>
 <script>
-console.info('[widget-alertes] v8 statut de l\'action sur les cartes et la fiche chargé');
+console.info('[widget-alertes] v9 statut de l\'action reconnu par identifiant ou libellé chargé');
 
 let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
 let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
@@ -249,9 +250,12 @@ function enrichedAction(a){
   return {...a, _latest:latest, _statusId:statusId, _statusText:statusText, _missing:missing};
 }
 // Statut de l'action (table Statut), distinct du statut de suivi du journal affiché dans la pastille principale.
+// onRecords peut fournir l'identifiant de la ligne (nombre) ou le libellé affiché (« ❌ Annulé ») : les deux sont gérés.
+function statutActionRaw(a){ return refId(a.Statut || a.statut || a.id_statut); }
 function getStatutActionLabel(a){
-  const id = refId(a.Statut || a.statut || a.id_statut);
-  return id ? (STATUT_ACTION_MAP[String(id)] || '') : '';
+  const raw = statutActionRaw(a);
+  if(!raw) return '';
+  return STATUT_ACTION_MAP[String(raw)] || (/^\d+$/.test(String(raw)) ? '' : String(raw));
 }
 function statutActionLabelOrDash(a){
   const label = getStatutActionLabel(a);
@@ -266,8 +270,12 @@ function statutActionChipHtml(a){
   return `<span class="chip chip-statut-action${alt?' is-alt':''}" title="Statut de l’action">${esc(label)}</span>`;
 }
 function isExcludedByStatut(a){
-  const id = refId(a.Statut || a.statut || a.id_statut);
-  return !!id && STATUT_ACTION_EXCLUDED_IDS.has(String(id));
+  const raw = statutActionRaw(a);
+  if(!raw) return false;
+  if(STATUT_ACTION_EXCLUDED_IDS.has(String(raw))) return true;
+  if(/^\d+$/.test(String(raw))) return false;
+  const l = norm(raw);                                             // libellé affiché au lieu de l'identifiant
+  return STATUT_ACTION_EXCLUDED_KEYWORDS.some(k=>l.includes(k));
 }
 function tabItems(tab){
   const rows = ALL_ACTIONS.filter(a=>!isExcludedByStatut(a)).map(enrichedAction);
