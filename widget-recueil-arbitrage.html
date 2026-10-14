@@ -21,6 +21,7 @@
 <!-- Version v3.7 : « Orientations du schéma directeur » devient « Principes et orientations du schéma directeur » (fiche et export CSV) -->
 <!-- Version v3.8 : démarrage sans attendre onRecords (table Propositions_PNF vide : le message « Aucune proposition reçue » s'affiche au lieu d'un chargement sans fin) -->
 <!-- Version v3.9 : nombre prévisionnel de sessions de formation (colonnes Nb_sessions / C_Nb_sessions) : champ corrigeable et colonnes d'export -->
+<!-- Version v3.10 : précision sur le public « Autres » (colonnes Public_autre / C_Public_autre) : champ corrigeable, alertes (« Autres » coché sans précision, précision sans « Autres »), reprise à la fusion, colonnes d'export -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -159,7 +160,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.9 nombre de sessions chargé');
+console.info('[widget-recueil-arbitrage] v3.10 précision public « Autres » chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -210,6 +211,18 @@ const axeLib = aid => { const x = AXE[axeOf(aid)]; return x ? clean(x.libelle) :
 const modLib = id => MODALITE[id] ? clean(MODALITE[id].libelle) : '';
 const fmtLib = id => FORMAT[id] ? clean(FORMAT[id].libelle) : '';
 const pubLibs = v => asIds(v).map(id => PUBLIC[id] ? clean(PUBLIC[id].libelle) : '').filter(Boolean);
+/* Public « Autres » : la précision n'a de sens que si le public « Autres » est coché (repéré par son libellé, pas par son identifiant). */
+const pubAutreIds = () => Object.values(PUBLIC).filter(x => norm(clean(x.libelle)) === 'autres').map(x => Number(x.id));
+function autreState(p){
+  const ids = asIds(p.C_Publics ?? p.Public_cible), autres = pubAutreIds();
+  const coche = ids.some(i => autres.includes(i)), prec = String(p.C_Public_autre ?? p.Public_autre ?? '').trim();
+  return { coche, prec, manque: coche && !prec, orpheline: !coche && !!prec };
+}
+function autreMsg(p){
+  const a = autreState(p);
+  return a.manque ? 'Le public « Autres » est retenu sans précision : demander au porteur de préciser le public concerné (ou le compléter ici).'
+    : a.orpheline ? 'Une précision sur le public « Autres » est renseignée alors que « Autres » n\'est pas retenu : elle est ignorée à l\'export et au versement.' : '';
+}
 const statutOf = p => p.Statut_instruction || 'Reçue';
 const stClass = s => 'st-' + (s === "En cours d'instruction" ? 'En-cours' : s);
 const jourHeures = () => num(PARAMS.jour_heures) || 6;
@@ -362,7 +375,7 @@ function renderListBody(){
       <td>${act ? 'Action ' + esc(aNum(act)) : '–'}</td>
       <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}</td>
       <td><div class="mini"><div title="Complétude">${gauge(num(p.Score_completude))}</div><div title="Conformité">${gauge(num(p.Score_conformite))}</div><div title="Alignement">${gauge(num(p.Score_alignement))}</div></div></td>
-      <td><div class="big-n">${fmtN(num(p.Score_global))}</div>${isRouge(p) ? '<span class="flag bad">rédhibitoire</span>' : ''}</td></tr>`;
+      <td><div class="big-n">${fmtN(num(p.Score_global))}</div>${isRouge(p) ? '<span class="flag bad">rédhibitoire</span>' : ''}${autreState(p).manque ? '<span class="flag bad" title="Public « Autres » retenu sans précision">« Autres » à préciser</span>' : ''}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -392,7 +405,7 @@ function renderModal(){
 const EDITS = [
   { k:'Titre', c:'C_Titre', l:'Titre', t:'text' }, { k:'Objectifs', c:'C_Objectifs', l:'Objectifs', t:'area' },
   { k:'Action_SD', c:'C_Action_SD', l:'Action du schéma directeur', t:'action' }, { k:'Structure_porteuse', c:'C_Structure_porteuse', l:'Structure porteuse', t:'struct' },
-  { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Format', c:'C_Format', l:'Modalité pédagogique', t:'format' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' },
+  { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Format', c:'C_Format', l:'Modalité pédagogique', t:'format' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' }, { k:'Public_autre', c:'C_Public_autre', l:'Précision sur le public « Autres »', t:'text' },
   { k:'Periode', c:'C_Periode', l:'Période', t:'periode' }, { k:'Duree_heures', c:'C_Duree_heures', l:'Durée (en heures)', t:'num' },
   { k:'Effectif_previsionnel', c:'C_Effectif_previsionnel', l:'Effectif prévisionnel', t:'int' }, { k:'Nb_sessions', c:'C_Nb_sessions', l:'Nombre prévisionnel de sessions', t:'int' }, { k:'Lieu', c:'C_Lieu', l:'Lieu', t:'text' },
   { k:'Articulation_parcours', c:'C_Articulation_parcours', l:'Articulation à un parcours', t:'parcours' },
@@ -449,7 +462,8 @@ function paneDep(p){
   }).join('');
   const arr = ARR.map(([k, l]) => `${esc(l)} : <b>${esc(p[k] || '–')}</b>`).join('<br>');
   const ori = oriOf(p);
-  return `<div class="cmp"><div class="h"></div><div class="h">Déposé par le porteur</div><div class="h">Corrigé (utilisé pour le versement et l'export)</div><div class="h"></div>${rows}</div>
+  const am = autreMsg(p);
+  return `${am ? `<div class="warn" style="margin-bottom:8px">${esc(am)}</div>` : ''}<div class="cmp"><div class="h"></div><div class="h">Déposé par le porteur</div><div class="h">Corrigé (utilisé pour le versement et l'export)</div><div class="h"></div>${rows}</div>
     <div class="row"><button class="btn primary" onclick="saveEdits()">Enregistrer les corrections</button><span class="t-sub">Seules les valeurs modifiées sont écrites. Les valeurs déposées ne sont jamais modifiées.</span></div>
     <div class="section-title">Autres éléments déposés (lecture seule)</div>
     <div class="box"><b>Contexte de la demande</b><br>${esc(p.Contexte || '–')}</div>
@@ -527,6 +541,7 @@ function paneInstr(p){
   const opts = (fused ? STATUTS : STATUTS.filter(s => s !== 'Fusionnée')).map(s => opt(s, s, st)).join('');
   const warns = [];
   if (isRouge(p)) warns.push('Cette proposition présente une incompatibilité rédhibitoire.');
+  if (autreMsg(p)) warns.push(autreMsg(p));
   // une proposition principale (même issue de fusions) peut être fusionnée dans une autre ; le groupe suit
   const cand = P.filter(x => x.id !== p.id && statutOf(x) !== 'Fusionnée' && !fusionDans(x) && !isVersee(x));
   const main = fd ? P.find(x => x.id === fd) : null, top = racine(p);
@@ -562,7 +577,9 @@ async function doFusion(){
   const main = P.find(x => x.id === mainId); if (!main || statutOf(main) === 'Fusionnée' || fusionDans(main) || isVersee(main) || mainId === src.id) { toast('Proposition principale non valide.', true); return; }
   const acts = [['UpdateRecord', PROP, src.id, { Fusionnee_dans: mainId, Statut_instruction: 'Fusionnée' }]], upd = {};
   if (document.getElementById('fu-obj').checked && clean(src.C_Objectifs ?? src.Objectifs)) upd.C_Objectifs = `${main.C_Objectifs ?? main.Objectifs ?? ''}\n\n— Issu de la fusion avec « ${src.C_Titre ?? src.Titre} » (${sCode(refId(src.C_Structure_porteuse ?? src.Structure_porteuse))}) —\n${src.C_Objectifs ?? src.Objectifs}`.trim();
-  if (document.getElementById('fu-pub').checked) { const u = [...new Set([...asIds(main.C_Publics ?? main.Public_cible), ...asIds(src.C_Publics ?? src.Public_cible)])]; if (u.join() !== asIds(main.C_Publics).join()) upd.C_Publics = ['L', ...u]; }
+  if (document.getElementById('fu-pub').checked) { const u = [...new Set([...asIds(main.C_Publics ?? main.Public_cible), ...asIds(src.C_Publics ?? src.Public_cible)])]; if (u.join() !== asIds(main.C_Publics).join()) upd.C_Publics = ['L', ...u];
+    const ma = String(main.C_Public_autre ?? main.Public_autre ?? '').trim(), sa = String(src.C_Public_autre ?? src.Public_autre ?? '').trim();
+    if (sa && !ma.includes(sa)) upd.C_Public_autre = ma ? ma + ' ; ' + sa : sa; }
   if (document.getElementById('fu-eff').checked) {                // effectif et durée : maximum des deux (jamais cumulés)
     const eMax = Math.max(num(cEff(main)) || 0, num(cEff(src)) || 0), dMax = Math.max(num(cDuree(main)) || 0, num(cDuree(src)) || 0);
     if (eMax > 0 && eMax !== (num(cEff(main)) || 0)) upd.C_Effectif_previsionnel = eMax;
@@ -598,7 +615,7 @@ function paneVerse(p){
   const pl = versePlan(p), grp = pl.members.length > 1;
   const dups = AF.filter(a => norm(a.titre) === norm(pl.titre) && refId(a.Annee_scolaire) === pl.annee);
   const sum = [['Titre', pl.titre || '–'], ['Objectifs', pl.objectif || '–'], ['Action du schéma directeur', pl.act ? aLib(pl.act) + '\n(' + axeLib(pl.act) + ')' : '–'],
-    ['Structure(s) porteuse(s)', pl.structs.map(sFull).join('\n') || '–'], ['Modalité', modLib(pl.modalite) || '–'], ['Modalité pédagogique', fmtLib(pl.format) || '–'], ['Articulation à un parcours', pl.articulation || '–'], ['Publics cibles', pubLibs(['L', ...pl.publics]).join(', ') || '–'],
+    ['Structure(s) porteuse(s)', pl.structs.map(sFull).join('\n') || '–'], ['Modalité', modLib(pl.modalite) || '–'], ['Modalité pédagogique', fmtLib(pl.format) || '–'], ['Articulation à un parcours', pl.articulation || '–'], ['Publics cibles', (pubLibs(['L', ...pl.publics]).join(', ') || '–') + (autreState(p).prec && autreState(p).coche ? '\nPrécision « Autres » : ' + autreState(p).prec + '\n(non reprise dans le catalogue : pas de colonne dédiée)' : '')],
     ['Heures de formation', fmtN(pl.heures)], ['Journées stagiaires (JS)', fmtN(pl.js)], ['Année scolaire', (ANNEE[pl.annee] || {}).libelle || '–'], ['Statut', '(vide)']];
   const perio = (p.C_Periode && p.Periode && p.C_Periode !== p.Periode) ? `${p.C_Periode} (déposée : ${p.Periode})` : (p.C_Periode || p.Periode || '');
   const lieuxOpts = Object.values(LIEUX).filter(l => clean(l.Site) || clean(l.ville)).map(l => `<label class="chk"><input type="checkbox" data-lieu="${l.id}">${esc(clean(l.Site) || '—')}${clean(l.ville) ? ' (' + esc(clean(l.ville)) + ')' : ''}</label>`).join('');
@@ -704,14 +721,14 @@ const EXPORT_COLS = [
   { k:'pluriannuelle', g:G.DEP, l:'Action pluriannuelle', v:p => p.Action_pluriannuelle }, { k:'report', g:G.DEP, l:'Report d\'une action du PNF précédent', v:p => p[REPCOL] },
   { k:'periode', g:G.DEP, l:'Période calendaire envisagée', v:p => p.Periode }, { k:'modalite', g:G.DEP, l:'Modalité de formation', v:p => modLib(refId(p.Modalite)) },
   { k:'format', g:G.DEP, l:'Modalité pédagogique', v:p => fmtLib(refId(p.Format)) }, { k:'articulation', g:G.DEP, l:'Articulation à un parcours (Magistère / Mentor)', v:p => p.Articulation_parcours },
-  { k:'publics', g:G.DEP, l:'Public cible', v:p => pubLibs(p.Public_cible) }, { k:'duree', g:G.DEP, l:'Durée (heures)', v:p => p.Duree_heures }, { k:'effectif', g:G.DEP, l:'Effectif prévisionnel', v:p => p.Effectif_previsionnel }, { k:'sessions', g:G.DEP, l:'Nombre prévisionnel de sessions', v:p => p.Nb_sessions },
+  { k:'publics', g:G.DEP, l:'Public cible', v:p => pubLibs(p.Public_cible) }, { k:'public_autre', g:G.DEP, l:'Précision sur le public « Autres »', v:p => p.Public_autre }, { k:'duree', g:G.DEP, l:'Durée (heures)', v:p => p.Duree_heures }, { k:'effectif', g:G.DEP, l:'Effectif prévisionnel', v:p => p.Effectif_previsionnel }, { k:'sessions', g:G.DEP, l:'Nombre prévisionnel de sessions', v:p => p.Nb_sessions },
   { k:'lieu', g:G.DEP, l:'Lieu prévisionnel', v:p => p.Lieu }, { k:'commentaire_porteur', g:G.DEP, l:'Commentaire du porteur', v:p => p.Commentaire_porteur },
   { k:'c_titre', g:G.COR, l:'Titre (corrigé)', v:p => p.C_Titre }, { k:'c_objectifs', g:G.COR, l:'Objectifs (corrigés)', v:p => p.C_Objectifs },
   { k:'c_action_num', g:G.COR, l:'Action du schéma directeur (n°, corrigée)', v:p => aNum(refId(p.C_Action_SD)) }, { k:'c_action_lib', g:G.COR, l:'Action du schéma directeur (libellé, corrigé)', v:p => aLib(refId(p.C_Action_SD)) },
   { k:'c_axe', g:G.COR, l:'Axe du schéma directeur (corrigé)', v:p => axeLib(refId(p.C_Action_SD)) },
   { k:'c_structure_code', g:G.COR, l:'Structure porteuse (code, corrigée)', v:p => sCode(refId(p.C_Structure_porteuse)) }, { k:'c_structure_lib', g:G.COR, l:'Structure porteuse (libellé, corrigé)', v:p => clean((STRUCT[refId(p.C_Structure_porteuse)] || {}).libelle) },
   { k:'c_modalite', g:G.COR, l:'Modalité (corrigée)', v:p => modLib(refId(p.C_Modalite)) },
-  { k:'c_format', g:G.COR, l:'Modalité pédagogique (corrigée)', v:p => fmtLib(refId(p.C_Format)) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours (corrigée)', v:p => p.C_Articulation_parcours }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) },
+  { k:'c_format', g:G.COR, l:'Modalité pédagogique (corrigée)', v:p => fmtLib(refId(p.C_Format)) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours (corrigée)', v:p => p.C_Articulation_parcours }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) }, { k:'c_public_autre', g:G.COR, l:'Précision sur le public « Autres » (corrigée)', v:p => p.C_Public_autre },
   { k:'c_periode', g:G.COR, l:'Période (corrigée)', v:p => p.C_Periode }, { k:'c_duree', g:G.COR, l:'Durée en heures (corrigée)', v:p => p.C_Duree_heures },
   { k:'c_effectif', g:G.COR, l:'Effectif prévisionnel (corrigé)', v:p => p.C_Effectif_previsionnel }, { k:'c_sessions', g:G.COR, l:'Nombre prévisionnel de sessions (corrigé)', v:p => p.C_Nb_sessions }, { k:'c_lieu', g:G.COR, l:'Lieu (corrigé)', v:p => p.C_Lieu },
   { k:'c_email', g:G.COR, l:'Adresse électronique de contact (corrigée)', v:p => p.C_Email_contact }, { k:'c_pluriannuelle', g:G.COR, l:'Action pluriannuelle (corrigée)', v:p => p.C_Action_pluriannuelle },
