@@ -24,6 +24,7 @@
 <!-- Version v3.10 : précision sur le public « Autres » (colonnes Public_autre / C_Public_autre) : champ corrigeable, alertes (« Autres » coché sans précision, précision sans « Autres »), reprise à la fusion, colonnes d'export -->
 <!-- Version v3.11 : bac à sable du versement — paramètre mode_versement (Parametres_recueil) : « simulation » (défaut, y compris si le paramètre est absent) ou « reel ». En simulation, « Verser » n'écrit ni dans Actions_formation ni dans Contacts : seule la colonne Versement_simule de la proposition est posée (effaçable) ; bandeau « MODE TEST » -->
 <!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
+<!-- Version v3.13 : la classe DGRH accède à l'Arbitrage (évaluation, corrections, instruction, fusions, export avec ou sans cotation) ; le versement dans le catalogue et l'enregistrement de modèles d'export partagés lui restent fermés -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -169,7 +170,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.12 mode de versement réservé à Owner chargé');
+console.info('[widget-recueil-arbitrage] v3.13 accès DGRH chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -180,7 +181,7 @@ const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr
 
 /* ============================== état ============================== */
 let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, MODELES = [], PERIODES = PERIODES_DEFAUT.slice();
-let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, MODE_ROW = 0, MODE_ASK = '';
+let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, IS_DGRH = false, MODE_ROW = 0, MODE_ASK = '';
 let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
 let TAB = 'list', SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
 const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', format:'', periode:'', noteMin:'', noteMax:'', du:'', au:'', rouge:false, versees:'' });
@@ -288,7 +289,7 @@ async function checkAccess(){
   try {
     const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
     if (rows.length > 1) return true;
-    if (rows.length === 1) return ['Chefferie', 'Proprietaire'].includes(rows[0].ClasseNom);
+    if (rows.length === 1) { IS_DGRH = rows[0].ClasseNom === 'DGRH'; return ['Chefferie', 'Proprietaire', 'DGRH'].includes(rows[0].ClasseNom); }
     return false;
   } catch (e) { console.warn('[arbitrage] vérification des droits impossible :', e); return false; }
 }
@@ -305,7 +306,7 @@ const nbSimul = () => P.filter(p => num(p.Versement_simule) > 0).length;
 function renderModeBar(){
   const el = document.getElementById('mode-banner'); if (!el) return;
   const sim = modeSimulation();
-  if (!IS_OWNER && !sim) { el.className = 'mode-test hidden'; el.innerHTML = ''; return; }
+  if ((!IS_OWNER && !sim) || (IS_DGRH && !MODE_ROW)) { el.className = 'mode-test hidden'; el.innerHTML = ''; return; }   // la DGRH ne lit pas Parametres_recueil sans règle dédiée : mode inconnu, bandeau masqué
   el.className = 'mode-test' + (sim ? '' : ' reel');
   let h = `<span>${sim ? 'MODE TEST — le versement dans le catalogue des actions est simulé : rien n\'est écrit dans Actions_formation ni dans Contacts.' : 'Versement réel — les actions retenues sont créées dans le catalogue des actions.'}</span>`;
   if (IS_OWNER) {
@@ -653,6 +654,7 @@ function versePlan(p){
 }
 function paneVerse(p){
   const st = statutOf(p), fd = fusionDans(p);
+  if (IS_DGRH && !isVersee(p)) return '<div class="warn">Le versement dans le catalogue des actions est réservé à la Chefferie et aux Propriétaires.</div>';
   if (isVersee(p)) { const a = AF.find(x => x.id === refId(p.Id_action_creee)); return `<div class="note">Cette proposition a été versée dans <b>le catalogue des actions</b> : action n° <b>${refId(p.Id_action_creee)}</b>${a ? ' « ' + esc(a.titre) + ' »' : ''}.</div><div class="t-sub">Les modifications se font désormais depuis le widget de pilotage des actions.</div>`; }
   if (fd) return `<div class="warn">Cette proposition est fusionnée dans la proposition n° ${fd}. Le versement se fait depuis la proposition principale de tête (n° ${racine(p).id}).</div>`;
   if (isSimulee(p)) return `<div class="note" style="background:#FFF3CD;color:#7A5A00">MODE TEST — versement simulé le ${esc(fmtDate(p.Versement_simule))} : aucune action n'a été créée dans le catalogue et aucun contact n'a été ajouté.</div>
@@ -715,7 +717,7 @@ async function clearSimul(){
   catch (e) { toast('Échec : ' + (e.message || e), true); }
 }
 async function doVerse(){
-  if (VERSING) return; VERSING = true;
+  if (VERSING || IS_DGRH) return; VERSING = true;
   const btn = document.getElementById('vs-confirm'); if (btn) btn.disabled = true;
   const zone = document.getElementById('vs-zone'); if (zone) zone.insertAdjacentHTML('afterbegin', '<div class="note" id="vs-busy">Versement en cours (plusieurs étapes, quelques secondes)… ne ferme pas cette fiche.</div>');
   let createdId = 0;
@@ -890,7 +892,8 @@ function renderExport(){
           <label class="chk"><input type="radio" name="ex-mode" ${EX.mode === 'Sans cotation' ? 'checked' : ''} onchange="setMode('Sans cotation')">Sans cotation</label>
           <label class="chk"><input type="radio" name="ex-mode" ${EX.mode === 'Avec cotation' ? 'checked' : ''} onchange="setMode('Avec cotation')">Avec cotation (interne)</label></div></div></div>
       ${EX.mode === 'Sans cotation' ? '<div class="note" style="margin-top:8px">Mode « Sans cotation » : les notes, le détail de l\'évaluation et toutes les colonnes d\'instruction (statut, fusion, commentaires, motif) sont retirés de la liste des colonnes.</div>' : '<div class="warn" style="margin-top:8px">Mode « Avec cotation » : ce fichier contient des données internes. Il ne doit pas être transmis à la DGRH.</div>'}
-      <div class="row" style="margin-top:10px">
+      ${IS_DGRH ? '<div class="t-sub" style="margin-top:10px">Les modèles d\'export partagés sont en lecture seule pour la DGRH.</div>' : ''}
+      <div class="row" style="margin-top:10px${IS_DGRH ? ';display:none' : ''}">
         <input type="text" id="ex-newname" placeholder="Nom du nouveau modèle partagé" style="width:240px"><button class="btn small" onclick="saveModelAs()">Enregistrer sous ce nom</button>
         ${shared ? '<button class="btn small" onclick="updateModel()">Mettre à jour le modèle sélectionné</button><span id="ex-del"><button class="btn small danger" onclick="askDeleteModel()">Supprimer le modèle</button></span>' : ''}
         <span class="t-sub">Un modèle enregistre le mode, les colonnes cochées et le format ; il est partagé avec la chefferie et les propriétaires.</span></div></div>
@@ -935,7 +938,7 @@ async function start(){
     let n = 0; while (!grist.docApi && n < 20) { await new Promise(r => setTimeout(r, 100)); n++; }
     if (!(await checkAccess())) {
       document.getElementById('toolbar').style.display = 'none';
-      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie et aux Propriétaires.</span></div>`; return;
+      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Propriétaires et à la DGRH.</span></div>`; return;
     }
     await loadAll(); IS_OWNER = await detectOwner(); applyPreset('std-sans'); renderAll();
   } catch (e) { console.error(e); document.getElementById('page').innerHTML = `<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
