@@ -22,6 +22,8 @@
 <!-- Version v3.8 : démarrage sans attendre onRecords (table Propositions_PNF vide : le message « Aucune proposition reçue » s'affiche au lieu d'un chargement sans fin) -->
 <!-- Version v3.9 : nombre prévisionnel de sessions de formation (colonnes Nb_sessions / C_Nb_sessions) : champ corrigeable et colonnes d'export -->
 <!-- Version v3.10 : précision sur le public « Autres » (colonnes Public_autre / C_Public_autre) : champ corrigeable, alertes (« Autres » coché sans précision, précision sans « Autres »), reprise à la fusion, colonnes d'export -->
+<!-- Version v3.11 : bac à sable du versement — paramètre mode_versement (Parametres_recueil) : « simulation » (défaut, y compris si le paramètre est absent) ou « reel ». En simulation, « Verser » n'écrit ni dans Actions_formation ni dans Contacts : seule la colonne Versement_simule de la proposition est posée (effaçable) ; bandeau « MODE TEST » -->
+<!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -82,6 +84,12 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 .flag { font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; margin-left:4px; }
 .flag.bad { background:var(--danger-l); color:var(--danger); }
 .flag.good { background:var(--ok-l); color:var(--ok); }
+.mode-test { background:#FFF3CD; color:#7A5A00; border-bottom:2px solid #E0B94A; padding:7px 16px; font-size:12px; font-weight:600; }
+.mode-test.hidden { display:none; }
+.mode-test.reel { background:var(--ok-l); color:var(--ok); border-bottom-color:var(--ok); }
+.mode-test { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
+.mode-test select, .mode-test .btn { font-size:11.5px; padding:3px 6px; width:auto; }
+.flag.test { background:#FFF3CD; color:#7A5A00; }
 .gauge { height:8px; background:#ece7dd; border-radius:4px; overflow:hidden; min-width:54px; }
 .gauge > i { display:block; height:100%; border-radius:4px; }
 .g-row { display:flex; align-items:center; gap:8px; margin:3px 0; }
@@ -153,6 +161,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
   </div>
   <span class="count" id="count">–</span>
 </div>
+<div class="mode-test hidden" id="mode-banner">MODE TEST — le versement dans le catalogue des actions est simulé : rien n'est écrit dans Actions_formation ni dans Contacts.</div>
 <div class="page" id="page"></div>
 <div id="loader"><div class="spinner"></div><p>Chargement des propositions…</p></div>
 <div class="overlay hidden" id="overlay" onmousedown="overlayDown(event)">
@@ -160,7 +169,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.10 précision public « Autres » chargé');
+console.info('[widget-recueil-arbitrage] v3.12 mode de versement réservé à Owner chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -171,7 +180,7 @@ const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr
 
 /* ============================== état ============================== */
 let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, MODELES = [], PERIODES = PERIODES_DEFAUT.slice();
-let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false;
+let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, MODE_ROW = 0, MODE_ASK = '';
 let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
 let TAB = 'list', SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
 const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', format:'', periode:'', noteMin:'', noteMax:'', du:'', au:'', rouge:false, versees:'' });
@@ -229,6 +238,8 @@ const jourHeures = () => num(PARAMS.jour_heures) || 6;
 function ev(p){ if (p._ev === undefined) { const e = decode(p.Evaluation); p._ev = (e && typeof e === 'object' && !Array.isArray(e)) ? e : null; } return p._ev; }
 const isRouge = p => p.Redhibitoire === true;
 const isVersee = p => refId(p.Id_action_creee) > 0;
+const modeSimulation = () => !['reel'].includes(norm(PARAMS.mode_versement));     // tout sauf « reel » / « réel » vaut simulation (repli sûr)
+const isSimulee = p => modeSimulation() && num(p.Versement_simule) > 0;
 const fusionDans = p => refId(p.Fusionnee_dans);
 const fusionnees = id => P.filter(x => fusionDans(x) === id);               // fusionnées directement dans id
 function descendants(id, seen = new Set()){                                  // toutes les fusionnées, à tous les niveaux
@@ -258,7 +269,7 @@ async function loadAll(){
   CONTACTS = contacts; VOLETS = Object.fromEntries(volets.map(r => [r.id, r])); DEGRES = Object.fromEntries(degres.map(r => [r.id, r])); FORMAT = Object.fromEntries(formats.map(r => [r.id, r])); LIEUX = Object.fromEntries(lieux.map(r => [r.id, r]));
   P = props; STRUCT = Object.fromEntries(structs.map(r => [r.id, r])); AXE = Object.fromEntries(axes.map(r => [r.id, r]));
   ACTION = Object.fromEntries(acts.map(r => [r.id, r])); MODALITE = Object.fromEntries(mods.map(r => [r.id, r])); PUBLIC = Object.fromEntries(pubs.map(r => [r.id, r]));
-  ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); CRIT = crit; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur])); MODELES = modeles;
+  ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); CRIT = crit; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur])); MODELES = modeles; MODE_ROW = (params.find(r => r.cle === 'mode_versement') || {}).id || 0;
   if (P.length) { const k = Object.keys(P[0]).find(x => x.startsWith('Report')); if (k) REPCOL = k; }
   const used = [...new Set(P.map(p => p.Periode).filter(Boolean))];
   PERIODES = [...new Set([...PERIODES_DEFAUT, ...used])];
@@ -280,6 +291,38 @@ async function checkAccess(){
     if (rows.length === 1) return ['Chefferie', 'Proprietaire'].includes(rows[0].ClasseNom);
     return false;
   } catch (e) { console.warn('[arbitrage] vérification des droits impossible :', e); return false; }
+}
+
+/* ============================== mode de versement (réservé à l'Owner) ============================== */
+// Parametres_recueil n'est modifiable que par l'Owner (ACL) : une écriture sans changement n'aboutit que pour lui.
+// Le sélecteur n'est proposé qu'à l'Owner ; la vraie barrière reste la règle d'accès de la table.
+async function detectOwner(){
+  if (!MODE_ROW) return false;
+  try { await grist.docApi.applyUserActions([['UpdateRecord', 'Parametres_recueil', MODE_ROW, { valeur: String(PARAMS.mode_versement ?? '') }]]); return true; }
+  catch (e) { return false; }
+}
+const nbSimul = () => P.filter(p => num(p.Versement_simule) > 0).length;
+function renderModeBar(){
+  const el = document.getElementById('mode-banner'); if (!el) return;
+  const sim = modeSimulation();
+  if (!IS_OWNER && !sim) { el.className = 'mode-test hidden'; el.innerHTML = ''; return; }
+  el.className = 'mode-test' + (sim ? '' : ' reel');
+  let h = `<span>${sim ? 'MODE TEST — le versement dans le catalogue des actions est simulé : rien n\'est écrit dans Actions_formation ni dans Contacts.' : 'Versement réel — les actions retenues sont créées dans le catalogue des actions.'}</span>`;
+  if (IS_OWNER) {
+    if (MODE_ASK) { const n = nbSimul();
+      h += `<span>${MODE_ASK === 'reel' ? 'Passer en versement RÉEL ?' + (n ? ` Les ${n} marque(s) de simulation seront effacées.` : '') : 'Repasser en simulation ?'}</span><button class="btn primary" onclick="setModeVersement('${MODE_ASK}')">Confirmer</button><button class="btn" onclick="MODE_ASK='';renderModeBar()">Annuler</button>`; }
+    else h += `<label>Mode du versement (Owner) : <select onchange="MODE_ASK=this.value;renderModeBar()"><option value="simulation"${sim ? ' selected' : ''}>Simulation</option><option value="reel"${sim ? '' : ' selected'}>Réel</option></select></label>`;
+  }
+  el.innerHTML = h;
+}
+async function setModeVersement(v){
+  if (!IS_OWNER || !MODE_ROW || !['simulation', 'reel'].includes(v)) { MODE_ASK = ''; renderModeBar(); return; }
+  try {
+    await grist.docApi.applyUserActions([['UpdateRecord', 'Parametres_recueil', MODE_ROW, { valeur: v }]]);
+    if (v === 'reel') { const acts = P.filter(p => num(p.Versement_simule) > 0).map(p => ['UpdateRecord', PROP, p.id, { Versement_simule: null }]); if (acts.length) await grist.docApi.applyUserActions(acts); }
+    MODE_ASK = ''; await loadAll(); renderAll();
+    toast(v === 'reel' ? 'Mode réel activé : « Verser » crée désormais les actions dans le catalogue.' : 'Mode simulation activé.');
+  } catch (e) { MODE_ASK = ''; renderModeBar(); toast('Changement de mode refusé : ' + (e.message || e), true); }
 }
 
 /* ============================== filtres ============================== */
@@ -340,6 +383,7 @@ function setFQ(c, v){ stateOf(c).q = v; clearTimeout(_qTimer); _qTimer = setTime
 function setTab(t){ TAB = t; document.getElementById('tab-list').classList.toggle('active', t === 'list'); document.getElementById('tab-export').classList.toggle('active', t === 'export'); renderTab(); }
 function renderTab(){ TAB === 'list' ? renderList() : renderExport(); }
 function renderAll(rerenderModal = true){
+  renderModeBar();
   renderTab();
   if (MODAL && rerenderModal) renderModal();
 }
@@ -373,7 +417,7 @@ function renderListBody(){
       <td><div class="t-title">${esc(p.Titre || 'Sans titre')}</div><div class="t-sub">${esc([modLib(refId(p.Modalite)), fmtLib(refId(p.Format))].filter(Boolean).join(' · ') || 'Modalité non renseignée')} — ${esc(p.Email_contact || '')}${fd ? ` · fusionnée dans n° ${fd}` : ''}${descendants(p.id).length ? ` · ${descendants(p.id).length} fusionnée(s)` : ''}</div></td>
       <td>${esc(sCode(refId(p.Structure_porteuse)))}</td>
       <td>${act ? 'Action ' + esc(aNum(act)) : '–'}</td>
-      <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}</td>
+      <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}${isSimulee(p) ? '<span class="flag test">versement simulé</span>' : ''}</td>
       <td><div class="mini"><div title="Complétude">${gauge(num(p.Score_completude))}</div><div title="Conformité">${gauge(num(p.Score_conformite))}</div><div title="Alignement">${gauge(num(p.Score_alignement))}</div></div></td>
       <td><div class="big-n">${fmtN(num(p.Score_global))}</div>${isRouge(p) ? '<span class="flag bad">rédhibitoire</span>' : ''}${autreState(p).manque ? '<span class="flag bad" title="Public « Autres » retenu sans précision">« Autres » à préciser</span>' : ''}</td></tr>`;
   }).join('')}</tbody></table></div>`;
@@ -390,7 +434,7 @@ function renderModal(){
   const st = statutOf(p), e = ev(p);
   document.getElementById('modal').innerHTML = `
     <div class="modal-head"><div><h2>${esc(p.Titre || 'Sans titre')}</h2>
-      <div class="modal-meta">N° ${p.id} · déposée le ${esc(fmtDate(p.Date_depot) || '–')} · ${esc(p.Email_contact || '')} · <span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? ' · versée dans le catalogue des actions' : ''}</div></div>
+      <div class="modal-meta">N° ${p.id} · déposée le ${esc(fmtDate(p.Date_depot) || '–')} · ${esc(p.Email_contact || '')} · <span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? ' · versée dans le catalogue des actions' : ''}${isSimulee(p) ? ' · versement simulé (test)' : ''}</div></div>
       <button class="btn-close" onclick="closeModal()">×</button></div>
     <div class="modal-tabs">${[['dep', 'Déposé / corrigé'], ['eval', 'Évaluation'], ['instr', 'Instruction'], ['verse', 'Versement']].map(([t, l]) => `<button class="mtab${MODAL.tab === t ? ' active' : ''}" data-t="${t}" onclick="setMTab('${t}')">${l}</button>`).join('')}</div>
     <div class="modal-body">
@@ -611,6 +655,8 @@ function paneVerse(p){
   const st = statutOf(p), fd = fusionDans(p);
   if (isVersee(p)) { const a = AF.find(x => x.id === refId(p.Id_action_creee)); return `<div class="note">Cette proposition a été versée dans <b>le catalogue des actions</b> : action n° <b>${refId(p.Id_action_creee)}</b>${a ? ' « ' + esc(a.titre) + ' »' : ''}.</div><div class="t-sub">Les modifications se font désormais depuis le widget de pilotage des actions.</div>`; }
   if (fd) return `<div class="warn">Cette proposition est fusionnée dans la proposition n° ${fd}. Le versement se fait depuis la proposition principale de tête (n° ${racine(p).id}).</div>`;
+  if (isSimulee(p)) return `<div class="note" style="background:#FFF3CD;color:#7A5A00">MODE TEST — versement simulé le ${esc(fmtDate(p.Versement_simule))} : aucune action n'a été créée dans le catalogue et aucun contact n'a été ajouté.</div>
+    <div class="row" style="margin-top:8px"><button class="btn" onclick="clearSimul()">Effacer la simulation</button></div>`;
   if (st !== 'Retenue') return `<div class="warn">Seule une proposition au statut « Retenue » peut être versée. Statut actuel : ${esc(st)}. Change-le dans l'onglet Instruction.</div>`;
   const pl = versePlan(p), grp = pl.members.length > 1;
   const dups = AF.filter(a => norm(a.titre) === norm(pl.titre) && refId(a.Annee_scolaire) === pl.annee);
@@ -622,7 +668,7 @@ function paneVerse(p){
   const contacts = pl.emails.length ? pl.emails.map((e, i) => { const c = contactByEmail(e.email);
     return `<div class="ct-row"><div><b>${esc(e.email)}</b></div>${c ? `<div class="note" style="grid-column:2/4">Contact existant : ${esc(contactName(c))}</div>` : `<input type="text" id="vs-nom-${i}" placeholder="NOM (obligatoire)"><input type="text" id="vs-pre-${i}" placeholder="Prénom (obligatoire)">`}</div>`; }).join('')
     : '<div class="warn">Aucune adresse électronique de contact : aucun contact ne sera rattaché à l\'action.</div>';
-  return `${grp ? `<div class="note">Cette proposition regroupe ${pl.members.length} propositions (fusions) : leurs structures et leurs contacts seront tous rattachés à l'action.</div>` : ''}
+  return `${modeSimulation() ? '<div class="note" style="background:#FFF3CD;color:#7A5A00;margin-bottom:8px">MODE TEST — le versement est simulé : il ne crée ni action dans le catalogue ni contact. Les contrôles et la saisie sont ceux du versement réel.</div>' : ''}${grp ? `<div class="note">Cette proposition regroupe ${pl.members.length} propositions (fusions) : leurs structures et leurs contacts seront tous rattachés à l'action.</div>` : ''}
     ${dups.length ? `<div class="warn">Une action de même titre existe déjà pour cette année dans le catalogue des actions (n° ${dups.map(a => a.id).join(', ')}). Vérifie qu'il ne s'agit pas d'un doublon.</div>` : ''}
     <div class="panel"><h3>Valeurs reprises (issues des corrections)</h3><dl class="vs-sum">${sum.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
       <div class="t-sub" style="margin-top:6px">Pour changer l'une de ces valeurs, corrige-la dans l'onglet « Déposé / corrigé » avant de verser.</div></div>
@@ -633,7 +679,7 @@ function paneVerse(p){
       <div class="section-title" style="margin-top:10px">Degré(s) (facultatif)</div><div class="chk-grid">${Object.values(DEGRES).map(d => `<label class="chk"><input type="checkbox" data-deg="${d.id}">${esc(clean(d.nom_deg))}</label>`).join('')}</div>
       <div class="section-title" style="margin-top:10px">Lieu(x) de la table Lieux (facultatif)</div><div class="chk-grid">${lieuxOpts || '<span class="t-sub">Aucun lieu dans la table.</span>'}</div></div>
     <div class="panel"><h3>Contacts rattachés à l'action</h3><div class="t-sub" style="margin-bottom:6px">Une adresse déjà présente dans la table Contacts est reprise. Sinon, le nom et le prénom sont demandés pour créer le contact (structure : celle du porteur).</div>${contacts}</div>
-    <div id="vs-zone"><button class="btn primary" id="vs-go" onclick="askVerse()">Verser dans le catalogue des actions</button></div>`;
+    <div id="vs-zone"><button class="btn primary" id="vs-go" onclick="askVerse()">${modeSimulation() ? 'Simuler le versement (rien n\'est écrit dans le catalogue)' : 'Verser dans le catalogue des actions'}</button></div>`;
 }
 const dateSec = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 1000 : null; };
 function readVerse(p){
@@ -658,8 +704,15 @@ function readVerse(p){
 function askVerse(){
   const p = cur(), v = readVerse(p); if (v.err) { toast(v.err, true); return; }
   const neu = v.contacts.filter(c => !c.existing).length;
+  if (modeSimulation()) { document.getElementById('vs-zone').innerHTML = `<div class="note" style="background:#FFF3CD;color:#7A5A00">Confirmer la simulation ? Aucune action ne sera créée dans le catalogue${neu ? ' et ' + neu + ' contact(s) NE seront PAS ajouté(s) à la table Contacts' : ''} ; la proposition sera seulement marquée « versement simulé ».</div>
+    <div class="row" style="margin-top:8px"><button class="btn primary" id="vs-confirm" onclick="doVerse()">Oui, simuler</button><button class="btn" onclick="renderModal()">Annuler</button></div>`; return; }
   document.getElementById('vs-zone').innerHTML = `<div class="warn">Confirmer le versement ? Une action sera créée dans le catalogue des actions${neu ? ' et ' + neu + ' contact(s) ajouté(s) à la table Contacts' : ''}. Cette opération ne s'annule pas depuis ce widget.</div>
     <div class="row" style="margin-top:8px"><button class="btn primary" id="vs-confirm" onclick="doVerse()">Oui, verser</button><button class="btn" onclick="renderModal()">Annuler</button></div>`;
+}
+async function clearSimul(){
+  const p = cur(); if (!p) return;
+  try { await grist.docApi.applyUserActions([['UpdateRecord', PROP, p.id, { Versement_simule: null }]]); await loadAll(); renderAll(); toast('Simulation effacée.'); }
+  catch (e) { toast('Échec : ' + (e.message || e), true); }
 }
 async function doVerse(){
   if (VERSING) return; VERSING = true;
@@ -671,6 +724,12 @@ async function doVerse(){
     const p = P.find(x => x.id === id);
     if (!p || isVersee(p) || fusionDans(p) || statutOf(p) !== 'Retenue') throw new Error('La proposition n\'est plus versable (déjà versée, fusionnée ou plus « Retenue »). Recharge la fiche.');
     const v = readVerse(p); if (v.err) throw new Error(v.err);
+    if (modeSimulation()) {                                      // bac à sable : seule la trace sur la proposition est écrite
+      await grist.docApi.applyUserActions([['UpdateRecord', PROP, id, { Versement_simule: Math.floor(Date.now() / 1000) }]]);
+      await loadAll(); renderAll();
+      toast(isSimulee(P.find(x => x.id === id)) ? 'Versement simulé (mode test) : rien n\'a été écrit dans le catalogue des actions.' : 'Simulation non confirmée : vérifie la colonne Versement_simule.', !isSimulee(P.find(x => x.id === id)));
+      return;
+    }
     const pl = v.pl, nouveaux = v.contacts.filter(c => !c.existing);
     if (nouveaux.length) {                                       // 1. contacts manquants
       await grist.docApi.applyUserActions(nouveaux.map(c => ['AddRecord', 'Contacts', null, { nom_prenom: `${c.nom} ${c.prenom}`, email: c.email, structure: c.struct || 0, NOM: c.nom, PRENOM: c.prenom }]));
@@ -744,6 +803,7 @@ const EXPORT_COLS = [
   { k:'statut', g:G.INS, cot:1, l:'Statut d\'instruction', v:p => statutOf(p) }, { k:'fusionnee_dans', g:G.INS, cot:1, l:'Fusionnée dans (n°)', v:p => fusionDans(p) || '' },
   { k:'fusionnees', g:G.INS, cot:1, l:'Propositions fusionnées dans celle-ci (n°)', v:p => descendants(p.id).map(x => x.id) },
   { k:'commentaire_chefferie', g:G.INS, cot:1, l:'Commentaire de la chefferie', v:p => p.Commentaire_chefferie }, { k:'motif', g:G.INS, cot:1, l:'Motif de la décision', v:p => p.Motif_decision },
+  { k:'versement_simule', g:G.INS, cot:1, l:'Versement simulé (test)', d:1, v:p => p.Versement_simule },
   { k:'action_creee', g:G.INS, cot:1, l:'Action créée dans le catalogue des actions (n°)', v:p => refId(p.Id_action_creee) || '' }
 ];
 const availCols = mode => EXPORT_COLS.filter(c => mode === 'Avec cotation' || !c.cot);
@@ -877,7 +937,7 @@ async function start(){
       document.getElementById('toolbar').style.display = 'none';
       document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie et aux Propriétaires.</span></div>`; return;
     }
-    await loadAll(); applyPreset('std-sans'); renderAll();
+    await loadAll(); IS_OWNER = await detectOwner(); applyPreset('std-sans'); renderAll();
   } catch (e) { console.error(e); document.getElementById('page').innerHTML = `<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
   finally { showLoader(false); }
 }
