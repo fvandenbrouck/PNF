@@ -25,6 +25,7 @@
 <!-- Version v3.11 : bac à sable du versement — paramètre mode_versement (Parametres_recueil) : « simulation » (défaut, y compris si le paramètre est absent) ou « reel ». En simulation, « Verser » n'écrit ni dans Actions_formation ni dans Contacts : seule la colonne Versement_simule de la proposition est posée (effaçable) ; bandeau « MODE TEST » -->
 <!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
 <!-- Version v3.13 : la classe DGRH accède à l'Arbitrage (évaluation, corrections, instruction, fusions, export avec ou sans cotation) ; le versement dans le catalogue et l'enregistrement de modèles d'export partagés lui restent fermés -->
+<!-- Version v3.14 : gel du catalogue réservé à l'Owner — « Figer » marque toutes les propositions (colonnes Gele / Date_gel) qui passent en lecture seule (corrections, évaluation, instruction, fusions) ; le versement reste possible (seul le lien est écrit) ; « Dégeler » par l'Owner. La règle d'accès sur Gele, à poser dans Grist, rend le gel effectif hors du widget -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -87,6 +88,11 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 .flag.good { background:var(--ok-l); color:var(--ok); }
 .mode-test { background:#FFF3CD; color:#7A5A00; border-bottom:2px solid #E0B94A; padding:7px 16px; font-size:12px; font-weight:600; }
 .mode-test.hidden { display:none; }
+.gel-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; background:#E8F0FB; color:#1F3F73; border-bottom:2px solid #9DB7E3; padding:7px 16px; font-size:12px; font-weight:600; }
+.gel-bar.on { background:#DCE8FA; }
+.gel-bar.hidden { display:none; }
+.gel-bar .btn { font-size:11.5px; padding:3px 8px; width:auto; }
+.gel-note { background:#E8F0FB; color:#1F3F73; border-radius:8px; padding:8px 10px; font-size:11.5px; margin-bottom:10px; }
 .mode-test.reel { background:var(--ok-l); color:var(--ok); border-bottom-color:var(--ok); }
 .mode-test { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
 .mode-test select, .mode-test .btn { font-size:11.5px; padding:3px 6px; width:auto; }
@@ -163,6 +169,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
   <span class="count" id="count">–</span>
 </div>
 <div class="mode-test hidden" id="mode-banner">MODE TEST — le versement dans le catalogue des actions est simulé : rien n'est écrit dans Actions_formation ni dans Contacts.</div>
+<div class="gel-bar hidden" id="gel-banner"></div>
 <div class="page" id="page"></div>
 <div id="loader"><div class="spinner"></div><p>Chargement des propositions…</p></div>
 <div class="overlay hidden" id="overlay" onmousedown="overlayDown(event)">
@@ -170,7 +177,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.13 accès DGRH chargé');
+console.info('[widget-recueil-arbitrage] v3.14 gel du catalogue chargé');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
@@ -181,7 +188,7 @@ const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr
 
 /* ============================== état ============================== */
 let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, MODELES = [], PERIODES = PERIODES_DEFAUT.slice();
-let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, IS_DGRH = false, MODE_ROW = 0, MODE_ASK = '';
+let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, IS_DGRH = false, GEL_ASK = '', MODE_ROW = 0, MODE_ASK = '';
 let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
 let TAB = 'list', SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
 const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', format:'', periode:'', noteMin:'', noteMax:'', du:'', au:'', rouge:false, versees:'' });
@@ -240,6 +247,7 @@ function ev(p){ if (p._ev === undefined) { const e = decode(p.Evaluation); p._ev
 const isRouge = p => p.Redhibitoire === true;
 const isVersee = p => refId(p.Id_action_creee) > 0;
 const modeSimulation = () => !['reel'].includes(norm(PARAMS.mode_versement));     // tout sauf « reel » / « réel » vaut simulation (repli sûr)
+const isGele = p => p.Gele === true;
 const isSimulee = p => modeSimulation() && num(p.Versement_simule) > 0;
 const fusionDans = p => refId(p.Fusionnee_dans);
 const fusionnees = id => P.filter(x => fusionDans(x) === id);               // fusionnées directement dans id
@@ -326,6 +334,50 @@ async function setModeVersement(v){
   } catch (e) { MODE_ASK = ''; renderModeBar(); toast('Changement de mode refusé : ' + (e.message || e), true); }
 }
 
+/* ============================== gel du catalogue (réservé à l'Owner) ============================== */
+const NON_ARBITREES = ['Reçue', "En cours d'instruction"];
+function renderGelBar(){
+  const el = document.getElementById('gel-banner'); if (!el) return;
+  const N = P.length, G = P.filter(isGele), nG = G.length;
+  if ((!nG && !IS_OWNER) || (!nG && !N)) { el.className = 'gel-bar hidden'; el.innerHTML = ''; return; }
+  el.className = 'gel-bar' + (nG ? ' on' : '');
+  const d = nG ? fmtDate(Math.max(...G.map(p => num(p.Date_gel) || 0))) : '';
+  let h = nG ? `<span>🔒 Catalogue figé le ${esc(d)} : ${nG} proposition(s) sur ${N} en lecture seule (le versement reste possible).${nG < N ? ' ' + (N - nG) + ' non figée(s) (déposée(s) après le gel).' : ''}</span>` : '<span>Catalogue non figé : toutes les propositions sont modifiables.</span>';
+  if (IS_OWNER) {
+    if (GEL_ASK) {
+      const reste = P.filter(p => !isGele(p)), nonArb = reste.filter(p => NON_ARBITREES.includes(statutOf(p))).length;
+      h += GEL_ASK === 'figer'
+        ? `<span>Figer ${reste.length} proposition(s)${nonArb ? ` (dont ${nonArb} non arbitrée(s))` : ''} ? Plus aucune correction, instruction ni fusion tant que l'Owner n'a pas dégelé.</span><button class="btn primary" onclick="doGel('figer')">Confirmer le gel</button>`
+        : `<span>Dégeler ${nG} proposition(s) ? Elles redeviennent modifiables.</span><button class="btn primary" onclick="doGel('degeler')">Confirmer le dégel</button>`;
+      h += '<button class="btn" onclick="GEL_ASK=\'\';renderGelBar()">Annuler</button>';
+    } else {
+      if (nG < N) h += `<button class="btn" onclick="GEL_ASK='figer';renderGelBar()">${nG ? 'Figer les ' + (N - nG) + ' restantes' : 'Figer le catalogue (' + N + ')'}</button>`;
+      if (nG) h += '<button class="btn" onclick="GEL_ASK=\'degeler\';renderGelBar()">Dégeler</button>';
+    }
+  }
+  el.innerHTML = h;
+}
+async function doGel(v){
+  if (!IS_OWNER || !['figer', 'degeler'].includes(v)) { GEL_ASK = ''; renderGelBar(); return; }
+  try {
+    const ids = (v === 'figer' ? P.filter(p => !isGele(p)) : P.filter(isGele)).map(p => p.id);
+    if (!ids.length) { GEL_ASK = ''; renderGelBar(); return; }
+    const now = Math.floor(Date.now() / 1000), on = v === 'figer';
+    await grist.docApi.applyUserActions([['BulkUpdateRecord', PROP, ids, { Gele: ids.map(() => on), Date_gel: ids.map(() => on ? now : null) }]]);
+    GEL_ASK = ''; await loadAll();
+    const bad = P.filter(p => ids.includes(p.id) && isGele(p) !== on).length;
+    renderAll();
+    bad ? toast(`${bad} proposition(s) non ${on ? 'figée(s)' : 'dégelée(s)'} : vérifie les droits et recharge.`, true) : toast(on ? `Catalogue figé : ${ids.length} proposition(s).` : `Catalogue dégelé : ${ids.length} proposition(s).`);
+  } catch (e) { GEL_ASK = ''; renderGelBar(); toast('Échec : ' + (e.message || e), true); }
+}
+const GEL_MSG = 'Proposition figée : modification impossible (seul l\'Owner peut dégeler le catalogue).';
+function lockModal(p){
+  if (!isGele(p)) return;
+  const body = document.querySelector('#modal .modal-body'); if (!body) return;
+  body.insertAdjacentHTML('afterbegin', `<div class="gel-note">🔒 Proposition figée le ${esc(fmtDate(p.Date_gel) || '–')} : lecture seule. Le versement dans le catalogue des actions reste possible.</div>`);
+  document.querySelectorAll('#modal .pane[data-t="dep"] :is(input,select,textarea,button), #modal .pane[data-t="eval"] :is(input,select,textarea,button), #modal .pane[data-t="instr"] :is(input,select,textarea,button)').forEach(el => { el.disabled = true; });
+}
+
 /* ============================== filtres ============================== */
 function matches(p, f){
   const act = refId(p.Action_SD);
@@ -384,7 +436,7 @@ function setFQ(c, v){ stateOf(c).q = v; clearTimeout(_qTimer); _qTimer = setTime
 function setTab(t){ TAB = t; document.getElementById('tab-list').classList.toggle('active', t === 'list'); document.getElementById('tab-export').classList.toggle('active', t === 'export'); renderTab(); }
 function renderTab(){ TAB === 'list' ? renderList() : renderExport(); }
 function renderAll(rerenderModal = true){
-  renderModeBar();
+  renderModeBar(); renderGelBar();
   renderTab();
   if (MODAL && rerenderModal) renderModal();
 }
@@ -418,7 +470,7 @@ function renderListBody(){
       <td><div class="t-title">${esc(p.Titre || 'Sans titre')}</div><div class="t-sub">${esc([modLib(refId(p.Modalite)), fmtLib(refId(p.Format))].filter(Boolean).join(' · ') || 'Modalité non renseignée')} — ${esc(p.Email_contact || '')}${fd ? ` · fusionnée dans n° ${fd}` : ''}${descendants(p.id).length ? ` · ${descendants(p.id).length} fusionnée(s)` : ''}</div></td>
       <td>${esc(sCode(refId(p.Structure_porteuse)))}</td>
       <td>${act ? 'Action ' + esc(aNum(act)) : '–'}</td>
-      <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}${isSimulee(p) ? '<span class="flag test">versement simulé</span>' : ''}</td>
+      <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}${isSimulee(p) ? '<span class="flag test">versement simulé</span>' : ''}${isGele(p) ? '<span class="flag test" style="background:#DCE8FA;color:#1F3F73">🔒 figée</span>' : ''}</td>
       <td><div class="mini"><div title="Complétude">${gauge(num(p.Score_completude))}</div><div title="Conformité">${gauge(num(p.Score_conformite))}</div><div title="Alignement">${gauge(num(p.Score_alignement))}</div></div></td>
       <td><div class="big-n">${fmtN(num(p.Score_global))}</div>${isRouge(p) ? '<span class="flag bad">rédhibitoire</span>' : ''}${autreState(p).manque ? '<span class="flag bad" title="Public « Autres » retenu sans précision">« Autres » à préciser</span>' : ''}</td></tr>`;
   }).join('')}</tbody></table></div>`;
@@ -444,6 +496,7 @@ function renderModal(){
       <div class="pane${MODAL.tab === 'instr' ? ' active' : ''}" data-t="instr">${paneInstr(p)}</div>
       <div class="pane${MODAL.tab === 'verse' ? ' active' : ''}" data-t="verse">${paneVerse(p)}</div>
     </div>`;
+  lockModal(p);
 }
 
 /* ----- onglet Déposé / corrigé ----- */
@@ -541,6 +594,7 @@ async function saveEdits(){
 
 /* ----- écriture avec relecture ----- */
 async function writeFields(id, fields, okMsg){
+  if (isGele(P.find(x => x.id === id) || {})) { toast(GEL_MSG, true); return false; }
   try {
     await grist.docApi.applyUserActions([['UpdateRecord', PROP, id, fields]]);
     await loadAll();
@@ -588,7 +642,7 @@ function paneInstr(p){
   if (isRouge(p)) warns.push('Cette proposition présente une incompatibilité rédhibitoire.');
   if (autreMsg(p)) warns.push(autreMsg(p));
   // une proposition principale (même issue de fusions) peut être fusionnée dans une autre ; le groupe suit
-  const cand = P.filter(x => x.id !== p.id && statutOf(x) !== 'Fusionnée' && !fusionDans(x) && !isVersee(x));
+  const cand = P.filter(x => x.id !== p.id && statutOf(x) !== 'Fusionnée' && !fusionDans(x) && !isVersee(x) && !isGele(x));
   const main = fd ? P.find(x => x.id === fd) : null, top = racine(p);
   return `<div class="panel"><h3>Statut et décision</h3>
     ${versee ? '<div class="note">Cette proposition a été versée dans le catalogue des actions : son statut n\'est plus modifiable ici.</div>' : ''}
@@ -618,6 +672,7 @@ async function saveInstr(){
 }
 async function doFusion(){
   const src = cur(), mainId = Number(document.getElementById('fu-main').value);
+  if (isGele(src) || isGele(P.find(x => x.id === mainId) || {})) { toast(GEL_MSG, true); return; }
   if (!mainId) { toast('Choisis la proposition principale.', true); return; }
   const main = P.find(x => x.id === mainId); if (!main || statutOf(main) === 'Fusionnée' || fusionDans(main) || isVersee(main) || mainId === src.id) { toast('Proposition principale non valide.', true); return; }
   const acts = [['UpdateRecord', PROP, src.id, { Fusionnee_dans: mainId, Statut_instruction: 'Fusionnée' }]], upd = {};
@@ -635,6 +690,7 @@ async function doFusion(){
   catch (e) { console.error(e); toast('Échec de la fusion : ' + (e.message || e), true); }
 }
 async function doDefusion(id){
+  if (isGele(P.find(x => x.id === id) || {})) { toast(GEL_MSG, true); return; }
   const q = P.find(x => x.id === id); if (!q || groupeVerse(q)) { toast('Défusion impossible : le groupe a déjà été versé.', true); return; }
   try { await grist.docApi.applyUserActions([['UpdateRecord', PROP, id, { Fusionnee_dans: 0, Statut_instruction: "En cours d'instruction" }]]); await loadAll(); renderAll(); toast(`Proposition n° ${id} défusionnée.`); }
   catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
@@ -805,6 +861,7 @@ const EXPORT_COLS = [
   { k:'statut', g:G.INS, cot:1, l:'Statut d\'instruction', v:p => statutOf(p) }, { k:'fusionnee_dans', g:G.INS, cot:1, l:'Fusionnée dans (n°)', v:p => fusionDans(p) || '' },
   { k:'fusionnees', g:G.INS, cot:1, l:'Propositions fusionnées dans celle-ci (n°)', v:p => descendants(p.id).map(x => x.id) },
   { k:'commentaire_chefferie', g:G.INS, cot:1, l:'Commentaire de la chefferie', v:p => p.Commentaire_chefferie }, { k:'motif', g:G.INS, cot:1, l:'Motif de la décision', v:p => p.Motif_decision },
+  { k:'gele', g:G.INS, cot:1, l:'Proposition figée', v:p => isGele(p) ? 'Oui' : '' }, { k:'date_gel', g:G.INS, cot:1, l:'Date du gel', d:1, v:p => p.Date_gel },
   { k:'versement_simule', g:G.INS, cot:1, l:'Versement simulé (test)', d:1, v:p => p.Versement_simule },
   { k:'action_creee', g:G.INS, cot:1, l:'Action créée dans le catalogue des actions (n°)', v:p => refId(p.Id_action_creee) || '' }
 ];
