@@ -26,6 +26,14 @@
 <!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
 <!-- Version v3.13 : la classe DGRH accède à l'Arbitrage (évaluation, corrections, instruction, fusions, export avec ou sans cotation) ; le versement dans le catalogue et l'enregistrement de modèles d'export partagés lui restent fermés -->
 <!-- Version v3.14 : gel du catalogue réservé à l'Owner — « Figer » marque toutes les propositions (colonnes Gele / Date_gel) qui passent en lecture seule (corrections, évaluation, instruction, fusions) ; le versement reste possible (seul le lien est écrit) ; « Dégeler » par l'Owner. La règle d'accès sur Gele, à poser dans Grist, rend le gel effectif hors du widget -->
+<!-- Version v3.22 : consolidation — l'action du schéma directeur est obligatoire pour enregistrer (comme le volet) -->
+<!-- Version v3.21 : consolidation — l'axe n'est plus un menu indépendant : seule l'action se choisit (liste groupée par axe) et l'axe qui s'en déduit est affiché -->
+<!-- Version v3.20 : onglet Dépôt/Consolidation — menu « Volet de rattachement » (colonne Propositions_PNF.Volet, Ref:Volets) ; mention obligatoire : l'enregistrement des corrections est refusé tant que le volet n'est pas choisi ; au versement, le volet consolidé est présélectionné (modifiable) -->
+<!-- Version v3.19 : la consolidation (onglet Dépôt/Consolidation) suit le même périmètre que l'instruction : hors périmètre, la version consolidée est affichée en lecture seule (champs, boutons Rétablir et Enregistrer retirés) ; les Responsables de suivi consolident dans le périmètre de la Chefferie (1 à 35 et 50) -->
+<!-- Version v3.18 : onglets Instruction et Versement réservés à la Chefferie, à la DGRH (et à l'Owner / Proprietaire) — invisibles pour les Responsables de suivi ; instruire, fusionner et verser limités par la structure porteuse (identifiants de la table Structures) : Chefferie = 1 à 35 et 50 (Dgesco, IGESR, DNE, DNE TN1), DGRH = 36 à 55 sauf 38, 39, 40 et 50 ; affichage par défaut : Chefferie et Responsables de suivi = 1 à 35 et 50, DGRH = 36 à 55 sauf 38, 39, 40 et 50 (les autres structures par le menu « Structure porteuse ») ; le périmètre ne dépend plus du code de la structure -->
+<!-- Version v3.17 : filtre « Note globale » et tris par note retirés de la liste ; la colonne Propositions_PNF.Score_global est supprimée du document (plus aucune lecture de la note globale par le widget) -->
+<!-- Version v3.16 : fiche d'une proposition — onglet « Déposé / corrigé » renommé « Dépôt/Consolidation » (colonnes « Version déposée » / « Version consolidée ») ; onglet « Évaluation » renommé « Analyse » : message d'introduction, plus de note globale, de notes par bloc ni de pondérations, plus de case « Incompatibilité » ; seules les trois barres Complétude, Conformité et Alignement au schéma directeur sont conservées (guide d'amélioration, non chiffré) -->
+<!-- Version v3.15 : export CSV supprimé (redondant avec la vue Export DGRH : onglet, modèles partagés, code) ; liste des propositions réduite à N° / Déposée / Titre / Structure / Axe / Action / Statut (colonnes Cotation et Note retirées) ; accès ouvert à la classe Responsable_suivi comme à la Chefferie ; la DGRH a le même accès que la Chefferie (versement compris, qui lui était fermé en v3.13) ; Chefferie, Responsables de suivi et DGRH ne voient par défaut que les propositions des structures DGESCO, IGESR et DNE (les autres s'affichent en les choisissant dans le menu « Structure porteuse »), l'Owner voit tout -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -39,9 +47,6 @@
 /* Défilement naturel de la page (pas de hauteur calculée) ; barre d'outils sticky seulement au-dessus de 760px. */
 html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); color-scheme:light; font-size:13px; }
 .toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:10px 12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; position:sticky; top:0; z-index:10; }
-.tabs { display:flex; gap:6px; background:var(--bg); padding:4px; border:1px solid var(--border); border-radius:10px; flex-wrap:wrap; }
-.tab { font-family:'DM Sans',sans-serif; font-size:12px; font-weight:700; border:0; background:transparent; color:var(--ink3); padding:8px 12px; border-radius:7px; cursor:pointer; white-space:nowrap; }
-.tab.active { background:var(--navy); color:#fff; }
 .count { font-family:'DM Mono',monospace; font-size:11px; color:var(--ink3); background:var(--lilas); padding:6px 12px; border-radius:999px; }
 .page { padding:14px; display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
 .pane > *, .modal-body { min-width:0; }
@@ -70,7 +75,7 @@ input, select, textarea, button { color-scheme:light; }
 .btn[disabled] { opacity:.45; cursor:not-allowed; }
 /* tableau */
 .tbl-wrap { overflow-x:auto; border:1.5px solid var(--border); border-radius:12px; background:var(--white); }
-table.t { border-collapse:collapse; width:100%; min-width:860px; }
+table.t { border-collapse:collapse; width:100%; min-width:760px; }
 table.t th { text-align:left; font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink3); padding:9px 10px; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; }
 table.t td { padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:top; font-size:12px; }
 table.t tbody tr.clickable { cursor:pointer; }
@@ -130,16 +135,14 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 .box { border:1.5px solid var(--border); border-radius:9px; background:var(--bg); padding:10px 12px; font-size:12px; line-height:1.55; }
 .pub-list { max-height:150px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:6px 8px; display:grid; gap:2px; }
 .pub-cat { font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; color:var(--ink3); margin-top:4px; }
-.crit { display:grid; grid-template-columns:22px 1fr 150px 40px; gap:4px 8px; font-size:11.5px; padding:4px 0; border-bottom:1px dashed var(--border); align-items:start; }
-.crit .m { color:var(--danger); font-size:10.5px; grid-column:2/5; }
+.crit { display:grid; grid-template-columns:22px 1fr 150px; gap:4px 8px; font-size:11.5px; padding:4px 0; border-bottom:1px dashed var(--border); align-items:start; }
+.crit .m { color:var(--danger); font-size:10.5px; grid-column:2/4; }
 .ic-ok { color:var(--ok); font-weight:700; } .ic-bad { color:var(--danger); font-weight:700; } .ic-mid { color:#a06a10; font-weight:700; } .ic-na { color:var(--ink3); }
 .warn { background:var(--danger-l); color:var(--danger); border-radius:8px; padding:8px 10px; font-size:11.5px; }
 .note { background:var(--ok-l); color:var(--ok); border-radius:8px; padding:8px 10px; font-size:11.5px; }
 .grp { border:1px solid var(--border); border-radius:10px; padding:8px 10px; background:var(--white); }
 .grp-h { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
 .grp-h b { font-size:12px; color:var(--navy); }
-.cols-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
-.cols-list { display:grid; gap:3px; }
 .vs-sum { display:grid; grid-template-columns:170px 1fr; gap:4px 12px; font-size:12px; }
 .vs-sum dt { color:var(--ink3); font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.06em; padding-top:3px; }
 .vs-sum dd { margin:0; white-space:pre-wrap; }
@@ -155,17 +158,13 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 @media (max-width:760px) {
   .toolbar { position:static; align-items:stretch; }
   .cmp { grid-template-columns:1fr; } .cmp .h { display:none; }
-  .crit { grid-template-columns:22px 1fr 40px; } .crit .src { display:none; }
+  .crit { grid-template-columns:22px 1fr; } .crit .src { display:none; } .crit .m { grid-column:2; }
   .g-row .g-l { min-width:120px; }
 }
 </style>
 </head>
 <body>
 <div class="toolbar" id="toolbar">
-  <div class="tabs" role="tablist">
-    <button type="button" class="tab active" id="tab-list" onclick="setTab('list')">Propositions</button>
-    <button type="button" class="tab" id="tab-export" onclick="setTab('export')">Export CSV</button>
-  </div>
   <span class="count" id="count">–</span>
 </div>
 <div class="mode-test hidden" id="mode-banner">MODE TEST — le versement dans le catalogue des actions est simulé : rien n'est écrit dans Actions_formation ni dans Contacts.</div>
@@ -177,23 +176,27 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.14 gel du catalogue chargé');
+console.info('[widget-recueil-arbitrage] v3.22 action obligatoire à la consolidation chargé');
 
 /* ============================== constantes ============================== */
-const PROP = 'Propositions_PNF', MODELES_T = 'Modeles_export';
+const PROP = 'Propositions_PNF';
+/* Périmètres (identifiants de la table Structures) : Chefferie = Dgesco, IGESR, DNE (1 à 35) + DNE TN1 (50) ; DGRH = 36 à 55 sauf DJEPVA, DS, DE (38, 39, 40) et DNE TN1 (50). Ils fixent l'affichage par défaut et le droit d'instruire et de verser. */
+const rng = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+const IDS_CHEF = new Set([...rng(1, 35), 50]);
+const IDS_DGRH = new Set(rng(36, 55).filter(i => ![38, 39, 40, 50].includes(i)));
+const SCOPE_TXT = { rs: 'les propositions des structures DGESCO, IGESR et DNE (DNE TN1 comprise)', chef: 'les propositions des structures DGESCO, IGESR et DNE (DNE TN1 comprise)', dgrh: 'les propositions des structures d\'identifiant 36 à 55 (DGRH, IH2EF, DAF, DAJ, SG…), hors DJEPVA, DS, DE et DNE TN1' };
 const STATUTS = ['Reçue', "En cours d'instruction", 'Retenue', 'Refusée', 'Fusionnée'];
 const PERIODES_DEFAUT = ['Septembre - décembre 2027', 'Janvier - mars 2028', 'Avril - juin 2028', "Au fil de l'année"];
 const PARCOURS = ['Magistère', 'Mentor', "Ni l'un ni l'autre"];
 const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr_apports','Apports théoriques et pratiques (art. 2, 1°)'],['Arr_activite','Séquences de mise en activité (art. 2, 2°)'],['Arr_acquis','Évaluation des acquis (art. 2, 3°)'],['Arr_prerequis','Prérequis précisés (art. 3, 2°)'],['Arr_programme','Programme et séquencement (art. 3, 4° et 5°)']];
 
 /* ============================== état ============================== */
-let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, MODELES = [], PERIODES = PERIODES_DEFAUT.slice();
-let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, IS_DGRH = false, GEL_ASK = '', MODE_ROW = 0, MODE_ASK = '';
+let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, PERIODES = PERIODES_DEFAUT.slice();
+let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, IS_DGRH = false, RESTRICT = false, ROLE = '', CLS = '', GEL_ASK = '', MODE_ROW = 0, MODE_ASK = '';
 let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
-let TAB = 'list', SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
-const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', format:'', periode:'', noteMin:'', noteMax:'', du:'', au:'', rouge:false, versees:'' });
-let FL = newF(), FE = newF();
-let EX = { mode:'Sans cotation', cols:new Set(), fmt:{ sep:';', bom:true, dateFr:true, decComma:true, headers:'labels', listSep:' | ' }, excluded:new Set(), preset:'std-sans', saving:false };
+let SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
+const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', format:'', periode:'', du:'', au:'', rouge:false, versees:'' });
+let FL = newF();
 
 /* ============================== utilitaires ============================== */
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -270,15 +273,15 @@ const cDuree = p => (p.C_Duree_heures ?? p.Duree_heures);
 /* ============================== chargement ============================== */
 async function fetchRows(t){ try { return toRows(await grist.docApi.fetchTable(t)); } catch (e) { console.warn('[arbitrage] lecture impossible :', t, e); return []; } }
 async function loadAll(){
-  const [props, structs, axes, acts, mods, pubs, annees, crit, params, modeles, contacts, volets, degres, lieux, formats] = await Promise.all([
-    fetchRows(PROP), fetchRows('Structures'), fetchRows('Axes'), fetchRows('Actions_axes'), fetchRows('Modalites'), fetchRows('Publics'), fetchRows('Annees'), fetchRows('Criteres_evaluation'), fetchRows('Parametres_recueil'), fetchRows(MODELES_T),
+  const [props, structs, axes, acts, mods, pubs, annees, crit, params, contacts, volets, degres, lieux, formats] = await Promise.all([
+    fetchRows(PROP), fetchRows('Structures'), fetchRows('Axes'), fetchRows('Actions_axes'), fetchRows('Modalites'), fetchRows('Publics'), fetchRows('Annees'), fetchRows('Criteres_evaluation'), fetchRows('Parametres_recueil'),
     fetchRows('Contacts'), fetchRows('Volets'), fetchRows('Degres'), fetchRows('Lieux'), fetchRows('Formats')
   ]);
   AF = await fetchRows('Actions_formation');
   CONTACTS = contacts; VOLETS = Object.fromEntries(volets.map(r => [r.id, r])); DEGRES = Object.fromEntries(degres.map(r => [r.id, r])); FORMAT = Object.fromEntries(formats.map(r => [r.id, r])); LIEUX = Object.fromEntries(lieux.map(r => [r.id, r]));
   P = props; STRUCT = Object.fromEntries(structs.map(r => [r.id, r])); AXE = Object.fromEntries(axes.map(r => [r.id, r]));
   ACTION = Object.fromEntries(acts.map(r => [r.id, r])); MODALITE = Object.fromEntries(mods.map(r => [r.id, r])); PUBLIC = Object.fromEntries(pubs.map(r => [r.id, r]));
-  ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); CRIT = crit; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur])); MODELES = modeles; MODE_ROW = (params.find(r => r.cle === 'mode_versement') || {}).id || 0;
+  ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); CRIT = crit; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur])); MODE_ROW = (params.find(r => r.cle === 'mode_versement') || {}).id || 0;
   if (P.length) { const k = Object.keys(P[0]).find(x => x.startsWith('Report')); if (k) REPCOL = k; }
   const used = [...new Set(P.map(p => p.Periode).filter(Boolean))];
   PERIODES = [...new Set([...PERIODES_DEFAUT, ...used])];
@@ -293,11 +296,22 @@ function scheduleReload(){ clearTimeout(RELOAD_TIMER); RELOAD_TIMER = setTimeout
 
 /* ============================== accès ============================== */
 // Garde-fou d'affichage (la vraie barrière reste l'ACL) : Utilisateurs n'est lisible en entier que par Owner et Chefferie.
+// Périmètre par rôle (affichage et garde-fous du widget, pas une barrière de sécurité) : ROLE = owner | proprio | chef | rs | dgrh.
+// Chefferie et Responsables de suivi ne voient par défaut que IDS_CHEF, la DGRH que IDS_DGRH ; les autres structures s'affichent en les choisissant dans le filtre.
+const defIds = () => ROLE === 'dgrh' ? IDS_DGRH : IDS_CHEF;
+const isDefStruct = p => { const id = refId(p.Structure_porteuse); return !id || defIds().has(id); };
+// Instruire et verser : Owner et Proprietaire sans limite ; Chefferie dans IDS_CHEF (ou sans structure) ; DGRH dans IDS_DGRH ; Responsables de suivi jamais.
+const canTabs = () => ['owner', 'proprio', 'chef', 'dgrh'].includes(ROLE);
+const canInstruct = p => { if (ROLE === 'owner' || ROLE === 'proprio') return true; const id = refId(p.Structure_porteuse); if (ROLE === 'chef') return !id || IDS_CHEF.has(id); if (ROLE === 'dgrh') return !!id && IDS_DGRH.has(id); return false; };
+// Consolider (onglet Dépôt/Consolidation) : même périmètre que l'instruction ; les Responsables de suivi consolident dans le périmètre de la Chefferie.
+const canConsolidate = p => { if (ROLE !== 'rs') return canInstruct(p); const id = refId(p.Structure_porteuse); return !id || IDS_CHEF.has(id); };
+const horsPerimetre = (p, verbe = 'instruire et verser') => `<div class="warn">Cette proposition est portée par « ${esc(sCode(refId(p.Structure_porteuse)) || 'structure inconnue')} », hors de votre périmètre : vous ne pouvez ${verbe} que ${SCOPE_TXT[ROLE] || 'aucune proposition'}.</div>`;
+const visible = p => !RESTRICT || isDefStruct(p) || (!!FL.structure && String(refId(p.Structure_porteuse)) === FL.structure);
 async function checkAccess(){
   try {
     const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
-    if (rows.length > 1) return true;
-    if (rows.length === 1) { IS_DGRH = rows[0].ClasseNom === 'DGRH'; return ['Chefferie', 'Proprietaire', 'DGRH'].includes(rows[0].ClasseNom); }
+    if (rows.length > 1) return true;           // Owner ou Chefferie (seuls à lire toute la table) : CLS reste vide, l'Owner est reconnu ensuite par detectOwner
+    if (rows.length === 1) { CLS = rows[0].ClasseNom || ''; IS_DGRH = CLS === 'DGRH'; return ['Chefferie', 'Responsable_suivi', 'Proprietaire', 'DGRH'].includes(CLS); }
     return false;
   } catch (e) { console.warn('[arbitrage] vérification des droits impossible :', e); return false; }
 }
@@ -314,7 +328,7 @@ const nbSimul = () => P.filter(p => num(p.Versement_simule) > 0).length;
 function renderModeBar(){
   const el = document.getElementById('mode-banner'); if (!el) return;
   const sim = modeSimulation();
-  if ((!IS_OWNER && !sim) || (IS_DGRH && !MODE_ROW)) { el.className = 'mode-test hidden'; el.innerHTML = ''; return; }   // la DGRH ne lit pas Parametres_recueil sans règle dédiée : mode inconnu, bandeau masqué
+  if ((!IS_OWNER && !sim) || (IS_DGRH && !MODE_ROW)) { el.className = 'mode-test hidden'; el.innerHTML = ''; return; }   // si la DGRH ne lit pas Parametres_recueil (règle non posée) : mode inconnu, bandeau masqué
   el.className = 'mode-test' + (sim ? '' : ' reel');
   let h = `<span>${sim ? 'MODE TEST — le versement dans le catalogue des actions est simulé : rien n\'est écrit dans Actions_formation ni dans Contacts.' : 'Versement réel — les actions retenues sont créées dans le catalogue des actions.'}</span>`;
   if (IS_OWNER) {
@@ -381,6 +395,7 @@ function lockModal(p){
 /* ============================== filtres ============================== */
 function matches(p, f){
   const act = refId(p.Action_SD);
+  if (RESTRICT && !f.structure && !isDefStruct(p)) return false;
   if (f.q && !norm([p.id, p.Titre, p.Email_contact, sCode(refId(p.Structure_porteuse)), p.Objectifs].join(' ')).includes(norm(f.q))) return false;
   if (f.statuts.size && !f.statuts.has(statutOf(p))) return false;
   if (f.axe && String(axeOf(act)) !== f.axe) return false;
@@ -389,9 +404,6 @@ function matches(p, f){
   if (f.modalite && String(refId(p.Modalite)) !== f.modalite) return false;
   if (f.format && String(refId(p.Format)) !== f.format) return false;
   if (f.periode && p.Periode !== f.periode) return false;
-  const g = num(p.Score_global);
-  if (f.noteMin !== '' && !(g !== null && g >= Number(f.noteMin))) return false;
-  if (f.noteMax !== '' && !(g !== null && g <= Number(f.noteMax))) return false;
   const d = isoDate(p.Date_depot);
   if (f.du && !(d && d >= f.du)) return false;
   if (f.au && !(d && d <= f.au)) return false;
@@ -400,86 +412,77 @@ function matches(p, f){
   if (f.versees === 'non' && isVersee(p)) return false;
   return true;
 }
-const stateOf = c => c === 'l' ? FL : FE;
-function setF(c, k, v){ stateOf(c)[k] = v; c === 'l' ? renderListBody() : renderExportBody(); }
-function toggleStatut(c, s, on){ const st = stateOf(c).statuts; on ? st.add(s) : st.delete(s); c === 'l' ? renderListBody() : renderExportBody(); }
-function resetF(c){ if (c === 'l') FL = newF(); else FE = newF(); renderTab(); }
-function copyListFilters(){ FE = { ...FL, statuts:new Set(FL.statuts) }; renderTab(); toast('Filtres de la liste repris.'); }
+function setF(k, v){ FL[k] = v; renderListBody(); }
+function toggleStatut(s, on){ on ? FL.statuts.add(s) : FL.statuts.delete(s); renderListBody(); }
+function resetF(){ FL = newF(); renderList(); }
 function opt(v, label, sel){ return `<option value="${esc(v)}"${String(sel) === String(v) ? ' selected' : ''}>${esc(label)}</option>`; }
-function filterPanel(c){
-  const f = stateOf(c), id = x => `${c}-${x}`;
+function filterPanel(){
+  const f = FL;
   const structIds = [...new Set(P.map(p => refId(p.Structure_porteuse)).filter(Boolean))].sort((a, b) => sCode(a).localeCompare(sCode(b), 'fr', { numeric:true }));
   const acts = Object.values(ACTION).sort((a, b) => a.num_action - b.num_action);
   return `<div class="grid-f">
-    <div class="fld"><label>Recherche</label><input type="text" id="${id('q')}" value="${esc(f.q)}" placeholder="Titre, structure, email…" oninput="setFQ('${c}',this.value)"></div>
-    <div class="fld"><label>Axe</label><select onchange="setF('${c}','axe',this.value)"><option value="">Tous</option>${Object.values(AXE).map(a => opt(a.id, clean(a.libelle), f.axe)).join('')}</select></div>
-    <div class="fld"><label>Action</label><select onchange="setF('${c}','action',this.value)"><option value="">Toutes</option>${acts.map(a => opt(a.id, 'Action ' + a.num_action, f.action)).join('')}</select></div>
-    <div class="fld"><label>Structure porteuse</label><select onchange="setF('${c}','structure',this.value)"><option value="">Toutes</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
-    <div class="fld"><label>Modalité</label><select onchange="setF('${c}','modalite',this.value)"><option value="">Toutes</option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), f.modalite)).join('')}</select></div>
-    <div class="fld"><label>Modalité pédagogique</label><select onchange="setF('${c}','format',this.value)"><option value="">Tous</option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), f.format)).join('')}</select></div>
-    <div class="fld"><label>Période</label><select onchange="setF('${c}','periode',this.value)"><option value="">Toutes</option>${PERIODES.map(x => opt(x, x, f.periode)).join('')}</select></div>
-    <div class="fld"><label>Note globale (de / à)</label><div class="row"><input type="number" min="0" max="10" step="0.5" style="width:70px" value="${esc(f.noteMin)}" onchange="setF('${c}','noteMin',this.value)"><input type="number" min="0" max="10" step="0.5" style="width:70px" value="${esc(f.noteMax)}" onchange="setF('${c}','noteMax',this.value)"></div></div>
-    <div class="fld"><label>Déposée du / au</label><div class="row"><input type="date" style="width:128px" value="${esc(f.du)}" onchange="setF('${c}','du',this.value)"><input type="date" style="width:128px" value="${esc(f.au)}" onchange="setF('${c}','au',this.value)"></div></div>
+    <div class="fld"><label>Recherche</label><input type="text" value="${esc(f.q)}" placeholder="Titre, structure, email…" oninput="setFQ(this.value)"></div>
+    <div class="fld"><label>Axe</label><select onchange="setF('axe',this.value)"><option value="">Tous</option>${Object.values(AXE).map(a => opt(a.id, clean(a.libelle), f.axe)).join('')}</select></div>
+    <div class="fld"><label>Action</label><select onchange="setF('action',this.value)"><option value="">Toutes</option>${acts.map(a => opt(a.id, 'Action ' + a.num_action, f.action)).join('')}</select></div>
+    <div class="fld"><label>Structure porteuse</label><select onchange="setF('structure',this.value)"><option value="">${RESTRICT ? (ROLE === 'dgrh' ? 'DGRH, IH2EF, DAF, DAJ, SG et rattachées' : 'DGESCO, IGESR, DNE') : 'Toutes'}</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
+    <div class="fld"><label>Modalité</label><select onchange="setF('modalite',this.value)"><option value="">Toutes</option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), f.modalite)).join('')}</select></div>
+    <div class="fld"><label>Modalité pédagogique</label><select onchange="setF('format',this.value)"><option value="">Tous</option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), f.format)).join('')}</select></div>
+    <div class="fld"><label>Période</label><select onchange="setF('periode',this.value)"><option value="">Toutes</option>${PERIODES.map(x => opt(x, x, f.periode)).join('')}</select></div>
+    <div class="fld"><label>Déposée du / au</label><div class="row"><input type="date" style="width:128px" value="${esc(f.du)}" onchange="setF('du',this.value)"><input type="date" style="width:128px" value="${esc(f.au)}" onchange="setF('au',this.value)"></div></div>
   </div>
-  <div class="row" style="margin-top:10px"><span class="section-title" style="margin:0">Statut</span>${STATUTS.map(s => `<label class="chk"><input type="checkbox" ${f.statuts.has(s) ? 'checked' : ''} onchange="toggleStatut('${c}','${s.replace(/'/g, "\\'")}',this.checked)">${esc(s)}</label>`).join('')}</div>
+  <div class="row" style="margin-top:10px"><span class="section-title" style="margin:0">Statut</span>${STATUTS.map(s => `<label class="chk"><input type="checkbox" ${f.statuts.has(s) ? 'checked' : ''} onchange="toggleStatut('${s.replace(/'/g, "\\'")}',this.checked)">${esc(s)}</label>`).join('')}</div>
   <div class="row" style="margin-top:8px">
-    <label class="chk"><input type="checkbox" ${f.rouge ? 'checked' : ''} onchange="setF('${c}','rouge',this.checked)">Rédhibitoires seulement</label>
-    <select style="width:auto" onchange="setF('${c}','versees',this.value)">${opt('', 'Versées ou non', f.versees)}${opt('oui', 'Déjà versées', f.versees)}${opt('non', 'Non versées', f.versees)}</select>
-    <button class="btn small" onclick="resetF('${c}')">Réinitialiser les filtres</button>
-    ${c === 'e' ? '<button class="btn small" onclick="copyListFilters()">Reprendre les filtres de la liste</button>' : ''}
+    <label class="chk"><input type="checkbox" ${f.rouge ? 'checked' : ''} onchange="setF('rouge',this.checked)">Rédhibitoires seulement</label>
+    <select style="width:auto" onchange="setF('versees',this.value)">${opt('', 'Versées ou non', f.versees)}${opt('oui', 'Déjà versées', f.versees)}${opt('non', 'Non versées', f.versees)}</select>
+    <button class="btn small" onclick="resetF()">Réinitialiser les filtres</button>
   </div>`;
 }
 let _qTimer = null;
-function setFQ(c, v){ stateOf(c).q = v; clearTimeout(_qTimer); _qTimer = setTimeout(() => c === 'l' ? renderListBody() : renderExportBody(), 250); }
+function setFQ(v){ FL.q = v; clearTimeout(_qTimer); _qTimer = setTimeout(renderListBody, 250); }
 
-/* ============================== onglets ============================== */
-function setTab(t){ TAB = t; document.getElementById('tab-list').classList.toggle('active', t === 'list'); document.getElementById('tab-export').classList.toggle('active', t === 'export'); renderTab(); }
-function renderTab(){ TAB === 'list' ? renderList() : renderExport(); }
 function renderAll(rerenderModal = true){
   renderModeBar(); renderGelBar();
-  renderTab();
+  renderList();
   if (MODAL && rerenderModal) renderModal();
 }
 
 /* ============================== liste ============================== */
 function sortRows(rows){
-  const g = p => num(p.Score_global);
   const by = { date_desc:(a, b) => (b.Date_depot || 0) - (a.Date_depot || 0), date_asc:(a, b) => (a.Date_depot || 0) - (b.Date_depot || 0),
-    note_desc:(a, b) => (g(b) ?? -1) - (g(a) ?? -1), note_asc:(a, b) => (g(a) ?? 11) - (g(b) ?? 11),
     structure:(a, b) => sCode(refId(a.Structure_porteuse)).localeCompare(sCode(refId(b.Structure_porteuse)), 'fr', { numeric:true }),
     titre:(a, b) => String(a.Titre || '').localeCompare(String(b.Titre || ''), 'fr'), id:(a, b) => a.id - b.id }[SORT];
   return rows.slice().sort(by);
 }
 function renderList(){
   document.getElementById('page').innerHTML = `
-    <details class="panel" open><summary>Filtres</summary>${filterPanel('l')}</details>
+    <details class="panel" open><summary>Filtres</summary>${filterPanel()}</details>
     <div class="row"><span class="section-title" style="margin:0">Trier par</span>
-      <select style="width:auto" onchange="SORT=this.value;renderListBody()">${[['date_desc','Date de dépôt (récentes d\'abord)'],['date_asc','Date de dépôt (anciennes d\'abord)'],['note_desc','Note (décroissante)'],['note_asc','Note (croissante)'],['structure','Structure'],['titre','Titre'],['id','N°']].map(([v, l]) => opt(v, l, SORT)).join('')}</select></div>
+      <select style="width:auto" onchange="SORT=this.value;renderListBody()">${[['date_desc','Date de dépôt (récentes d\'abord)'],['date_asc','Date de dépôt (anciennes d\'abord)'],['structure','Structure'],['titre','Titre'],['id','N°']].map(([v, l]) => opt(v, l, SORT)).join('')}</select></div>
     <div id="list-body"></div>`;
   renderListBody();
 }
 function renderListBody(){
   const rows = sortRows(P.filter(p => matches(p, FL)));
-  document.getElementById('count').textContent = `${rows.length} / ${P.length} proposition${P.length > 1 ? 's' : ''}`;
+  const base = P.filter(visible).length;
+  document.getElementById('count').textContent = `${rows.length} / ${base} proposition${base > 1 ? 's' : ''}`;
   const body = document.getElementById('list-body'); if (!body) return;
-  if (!rows.length) { body.innerHTML = `<div class="empty"><p>${P.length ? 'Aucune proposition' : 'Aucune proposition reçue'}</p><span>${P.length ? 'Aucune proposition ne correspond aux filtres.' : 'Les propositions déposées par le formulaire apparaîtront ici.'}</span></div>`; return; }
-  body.innerHTML = `<div class="tbl-wrap"><table class="t"><thead><tr><th>N°</th><th>Déposée</th><th>Titre</th><th>Structure</th><th>Action</th><th>Statut</th><th>Cotation</th><th>Note</th></tr></thead><tbody>${rows.map(p => {
+  if (!rows.length) { body.innerHTML = `<div class="empty"><p>${base ? 'Aucune proposition' : 'Aucune proposition reçue'}</p><span>${base ? 'Aucune proposition ne correspond aux filtres.' : 'Les propositions déposées par le formulaire apparaîtront ici.'}</span></div>`; return; }
+  body.innerHTML = `<div class="tbl-wrap"><table class="t"><thead><tr><th>N°</th><th>Déposée</th><th>Titre</th><th>Structure</th><th>Axe</th><th>Action</th><th>Statut</th></tr></thead><tbody>${rows.map(p => {
     const e = ev(p), st = statutOf(p), act = refId(p.Action_SD), fd = fusionDans(p);
     return `<tr class="clickable" onclick="openModal(${p.id})">
       <td>${p.id}</td><td>${esc(fmtDate(p.Date_depot))}</td>
       <td><div class="t-title">${esc(p.Titre || 'Sans titre')}</div><div class="t-sub">${esc([modLib(refId(p.Modalite)), fmtLib(refId(p.Format))].filter(Boolean).join(' · ') || 'Modalité non renseignée')} — ${esc(p.Email_contact || '')}${fd ? ` · fusionnée dans n° ${fd}` : ''}${descendants(p.id).length ? ` · ${descendants(p.id).length} fusionnée(s)` : ''}</div></td>
       <td>${esc(sCode(refId(p.Structure_porteuse)))}</td>
+      <td title="${esc(AXE[axeOf(act)] ? clean(AXE[axeOf(act)].description) : '')}">${esc(axeLib(act)) || '–'}</td>
       <td>${act ? 'Action ' + esc(aNum(act)) : '–'}</td>
-      <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}${isSimulee(p) ? '<span class="flag test">versement simulé</span>' : ''}${isGele(p) ? '<span class="flag test" style="background:#DCE8FA;color:#1F3F73">🔒 figée</span>' : ''}</td>
-      <td><div class="mini"><div title="Complétude">${gauge(num(p.Score_completude))}</div><div title="Conformité">${gauge(num(p.Score_conformite))}</div><div title="Alignement">${gauge(num(p.Score_alignement))}</div></div></td>
-      <td><div class="big-n">${fmtN(num(p.Score_global))}</div>${isRouge(p) ? '<span class="flag bad">rédhibitoire</span>' : ''}${autreState(p).manque ? '<span class="flag bad" title="Public « Autres » retenu sans précision">« Autres » à préciser</span>' : ''}</td></tr>`;
+      <td><span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? '<span class="flag good">versée</span>' : ''}${isSimulee(p) ? '<span class="flag test">versement simulé</span>' : ''}${isGele(p) ? '<span class="flag test" style="background:#DCE8FA;color:#1F3F73">🔒 figée</span>' : ''}${isRouge(p) ? '<span class="flag bad">rédhibitoire</span>' : ''}${autreState(p).manque ? '<span class="flag bad" title="Public « Autres » retenu sans précision">« Autres » à préciser</span>' : ''}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
 /* ============================== fiche (modale) ============================== */
 function overlayDown(e){ if (e.target.id === 'overlay') closeModal(); }
 function closeModal(){ MODAL = null; document.getElementById('overlay').classList.add('hidden'); }
-function openModal(id, tab){ MODAL = { id, tab: tab || 'dep' }; renderModal(); document.getElementById('overlay').classList.remove('hidden'); }
+function openModal(id, tab){ MODAL = { id, tab: (['instr', 'verse'].includes(tab) && !canTabs()) ? 'dep' : (tab || 'dep') }; renderModal(); document.getElementById('overlay').classList.remove('hidden'); }
 function setMTab(t){ MODAL.tab = t; document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.dataset.t === t)); document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.dataset.t === t)); }
 const cur = () => P.find(x => x.id === MODAL.id);
 function renderModal(){
@@ -489,17 +492,17 @@ function renderModal(){
     <div class="modal-head"><div><h2>${esc(p.Titre || 'Sans titre')}</h2>
       <div class="modal-meta">N° ${p.id} · déposée le ${esc(fmtDate(p.Date_depot) || '–')} · ${esc(p.Email_contact || '')} · <span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? ' · versée dans le catalogue des actions' : ''}${isSimulee(p) ? ' · versement simulé (test)' : ''}</div></div>
       <button class="btn-close" onclick="closeModal()">×</button></div>
-    <div class="modal-tabs">${[['dep', 'Déposé / corrigé'], ['eval', 'Évaluation'], ['instr', 'Instruction'], ['verse', 'Versement']].map(([t, l]) => `<button class="mtab${MODAL.tab === t ? ' active' : ''}" data-t="${t}" onclick="setMTab('${t}')">${l}</button>`).join('')}</div>
+    <div class="modal-tabs">${[['dep', 'Dépôt/Consolidation'], ['eval', 'Analyse'], ...(canTabs() ? [['instr', 'Instruction'], ['verse', 'Versement']] : [])].map(([t, l]) => `<button class="mtab${MODAL.tab === t ? ' active' : ''}" data-t="${t}" onclick="setMTab('${t}')">${l}</button>`).join('')}</div>
     <div class="modal-body">
       <div class="pane${MODAL.tab === 'dep' ? ' active' : ''}" data-t="dep">${paneDep(p)}</div>
       <div class="pane${MODAL.tab === 'eval' ? ' active' : ''}" data-t="eval">${paneEval(p, e)}</div>
-      <div class="pane${MODAL.tab === 'instr' ? ' active' : ''}" data-t="instr">${paneInstr(p)}</div>
-      <div class="pane${MODAL.tab === 'verse' ? ' active' : ''}" data-t="verse">${paneVerse(p)}</div>
+      ${canTabs() ? `<div class="pane${MODAL.tab === 'instr' ? ' active' : ''}" data-t="instr">${paneInstr(p)}</div>
+      <div class="pane${MODAL.tab === 'verse' ? ' active' : ''}" data-t="verse">${paneVerse(p)}</div>` : ''}
     </div>`;
   lockModal(p);
 }
 
-/* ----- onglet Déposé / corrigé ----- */
+/* ----- onglet Dépôt/Consolidation ----- */
 const EDITS = [
   { k:'Titre', c:'C_Titre', l:'Titre', t:'text' }, { k:'Objectifs', c:'C_Objectifs', l:'Objectifs', t:'area' },
   { k:'Action_SD', c:'C_Action_SD', l:'Action du schéma directeur', t:'action' }, { k:'Structure_porteuse', c:'C_Structure_porteuse', l:'Structure porteuse', t:'struct' },
@@ -510,8 +513,8 @@ const EDITS = [
   { k:'Email_contact', c:'C_Email_contact', l:'Adresse électronique du porteur', t:'text' }, { k:'Action_pluriannuelle', c:'C_Action_pluriannuelle', l:'Action pluriannuelle', t:'oui' },
   { get k(){ return REPCOL; }, c:'C_Report', l:'Report d\'une action du PNF précédent', t:'oui' }
 ];
-function depText(p, f){
-  const v = p[f.k];
+function depText(p, f, cons){
+  const v = p[cons ? f.c : f.k];
   if (f.t === 'action') { const a = refId(v); return a ? `${aLib(a)}\n(${axeLib(a)})` : '–'; }
   if (f.t === 'struct') return sFull(refId(v)) || '–';
   if (f.t === 'modalite') return modLib(refId(v)) || '–';
@@ -537,10 +540,11 @@ function inputFor(p, f){
   if (f.t === 'format') return `<select id="${id}"><option value="0"></option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), refId(v))).join('')}</select>`;
   if (f.t === 'modalite') return `<select id="${id}"><option value="0"></option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), refId(v))).join('')}</select>`;
   if (f.t === 'struct') return `<select id="${id}"><option value="0"></option>${Object.values(STRUCT).sort((a, b) => String(a.code).localeCompare(String(b.code), 'fr', { numeric:true })).map(s => opt(s.id, sFull(s.id), refId(v))).join('')}</select>`;
-  if (f.t === 'action') {
-    const a = refId(v), ax = axeOf(a);
-    return `<div style="display:grid;gap:6px"><select id="${id}-axe" onchange="axeChanged('${id}')"><option value="0">— axe —</option>${Object.values(AXE).map(x => opt(x.id, clean(x.libelle) + ' — ' + clean(x.description), ax)).join('')}</select>
-      <select id="${id}"><option value="0">— action —</option>${Object.values(ACTION).filter(x => !ax || x.id_axe === ax).sort((x, y) => x.num_action - y.num_action).map(x => opt(x.id, clean(x.libelle), a)).join('')}</select></div>`;
+  if (f.t === 'action') {                       // seule l'action se choisit : l'axe s'en déduit (affiché, jamais saisi)
+    const a = refId(v);
+    const groups = Object.values(AXE).map(ax => { const acts = Object.values(ACTION).filter(x => x.id_axe === ax.id).sort((x, y) => x.num_action - y.num_action);
+      return acts.length ? `<optgroup label="${esc(clean(ax.libelle) + ' — ' + clean(ax.description))}">${acts.map(x => opt(x.id, clean(x.libelle), a)).join('')}</optgroup>` : ''; }).join('');
+    return `<div style="display:grid;gap:4px"><select id="${id}" onchange="axeDeduit('${id}')"><option value="0">— choisir (obligatoire) —</option>${groups}</select><div class="t-sub" id="${id}-axe">Axe : ${esc(axeLib(a) || '–')} (déduit de l'action)</div></div>`;
   }
   if (f.t === 'publics') {
     const sel = new Set(asIds(v)); let last = null, h = '';
@@ -549,20 +553,22 @@ function inputFor(p, f){
   }
   return '';
 }
-function axeChanged(id){
-  const ax = Number(document.getElementById(id + '-axe').value), sel = document.getElementById(id), keep = Number(sel.value);
-  sel.innerHTML = `<option value="0">— action —</option>` + Object.values(ACTION).filter(x => !ax || x.id_axe === ax).sort((x, y) => x.num_action - y.num_action).map(x => opt(x.id, clean(x.libelle), keep)).join('');
+function axeDeduit(id){
+  const el = document.getElementById(id + '-axe'); if (el) el.textContent = 'Axe : ' + (axeLib(Number(document.getElementById(id).value) || 0) || '–') + ' (déduit de l\'action)';
 }
+const voletLib = id => VOLETS[id] ? clean(VOLETS[id].libelle) + (clean(VOLETS[id].description) ? ' — ' + clean(VOLETS[id].description) : '') : '';
 function paneDep(p){
-  const rows = EDITS.map(f => {
+  const can = canConsolidate(p), vId = refId(p.Volet);
+  const voletRow = `<div class="lab">Volet de rattachement *</div><div class="dep">–\n(non demandé au porteur)</div>${can ? `<div><select id="ed-volet"><option value="0">— choisir (obligatoire) —</option>${Object.values(VOLETS).map(v => opt(v.id, voletLib(v.id), vId)).join('')}</select></div><div></div>` : `<div class="dep">${esc(voletLib(vId) || '–')}</div><div></div>`}`;
+  const rows = voletRow + EDITS.map(f => {
     const modif = !sameVal(f, p[f.k], p[f.c]);
-    return `<div class="lab">${esc(f.l)}${modif ? '<span class="mod-flag" title="Valeur corrigée par la chefferie"></span>' : ''}</div><div class="dep">${esc(depText(p, f))}</div><div>${inputFor(p, f)}</div><div><button class="btn small" title="Remettre la valeur déposée dans le champ (à enregistrer)" onclick="resetField('${f.c}')">Rétablir</button></div>`;
+    return `<div class="lab">${esc(f.l)}${f.t === 'action' ? ' *' : ''}${modif ? '<span class="mod-flag" title="Valeur corrigée par la chefferie"></span>' : ''}</div><div class="dep">${esc(depText(p, f))}</div>${can ? `<div>${inputFor(p, f)}</div><div><button class="btn small" title="Remettre la valeur déposée dans le champ (à enregistrer)" onclick="resetField('${f.c}')">Rétablir</button></div>` : `<div class="dep">${esc(depText(p, f, true))}</div><div></div>`}`;
   }).join('');
   const arr = ARR.map(([k, l]) => `${esc(l)} : <b>${esc(p[k] || '–')}</b>`).join('<br>');
   const ori = oriOf(p);
   const am = autreMsg(p);
-  return `${am ? `<div class="warn" style="margin-bottom:8px">${esc(am)}</div>` : ''}<div class="cmp"><div class="h"></div><div class="h">Déposé par le porteur</div><div class="h">Corrigé (utilisé pour le versement et l'export)</div><div class="h"></div>${rows}</div>
-    <div class="row"><button class="btn primary" onclick="saveEdits()">Enregistrer les corrections</button><span class="t-sub">Seules les valeurs modifiées sont écrites. Les valeurs déposées ne sont jamais modifiées.</span></div>
+  return `${can ? '' : horsPerimetre(p, 'consolider')}${am ? `<div class="warn" style="margin-bottom:8px">${esc(am)}</div>` : ''}<div class="cmp"><div class="h"></div><div class="h">Version déposée</div><div class="h">Version consolidée</div><div class="h"></div>${rows}</div>
+    ${can ? `<div class="row"><button class="btn primary" onclick="saveEdits()">Enregistrer les corrections</button><span class="t-sub">Seules les valeurs modifiées sont écrites. Les valeurs déposées ne sont jamais modifiées. L'action du schéma directeur et le volet de rattachement (*) sont obligatoires pour enregistrer.</span></div>` : ''}
     <div class="section-title">Autres éléments déposés (lecture seule)</div>
     <div class="box"><b>Contexte de la demande</b><br>${esc(p.Contexte || '–')}</div>
     <div class="box">Pluriannuelle : <b>${esc(p.Action_pluriannuelle || '–')}</b> · Report d'une action prévue au PNF précédent : <b>${esc(p[REPCOL] || '–')}</b> · Indicateur du schéma directeur : <b>${esc(p.Indicateur_SD || '–')}</b></div>
@@ -573,7 +579,7 @@ function paneDep(p){
 function resetField(c){
   const p = cur(), f = EDITS.find(x => x.c === c), v = p[f.k], el = document.getElementById('ed-' + c); if (!el) return;
   if (f.t === 'publics') { const s = new Set(asIds(v)); el.querySelectorAll('input[data-pub]').forEach(i => i.checked = s.has(Number(i.dataset.pub))); }
-  else if (f.t === 'action') { const a = refId(v); document.getElementById('ed-' + c + '-axe').value = String(axeOf(a)); axeChanged('ed-' + c); el.value = String(a); }
+  else if (f.t === 'action') { el.value = String(refId(v)); axeDeduit('ed-' + c); }
   else if (['struct', 'modalite', 'format'].includes(f.t)) el.value = String(refId(v));
   else el.value = v ?? '';
 }
@@ -587,7 +593,13 @@ function readEdit(f){
 }
 async function saveEdits(){
   const p = cur(), fields = {};
+  if (!canConsolidate(p)) { toast('Proposition hors de votre périmètre de consolidation.', true); return; }
+  const vSel = document.getElementById('ed-volet'), vol = vSel ? Number(vSel.value) || 0 : 0;
+  if (!vol) { toast('Indique le volet auquel se rattache l\'action : mention obligatoire pour enregistrer.', true); if (vSel) vSel.focus(); return; }
+  const aSel = document.getElementById('ed-C_Action_SD');
+  if (aSel && !(Number(aSel.value) > 0)) { toast('Indique l\'action du schéma directeur : mention obligatoire pour enregistrer.', true); aSel.focus(); return; }
   EDITS.forEach(f => { const nv = readEdit(f); if (!sameVal(f, nv, p[f.c])) fields[f.c] = nv; });
+  if (vol !== refId(p.Volet)) fields.Volet = vol;
   if (!Object.keys(fields).length) { toast('Aucune correction à enregistrer.'); return; }
   await writeFields(p.id, fields, 'Corrections enregistrées.');
 }
@@ -606,43 +618,35 @@ async function writeFields(id, fields, okMsg){
   } catch (e) { console.error(e); toast('Échec de l\'enregistrement : ' + (e.message || e), true); return false; }
 }
 
-/* ----- onglet Évaluation ----- */
+/* ----- onglet Analyse (guide d'amélioration : aucune note, aucune pondération affichée) ----- */
 function critIcon(r){ if (r === null || r === undefined) return '<span class="ic-na">–</span>'; if (r >= 1) return '<span class="ic-ok">✔</span>'; if (r <= 0) return '<span class="ic-bad">✗</span>'; return '<span class="ic-mid">◐</span>'; }
 function paneEval(p, e){
-  if (!e) return `<div class="warn">L'évaluation n'est pas disponible pour cette proposition (colonne Evaluation vide ou en erreur).</div>`;
-  const b = e.blocs || {}, row = (l, s, extra) => `<div class="g-row"><span class="g-l">${l}</span>${gauge(s)}<span class="g-n">${fmtN(s)}</span>${extra || ''}</div>`;
-  const BL = [['Completude', 'Complétude'], ['Conformite', 'Conformité (cahier des charges et arrêté 2023)'], ['Alignement', 'Alignement avec le schéma directeur (bonus)']];
+  const intro = `<div class="note" style="background:var(--navy-l);color:var(--navy)">L'analyse permet de confronter les propositions aux exigences réglementaires et met en évidence les éléments de la proposition d'action de formation qui peuvent être affinés.</div>`;
+  if (!e) return `${intro}<div class="warn">L'analyse n'est pas disponible pour cette proposition (colonne Evaluation vide ou en erreur).</div>`;
+  const b = e.blocs || {}, row = (l, s) => `<div class="g-row"><span class="g-l">${l}</span>${gauge(s)}</div>`;
+  const BL = [['Completude', 'Complétude'], ['Conformite', 'Conformité (cahier des charges et arrêté 2023)'], ['Alignement', 'Alignement avec le schéma directeur']];
   const groups = BL.map(([k, l]) => {
     const cs = (e.criteres || []).filter(c => c.bloc === k); if (!cs.length) return '';
-    return `<div class="grp"><div class="grp-h"><b>${esc(l)}</b><span class="t-sub">${fmtN(b[k])} / 10</span></div>${cs.map(c => `<div class="crit"><span>${critIcon(c.res)}</span><span>${esc(c.libelle)}${c.redhibitoire ? ' <span class="flag bad">rédhibitoire</span>' : ''}</span><span class="src t-sub">${esc(c.source || '')}${c.reference ? ' · ' + esc(c.reference) : ''}</span><span class="t-sub">×${esc(c.poids)}</span>${c.motif ? `<span class="m">${esc(c.motif)}</span>` : ''}</div>`).join('')}</div>`;
+    return `<div class="grp"><div class="grp-h"><b>${esc(l)}</b></div>${cs.map(c => `<div class="crit"><span>${critIcon(c.res)}</span><span>${esc(c.libelle)}${c.redhibitoire ? ' <span class="flag bad">rédhibitoire</span>' : ''}</span><span class="src t-sub">${esc(c.source || '')}${c.reference ? ' · ' + esc(c.reference) : ''}</span>${c.motif ? `<span class="m">${esc(c.motif)}</span>` : ''}</div>`).join('')}</div>`;
   }).join('');
-  return `${isRouge(p) ? `<div class="warn"><b>Incompatibilité (note 0)</b> : ${esc((e.veto_motifs || []).join(' · '))}</div>` : ''}
-    <div class="panel"><div class="g-row"><span class="g-l"><b>Note globale</b></span>${gauge(num(p.Score_global))}<span class="g-n big-n">${fmtN(num(p.Score_global))}</span></div>
-    ${row('Complétude', b.Completude)}${row('Conformité', b.Conformite)}${row('Alignement schéma directeur', b.Alignement)}
-    <div class="t-sub" style="margin-top:6px">Base ${fmtN(e.base)} + bonus d'alignement ${fmtN(e.bonus)} (plafonné à 10). Les cotations sont calculées sur les valeurs déposées.</div></div>
-    <div class="panel"><h3>Incompatibilité</h3><div class="t-sub" style="margin-bottom:8px">À cocher si la proposition est manifestement hors du cadre du PNF : la note passe à 0 et la proposition est signalée en rouge. Le statut et le motif de la décision se renseignent dans l'onglet Instruction.</div><div class="row">
-      <label class="chk"><input type="checkbox" id="ev-veto" ${p.Veto_chefferie ? 'checked' : ''}>Incompatibilité constatée par la chefferie (note 0)</label>
-      <button class="btn primary" onclick="saveEval()">Enregistrer</button></div></div>
+  return `${intro}
+    <div class="panel">${row('Complétude', b.Completude)}${row('Conformité', b.Conformite)}${row('Alignement au schéma directeur', b.Alignement)}</div>
     <div style="display:grid;gap:10px">${groups}</div>`;
-}
-async function saveEval(){
-  const p = cur(), v = document.getElementById('ev-veto').checked;
-  if (v === !!p.Veto_chefferie) { toast('Aucune modification à enregistrer.'); return; }
-  await writeFields(p.id, { Veto_chefferie: v }, 'Incompatibilité enregistrée.');
 }
 
 /* ----- onglet Instruction (statut, décision, fusion) ----- */
 function treeRows(id, depth, versee){
-  return fusionnees(id).map(k => `<div class="row" style="margin:4px 0;padding-left:${depth * 18}px"><span class="chip st-Fusionnée">n° ${k.id}</span><span>${esc(k.Titre)} <span class="t-sub">(${esc(sCode(refId(k.Structure_porteuse)))})</span></span><button class="btn small" onclick="openModal(${k.id}, 'instr')">Ouvrir</button>${versee ? '' : `<button class="btn small danger" onclick="doDefusion(${k.id})">Défusionner</button>`}</div>` + treeRows(k.id, depth + 1, versee)).join('');
+  return fusionnees(id).map(k => `<div class="row" style="margin:4px 0;padding-left:${depth * 18}px"><span class="chip st-Fusionnée">n° ${k.id}</span><span>${esc(k.Titre)} <span class="t-sub">(${esc(sCode(refId(k.Structure_porteuse)))})</span></span><button class="btn small" onclick="openModal(${k.id}, 'instr')">Ouvrir</button>${(versee || !canInstruct(k)) ? '' : `<button class="btn small danger" onclick="doDefusion(${k.id})">Défusionner</button>`}</div>` + treeRows(k.id, depth + 1, versee)).join('');
 }
 function paneInstr(p){
+  if (!canInstruct(p)) return horsPerimetre(p);
   const st = statutOf(p), fd = fusionDans(p), kids = fusionnees(p.id), desc = descendants(p.id), versee = isVersee(p), fused = st === 'Fusionnée', gv = groupeVerse(p);
   const opts = (fused ? STATUTS : STATUTS.filter(s => s !== 'Fusionnée')).map(s => opt(s, s, st)).join('');
   const warns = [];
   if (isRouge(p)) warns.push('Cette proposition présente une incompatibilité rédhibitoire.');
   if (autreMsg(p)) warns.push(autreMsg(p));
   // une proposition principale (même issue de fusions) peut être fusionnée dans une autre ; le groupe suit
-  const cand = P.filter(x => x.id !== p.id && statutOf(x) !== 'Fusionnée' && !fusionDans(x) && !isVersee(x) && !isGele(x));
+  const cand = P.filter(x => x.id !== p.id && statutOf(x) !== 'Fusionnée' && !fusionDans(x) && !isVersee(x) && !isGele(x) && canInstruct(x));
   const main = fd ? P.find(x => x.id === fd) : null, top = racine(p);
   return `<div class="panel"><h3>Statut et décision</h3>
     ${versee ? '<div class="note">Cette proposition a été versée dans le catalogue des actions : son statut n\'est plus modifiable ici.</div>' : ''}
@@ -663,6 +667,7 @@ function paneInstr(p){
 }
 async function saveInstr(){
   const p = cur(), sel = document.getElementById('in-statut'), fields = {};
+  if (!canInstruct(p)) { toast('Proposition hors de votre périmètre d\'instruction.', true); return; }
   if (!sel.disabled && sel.value !== statutOf(p)) fields.Statut_instruction = sel.value;
   const com = document.getElementById('in-com').value, motif = document.getElementById('in-motif').value;
   if (com !== (p.Commentaire_chefferie || '')) fields.Commentaire_chefferie = com;
@@ -672,6 +677,7 @@ async function saveInstr(){
 }
 async function doFusion(){
   const src = cur(), mainId = Number(document.getElementById('fu-main').value);
+  if (!canInstruct(src) || !canInstruct(P.find(x => x.id === mainId) || {})) { toast('Fusion impossible : proposition hors de votre périmètre d\'instruction.', true); return; }
   if (isGele(src) || isGele(P.find(x => x.id === mainId) || {})) { toast(GEL_MSG, true); return; }
   if (!mainId) { toast('Choisis la proposition principale.', true); return; }
   const main = P.find(x => x.id === mainId); if (!main || statutOf(main) === 'Fusionnée' || fusionDans(main) || isVersee(main) || mainId === src.id) { toast('Proposition principale non valide.', true); return; }
@@ -690,6 +696,7 @@ async function doFusion(){
   catch (e) { console.error(e); toast('Échec de la fusion : ' + (e.message || e), true); }
 }
 async function doDefusion(id){
+  if (!canInstruct(P.find(x => x.id === id) || {})) { toast('Défusion impossible : proposition hors de votre périmètre d\'instruction.', true); return; }
   if (isGele(P.find(x => x.id === id) || {})) { toast(GEL_MSG, true); return; }
   const q = P.find(x => x.id === id); if (!q || groupeVerse(q)) { toast('Défusion impossible : le groupe a déjà été versé.', true); return; }
   try { await grist.docApi.applyUserActions([['UpdateRecord', PROP, id, { Fusionnee_dans: 0, Statut_instruction: "En cours d'instruction" }]]); await loadAll(); renderAll(); toast(`Proposition n° ${id} défusionnée.`); }
@@ -706,11 +713,11 @@ function versePlan(p){
   const structs = [...new Set(members.map(m => refId(m.C_Structure_porteuse ?? m.Structure_porteuse)).filter(Boolean))];
   const emails = []; members.forEach(m => { const e = lc(m.C_Email_contact || m.Email_contact); if (e && !emails.some(x => x.email === e)) emails.push({ email: e, struct: refId(m.C_Structure_porteuse ?? m.Structure_porteuse) }); });
   return { members, structs, emails, act, axe: axeOf(act), modalite: refId(p.C_Modalite ?? p.Modalite), format: refId(p.C_Format ?? p.Format), articulation: (p.C_Articulation_parcours ?? p.Articulation_parcours) || '', publics: asIds(p.C_Publics ?? p.Public_cible),
-    heures: duree, js: Math.round(duree * eff / jourHeures() * 100) / 100, annee: refId(p.Annee_scolaire), titre: clean(p.C_Titre ?? p.Titre), objectif: String(p.C_Objectifs ?? p.Objectifs ?? '').trim() };
+    heures: duree, js: Math.round(duree * eff / jourHeures() * 100) / 100, volet: refId(p.Volet), annee: refId(p.Annee_scolaire), titre: clean(p.C_Titre ?? p.Titre), objectif: String(p.C_Objectifs ?? p.Objectifs ?? '').trim() };
 }
 function paneVerse(p){
+  if (!canInstruct(p)) return horsPerimetre(p);
   const st = statutOf(p), fd = fusionDans(p);
-  if (IS_DGRH && !isVersee(p)) return '<div class="warn">Le versement dans le catalogue des actions est réservé à la Chefferie et aux Propriétaires.</div>';
   if (isVersee(p)) { const a = AF.find(x => x.id === refId(p.Id_action_creee)); return `<div class="note">Cette proposition a été versée dans <b>le catalogue des actions</b> : action n° <b>${refId(p.Id_action_creee)}</b>${a ? ' « ' + esc(a.titre) + ' »' : ''}.</div><div class="t-sub">Les modifications se font désormais depuis le widget de pilotage des actions.</div>`; }
   if (fd) return `<div class="warn">Cette proposition est fusionnée dans la proposition n° ${fd}. Le versement se fait depuis la proposition principale de tête (n° ${racine(p).id}).</div>`;
   if (isSimulee(p)) return `<div class="note" style="background:#FFF3CD;color:#7A5A00">MODE TEST — versement simulé le ${esc(fmtDate(p.Versement_simule))} : aucune action n'a été créée dans le catalogue et aucun contact n'a été ajouté.</div>
@@ -729,10 +736,10 @@ function paneVerse(p){
   return `${modeSimulation() ? '<div class="note" style="background:#FFF3CD;color:#7A5A00;margin-bottom:8px">MODE TEST — le versement est simulé : il ne crée ni action dans le catalogue ni contact. Les contrôles et la saisie sont ceux du versement réel.</div>' : ''}${grp ? `<div class="note">Cette proposition regroupe ${pl.members.length} propositions (fusions) : leurs structures et leurs contacts seront tous rattachés à l'action.</div>` : ''}
     ${dups.length ? `<div class="warn">Une action de même titre existe déjà pour cette année dans le catalogue des actions (n° ${dups.map(a => a.id).join(', ')}). Vérifie qu'il ne s'agit pas d'un doublon.</div>` : ''}
     <div class="panel"><h3>Valeurs reprises (issues des corrections)</h3><dl class="vs-sum">${sum.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
-      <div class="t-sub" style="margin-top:6px">Pour changer l'une de ces valeurs, corrige-la dans l'onglet « Déposé / corrigé » avant de verser.</div></div>
+      <div class="t-sub" style="margin-top:6px">Pour changer l'une de ces valeurs, corrige-la dans l'onglet « Dépôt/Consolidation » avant de verser.</div></div>
     <div class="panel"><h3>À compléter par la chefferie</h3>
       <div class="grid-f"><div class="fld"><label>Date de début *</label><input type="date" id="vs-debut"></div><div class="fld"><label>Date de fin *</label><input type="date" id="vs-fin"></div>
-        <div class="fld"><label>Volet *</label><select id="vs-volet"><option value="0">— choisir —</option>${Object.values(VOLETS).map(v => opt(v.id, clean(v.libelle) + (clean(v.description) ? ' — ' + clean(v.description) : ''), 0)).join('')}</select></div></div>
+        <div class="fld"><label>Volet *</label><select id="vs-volet"><option value="0">— choisir —</option>${Object.values(VOLETS).map(v => opt(v.id, voletLib(v.id), pl.volet)).join('')}</select></div></div>
       <div class="t-sub" style="margin-top:6px">Période indiquée par le porteur : <b>${esc(perio || '–')}</b> · Lieu indiqué : <b>${esc(p.C_Lieu ?? p.Lieu ?? '–')}</b></div>
       <div class="section-title" style="margin-top:10px">Degré(s) (facultatif)</div><div class="chk-grid">${Object.values(DEGRES).map(d => `<label class="chk"><input type="checkbox" data-deg="${d.id}">${esc(clean(d.nom_deg))}</label>`).join('')}</div>
       <div class="section-title" style="margin-top:10px">Lieu(x) de la table Lieux (facultatif)</div><div class="chk-grid">${lieuxOpts || '<span class="t-sub">Aucun lieu dans la table.</span>'}</div></div>
@@ -742,8 +749,8 @@ function paneVerse(p){
 const dateSec = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 1000 : null; };
 function readVerse(p){
   const pl = versePlan(p), d1 = dateSec(document.getElementById('vs-debut').value), d2 = dateSec(document.getElementById('vs-fin').value), volet = Number(document.getElementById('vs-volet').value) || 0;
-  if (!pl.titre) return { err: 'Le titre est vide (onglet Déposé / corrigé).' };
-  if (!pl.act) return { err: 'Aucune action du schéma directeur : corrige-la dans l\'onglet Déposé / corrigé.' };
+  if (!pl.titre) return { err: 'Le titre est vide (onglet Dépôt/Consolidation).' };
+  if (!pl.act) return { err: 'Aucune action du schéma directeur : corrige-la dans l\'onglet Dépôt/Consolidation.' };
   if (!pl.annee) return { err: 'Année scolaire absente sur la proposition.' };
   if (d1 === null || d2 === null) return { err: 'Renseigne la date de début et la date de fin.' };
   if (d2 < d1) return { err: 'La date de fin est antérieure à la date de début.' };
@@ -760,7 +767,8 @@ function readVerse(p){
   return { pl, d1, d2, volet, contacts, deg, lieux };
 }
 function askVerse(){
-  const p = cur(), v = readVerse(p); if (v.err) { toast(v.err, true); return; }
+  const p = cur(); if (!canInstruct(p)) { toast('Versement impossible : proposition hors de votre périmètre.', true); return; }
+  const v = readVerse(p); if (v.err) { toast(v.err, true); return; }
   const neu = v.contacts.filter(c => !c.existing).length;
   if (modeSimulation()) { document.getElementById('vs-zone').innerHTML = `<div class="note" style="background:#FFF3CD;color:#7A5A00">Confirmer la simulation ? Aucune action ne sera créée dans le catalogue${neu ? ' et ' + neu + ' contact(s) NE seront PAS ajouté(s) à la table Contacts' : ''} ; la proposition sera seulement marquée « versement simulé ».</div>
     <div class="row" style="margin-top:8px"><button class="btn primary" id="vs-confirm" onclick="doVerse()">Oui, simuler</button><button class="btn" onclick="renderModal()">Annuler</button></div>`; return; }
@@ -768,12 +776,12 @@ function askVerse(){
     <div class="row" style="margin-top:8px"><button class="btn primary" id="vs-confirm" onclick="doVerse()">Oui, verser</button><button class="btn" onclick="renderModal()">Annuler</button></div>`;
 }
 async function clearSimul(){
-  const p = cur(); if (!p) return;
+  const p = cur(); if (!p || !canInstruct(p)) return;
   try { await grist.docApi.applyUserActions([['UpdateRecord', PROP, p.id, { Versement_simule: null }]]); await loadAll(); renderAll(); toast('Simulation effacée.'); }
   catch (e) { toast('Échec : ' + (e.message || e), true); }
 }
 async function doVerse(){
-  if (VERSING || IS_DGRH) return; VERSING = true;
+  if (VERSING || !canInstruct(cur())) return; VERSING = true;
   const btn = document.getElementById('vs-confirm'); if (btn) btn.disabled = true;
   const zone = document.getElementById('vs-zone'); if (zone) zone.insertAdjacentHTML('afterbegin', '<div class="note" id="vs-busy">Versement en cours (plusieurs étapes, quelques secondes)… ne ferme pas cette fiche.</div>');
   let createdId = 0;
@@ -823,170 +831,9 @@ async function doVerse(){
   } finally { VERSING = false; }
 }
 
-/* ============================== export CSV ============================== */
-const G = { ID:'Identification', DEP:'Description déposée', COR:'Valeurs corrigées', CAL:'Calculées', ARR:'Conformité à l\'arrêté (déclaré)', ORI:'Principes et orientations du schéma directeur', COT:'Cotation', INS:'Instruction' };
+/* ============================== helpers de la fiche ============================== */
 const lst = v => Array.isArray(v) ? v : [];
 const oriOf = p => lst(Array.isArray(p.Orientation_SD) && p.Orientation_SD[0] === 'L' ? p.Orientation_SD.slice(1) : p.Orientation_SD);
-function critNon(p){ const e = ev(p); return e ? (e.criteres || []).filter(c => c.bloc !== 'Alignement' && c.res !== null && c.res < 1).map(c => c.libelle + (c.motif ? ' (' + c.motif + ')' : '')) : []; }
-const EXPORT_COLS = [
-  { k:'id', g:G.ID, l:'N°', v:p => p.id }, { k:'date_depot', g:G.ID, l:'Date de dépôt', d:1, v:p => p.Date_depot },
-  { k:'annee', g:G.ID, l:'Année scolaire', v:p => (ANNEE[refId(p.Annee_scolaire)] || {}).libelle || '' }, { k:'email', g:G.ID, l:'Adresse électronique de contact', v:p => p.Email_contact },
-  { k:'structure_code', g:G.ID, l:'Structure porteuse (code)', v:p => sCode(refId(p.Structure_porteuse)) }, { k:'structure_lib', g:G.ID, l:'Structure porteuse (libellé)', v:p => clean((STRUCT[refId(p.Structure_porteuse)] || {}).libelle) },
-  { k:'titre', g:G.DEP, l:'Titre', v:p => p.Titre }, { k:'objectifs', g:G.DEP, l:'Objectifs', v:p => p.Objectifs }, { k:'contexte', g:G.DEP, l:'Contexte de la demande', v:p => p.Contexte },
-  { k:'action_num', g:G.DEP, l:'Action du schéma directeur (n°)', v:p => aNum(refId(p.Action_SD)) }, { k:'action_lib', g:G.DEP, l:'Action du schéma directeur (libellé)', v:p => aLib(refId(p.Action_SD)) },
-  { k:'axe', g:G.DEP, l:'Axe du schéma directeur', v:p => axeLib(refId(p.Action_SD)) }, { k:'indicateur', g:G.DEP, l:'Indicateur du schéma directeur', v:p => p.Indicateur_SD },
-  { k:'pluriannuelle', g:G.DEP, l:'Action pluriannuelle', v:p => p.Action_pluriannuelle }, { k:'report', g:G.DEP, l:'Report d\'une action du PNF précédent', v:p => p[REPCOL] },
-  { k:'periode', g:G.DEP, l:'Période calendaire envisagée', v:p => p.Periode }, { k:'modalite', g:G.DEP, l:'Modalité de formation', v:p => modLib(refId(p.Modalite)) },
-  { k:'format', g:G.DEP, l:'Modalité pédagogique', v:p => fmtLib(refId(p.Format)) }, { k:'articulation', g:G.DEP, l:'Articulation à un parcours (Magistère / Mentor)', v:p => p.Articulation_parcours },
-  { k:'publics', g:G.DEP, l:'Public cible', v:p => pubLibs(p.Public_cible) }, { k:'public_autre', g:G.DEP, l:'Précision sur le public « Autres »', v:p => p.Public_autre }, { k:'duree', g:G.DEP, l:'Durée (heures)', v:p => p.Duree_heures }, { k:'effectif', g:G.DEP, l:'Effectif prévisionnel', v:p => p.Effectif_previsionnel }, { k:'sessions', g:G.DEP, l:'Nombre prévisionnel de sessions', v:p => p.Nb_sessions },
-  { k:'lieu', g:G.DEP, l:'Lieu prévisionnel', v:p => p.Lieu }, { k:'commentaire_porteur', g:G.DEP, l:'Commentaire du porteur', v:p => p.Commentaire_porteur },
-  { k:'c_titre', g:G.COR, l:'Titre (corrigé)', v:p => p.C_Titre }, { k:'c_objectifs', g:G.COR, l:'Objectifs (corrigés)', v:p => p.C_Objectifs },
-  { k:'c_action_num', g:G.COR, l:'Action du schéma directeur (n°, corrigée)', v:p => aNum(refId(p.C_Action_SD)) }, { k:'c_action_lib', g:G.COR, l:'Action du schéma directeur (libellé, corrigé)', v:p => aLib(refId(p.C_Action_SD)) },
-  { k:'c_axe', g:G.COR, l:'Axe du schéma directeur (corrigé)', v:p => axeLib(refId(p.C_Action_SD)) },
-  { k:'c_structure_code', g:G.COR, l:'Structure porteuse (code, corrigée)', v:p => sCode(refId(p.C_Structure_porteuse)) }, { k:'c_structure_lib', g:G.COR, l:'Structure porteuse (libellé, corrigé)', v:p => clean((STRUCT[refId(p.C_Structure_porteuse)] || {}).libelle) },
-  { k:'c_modalite', g:G.COR, l:'Modalité (corrigée)', v:p => modLib(refId(p.C_Modalite)) },
-  { k:'c_format', g:G.COR, l:'Modalité pédagogique (corrigée)', v:p => fmtLib(refId(p.C_Format)) }, { k:'c_articulation', g:G.COR, l:'Articulation à un parcours (corrigée)', v:p => p.C_Articulation_parcours }, { k:'c_publics', g:G.COR, l:'Public cible (corrigé)', v:p => pubLibs(p.C_Publics) }, { k:'c_public_autre', g:G.COR, l:'Précision sur le public « Autres » (corrigée)', v:p => p.C_Public_autre },
-  { k:'c_periode', g:G.COR, l:'Période (corrigée)', v:p => p.C_Periode }, { k:'c_duree', g:G.COR, l:'Durée en heures (corrigée)', v:p => p.C_Duree_heures },
-  { k:'c_effectif', g:G.COR, l:'Effectif prévisionnel (corrigé)', v:p => p.C_Effectif_previsionnel }, { k:'c_sessions', g:G.COR, l:'Nombre prévisionnel de sessions (corrigé)', v:p => p.C_Nb_sessions }, { k:'c_lieu', g:G.COR, l:'Lieu (corrigé)', v:p => p.C_Lieu },
-  { k:'c_email', g:G.COR, l:'Adresse électronique de contact (corrigée)', v:p => p.C_Email_contact }, { k:'c_pluriannuelle', g:G.COR, l:'Action pluriannuelle (corrigée)', v:p => p.C_Action_pluriannuelle },
-  { k:'c_report', g:G.COR, l:'Report d\'une action du PNF précédent (corrigé)', v:p => p.C_Report },
-  { k:'heures', g:G.CAL, l:'Heures de formation (déposées)', v:p => p.Heures_prevues }, { k:'js', g:G.CAL, l:'Journées stagiaires (déposées)', v:p => p.JS_prevues },
-  { k:'c_heures', g:G.CAL, l:'Heures de formation (corrigées)', v:p => num(cDuree(p)) || 0 }, { k:'c_js', g:G.CAL, l:'Journées stagiaires (corrigées)', v:p => Math.round((num(cDuree(p)) || 0) * (num(cEff(p)) || 0) / jourHeures() * 100) / 100 },
-  ...ARR.map(([k, l]) => ({ k:k.toLowerCase(), g:G.ARR, l, v:p => p[k] })),
-  { k:'orientations', g:G.ORI, l:'Principes et orientations du schéma directeur', v:p => oriOf(p) },
-  { k:'note_globale', g:G.COT, cot:1, l:'Note globale (/10)', v:p => p.Score_global }, { k:'note_completude', g:G.COT, cot:1, l:'Complétude (/10)', v:p => p.Score_completude },
-  { k:'note_conformite', g:G.COT, cot:1, l:'Conformité (/10)', v:p => p.Score_conformite }, { k:'note_alignement', g:G.COT, cot:1, l:'Alignement schéma directeur (/10)', v:p => p.Score_alignement },
-  { k:'redhibitoire', g:G.COT, cot:1, l:'Rédhibitoire', v:p => (p.Redhibitoire ? 'Oui' : 'Non') }, { k:'veto', g:G.COT, cot:1, l:'Incompatibilité constatée par la chefferie', v:p => (p.Veto_chefferie ? 'Oui' : 'Non') },
-  { k:'criteres_non', g:G.COT, cot:1, l:'Critères non satisfaits', v:p => critNon(p) },
-  { k:'statut', g:G.INS, cot:1, l:'Statut d\'instruction', v:p => statutOf(p) }, { k:'fusionnee_dans', g:G.INS, cot:1, l:'Fusionnée dans (n°)', v:p => fusionDans(p) || '' },
-  { k:'fusionnees', g:G.INS, cot:1, l:'Propositions fusionnées dans celle-ci (n°)', v:p => descendants(p.id).map(x => x.id) },
-  { k:'commentaire_chefferie', g:G.INS, cot:1, l:'Commentaire de la chefferie', v:p => p.Commentaire_chefferie }, { k:'motif', g:G.INS, cot:1, l:'Motif de la décision', v:p => p.Motif_decision },
-  { k:'gele', g:G.INS, cot:1, l:'Proposition figée', v:p => isGele(p) ? 'Oui' : '' }, { k:'date_gel', g:G.INS, cot:1, l:'Date du gel', d:1, v:p => p.Date_gel },
-  { k:'versement_simule', g:G.INS, cot:1, l:'Versement simulé (test)', d:1, v:p => p.Versement_simule },
-  { k:'action_creee', g:G.INS, cot:1, l:'Action créée dans le catalogue des actions (n°)', v:p => refId(p.Id_action_creee) || '' }
-];
-const availCols = mode => EXPORT_COLS.filter(c => mode === 'Avec cotation' || !c.cot);
-const BUILTIN = {
-  'std-sans':    { nom:'Sans cotation (standard)', mode:'Sans cotation', cols:() => availCols('Sans cotation').map(c => c.k) },
-  'std-interne': { nom:'Interne complet', mode:'Avec cotation', cols:() => availCols('Avec cotation').map(c => c.k) }
-};
-function applyPreset(key){
-  EX.preset = key;
-  if (BUILTIN[key]) { EX.mode = BUILTIN[key].mode; EX.cols = new Set(BUILTIN[key].cols()); return; }
-  const m = MODELES.find(x => 'm' + x.id === key); if (!m) return;
-  EX.mode = m.mode === 'Avec cotation' ? 'Avec cotation' : 'Sans cotation';
-  let ks = []; try { ks = JSON.parse(m.colonnes || '[]'); } catch (e) { ks = []; }
-  const ok = new Set(availCols(EX.mode).map(c => c.k)); EX.cols = new Set(ks.filter(k => ok.has(k)));
-  try { const f = JSON.parse(m.format || '{}'); EX.fmt = { ...EX.fmt, ...f }; } catch (e) { /* format par défaut */ }
-}
-function setMode(m){ EX.mode = m; const ok = new Set(availCols(m).map(c => c.k)); EX.cols = new Set([...EX.cols].filter(k => ok.has(k))); EX.preset = ''; renderExport(); }
-function toggleCol(k, on){ on ? EX.cols.add(k) : EX.cols.delete(k); EX.preset = ''; renderExportPreview(); markPreset(); }
-function setGroup(g, on){ availCols(EX.mode).filter(c => c.g === g).forEach(c => on ? EX.cols.add(c.k) : EX.cols.delete(c.k)); EX.preset = ''; renderExport(); }
-function setFmt(k, v){ EX.fmt[k] = v; renderExportPreview(); }
-function toggleRow(id, on){ on ? EX.excluded.delete(id) : EX.excluded.add(id); renderExportPreview(); }
-function setAllRows(on){ const ids = P.filter(p => matches(p, FE)).map(p => p.id); ids.forEach(id => on ? EX.excluded.delete(id) : EX.excluded.add(id)); renderExportBody(); }
-function markPreset(){ const s = document.getElementById('ex-preset'); if (s) s.value = EX.preset; }
-
-function cellText(col, p){
-  let v = col.v(p);
-  if (col.d) return v ? (EX.fmt.dateFr ? fmtDate(v) : isoDate(v)) : '';
-  if (Array.isArray(v)) return v.join(EX.fmt.listSep);
-  if (typeof v === 'number') return EX.fmt.decComma ? String(v).replace('.', ',') : String(v);
-  if (typeof v === 'boolean') return v ? 'Oui' : 'Non';
-  return v === null || v === undefined ? '' : String(v);
-}
-function exportRows(){ return P.filter(p => matches(p, FE) && !EX.excluded.has(p.id)).sort((a, b) => a.id - b.id); }
-function selectedCols(){ return availCols(EX.mode).filter(c => EX.cols.has(c.k)); }
-const csvSafe = s => /^[=+\-@\t\r]/.test(s) ? "'" + s : s;   // neutralise l'injection de formules (tableur) sur les cellules texte
-const csvEsc = (v, sep) => { const s = csvSafe(String(v ?? '').replace(/\r?\n/g, ' | ')); return (s.includes(sep) || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-function downloadExport(){
-  const cols = selectedCols(), rows = exportRows(), sep = EX.fmt.sep === 'tab' ? '\t' : EX.fmt.sep;
-  if (!cols.length) { toast('Coche au moins une colonne.', true); return; }
-  if (!rows.length) { toast('Aucune ligne à exporter.', true); return; }
-  const head = cols.map(c => csvEsc(EX.fmt.headers === 'codes' ? c.k : c.l, sep)).join(sep);
-  const body = rows.map(p => cols.map(c => csvEsc(cellText(c, p), sep)).join(sep));
-  const csv = (EX.fmt.bom ? '\uFEFF' : '') + [head, ...body].join('\r\n');
-  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' }), url = URL.createObjectURL(blob), a = document.createElement('a');
-  const an = String(PARAMS.annee_cible || 'PNF').replace(/\s+/g, '');
-  a.href = url; a.download = `PNF${an}_propositions_${EX.mode === 'Sans cotation' ? 'sans-cotation' : 'interne'}_${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  toast(`${rows.length} proposition(s) exportée(s) — ${cols.length} colonne(s).`);
-}
-
-/* ----- modèles partagés ----- */
-function presetOptions(){
-  return `<optgroup label="Modèles standards">${Object.keys(BUILTIN).map(k => opt(k, BUILTIN[k].nom, EX.preset)).join('')}</optgroup>` +
-    (MODELES.length ? `<optgroup label="Modèles partagés">${MODELES.map(m => opt('m' + m.id, m.nom, EX.preset)).join('')}</optgroup>` : '') + `<option value="" ${EX.preset === '' ? 'selected' : ''}>Sélection personnalisée</option>`;
-}
-function choosePreset(k){ if (!k) return; applyPreset(k); renderExport(); }
-function modelPayload(){ return { colonnes: JSON.stringify([...EX.cols]), format: JSON.stringify(EX.fmt), mode: EX.mode, maj: Date.now() / 1000 }; }
-async function saveModelAs(){
-  const nom = clean(document.getElementById('ex-newname').value); if (!nom) { toast('Donne un nom au modèle.', true); return; }
-  if (MODELES.some(m => norm(m.nom) === norm(nom)) || Object.values(BUILTIN).some(b => norm(b.nom) === norm(nom))) { toast('Ce nom existe déjà : choisis un autre nom ou mets à jour le modèle.', true); return; }
-  try { await grist.docApi.applyUserActions([['AddRecord', MODELES_T, null, { nom, cree_par: '', ...modelPayload() }]]); await loadAll(); const m = MODELES.find(x => norm(x.nom) === norm(nom)); EX.preset = m ? 'm' + m.id : ''; renderExport(); toast('Modèle partagé enregistré.'); }
-  catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
-}
-async function updateModel(){
-  const m = MODELES.find(x => 'm' + x.id === EX.preset); if (!m) return;
-  try { await grist.docApi.applyUserActions([['UpdateRecord', MODELES_T, m.id, modelPayload()]]); await loadAll(); renderExport(); toast('Modèle mis à jour.'); }
-  catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
-}
-function askDeleteModel(){ const b = document.getElementById('ex-del'); b.outerHTML = '<span id="ex-del">Supprimer ce modèle partagé ? <button class="btn small danger" onclick="deleteModel()">Oui, supprimer</button> <button class="btn small" onclick="renderExport()">Annuler</button></span>'; }
-async function deleteModel(){
-  const m = MODELES.find(x => 'm' + x.id === EX.preset); if (!m) return;
-  try { await grist.docApi.applyUserActions([['RemoveRecord', MODELES_T, m.id]]); await loadAll(); applyPreset('std-sans'); renderExport(); toast('Modèle supprimé.'); }
-  catch (e) { console.error(e); toast('Échec : ' + (e.message || e), true); }
-}
-
-/* ----- rendu de l'onglet Export ----- */
-function renderExport(){
-  if (!EX.cols.size && EX.preset) applyPreset(EX.preset);
-  const shared = EX.preset.startsWith('m'), avail = availCols(EX.mode), groups = [...new Set(avail.map(c => c.g))];
-  document.getElementById('page').innerHTML = `
-    <div class="panel"><h3>1. Modèle et destinataire</h3>
-      <div class="row"><div class="fld" style="min-width:260px"><label>Modèle d'export</label><select id="ex-preset" onchange="choosePreset(this.value)">${presetOptions()}</select></div>
-        <div class="fld"><label>Destinataire</label><div class="row" style="padding-top:5px">
-          <label class="chk"><input type="radio" name="ex-mode" ${EX.mode === 'Sans cotation' ? 'checked' : ''} onchange="setMode('Sans cotation')">Sans cotation</label>
-          <label class="chk"><input type="radio" name="ex-mode" ${EX.mode === 'Avec cotation' ? 'checked' : ''} onchange="setMode('Avec cotation')">Avec cotation (interne)</label></div></div></div>
-      ${EX.mode === 'Sans cotation' ? '<div class="note" style="margin-top:8px">Mode « Sans cotation » : les notes, le détail de l\'évaluation et toutes les colonnes d\'instruction (statut, fusion, commentaires, motif) sont retirés de la liste des colonnes.</div>' : '<div class="warn" style="margin-top:8px">Mode « Avec cotation » : ce fichier contient des données internes. Il ne doit pas être transmis à la DGRH.</div>'}
-      ${IS_DGRH ? '<div class="t-sub" style="margin-top:10px">Les modèles d\'export partagés sont en lecture seule pour la DGRH.</div>' : ''}
-      <div class="row" style="margin-top:10px${IS_DGRH ? ';display:none' : ''}">
-        <input type="text" id="ex-newname" placeholder="Nom du nouveau modèle partagé" style="width:240px"><button class="btn small" onclick="saveModelAs()">Enregistrer sous ce nom</button>
-        ${shared ? '<button class="btn small" onclick="updateModel()">Mettre à jour le modèle sélectionné</button><span id="ex-del"><button class="btn small danger" onclick="askDeleteModel()">Supprimer le modèle</button></span>' : ''}
-        <span class="t-sub">Un modèle enregistre le mode, les colonnes cochées et le format ; il est partagé avec la chefferie et les propriétaires.</span></div></div>
-    <details class="panel" open><summary>2. Lignes à exporter — filtres</summary>${filterPanel('e')}</details>
-    <div class="panel"><h3>3. Colonnes à exporter</h3><div class="cols-grid">${groups.map(g => {
-      const cs = avail.filter(c => c.g === g), n = cs.filter(c => EX.cols.has(c.k)).length;
-      return `<div class="grp"><div class="grp-h"><b>${esc(g)} <span class="t-sub">(${n}/${cs.length})</span></b><span><button class="btn small" onclick="setGroup('${g.replace(/'/g, "\\'")}',true)">Tout</button> <button class="btn small" onclick="setGroup('${g.replace(/'/g, "\\'")}',false)">Aucun</button></span></div>
-        <div class="cols-list">${cs.map(c => `<label class="chk"><input type="checkbox" ${EX.cols.has(c.k) ? 'checked' : ''} onchange="toggleCol('${c.k}',this.checked)">${esc(c.l)}</label>`).join('')}</div></div>`;
-    }).join('')}</div></div>
-    <div class="panel"><h3>4. Format du fichier</h3><div class="row">
-      <div class="fld"><label>Séparateur</label><select onchange="setFmt('sep',this.value)">${opt(';', 'Point-virgule (Excel français)', EX.fmt.sep)}${opt(',', 'Virgule', EX.fmt.sep)}${opt('tab', 'Tabulation', EX.fmt.sep)}</select></div>
-      <div class="fld"><label>En-têtes</label><select onchange="setFmt('headers',this.value)">${opt('labels', 'Libellés lisibles', EX.fmt.headers)}${opt('codes', 'Codes courts', EX.fmt.headers)}</select></div>
-      <div class="fld"><label>Séparateur des listes</label><select onchange="setFmt('listSep',this.value)">${opt(' | ', 'Barre verticale ( | )', EX.fmt.listSep)}${opt('; ', 'Point-virgule + espace', EX.fmt.listSep)}${opt(', ', 'Virgule + espace', EX.fmt.listSep)}</select></div>
-      <label class="chk" style="margin-top:16px"><input type="checkbox" ${EX.fmt.bom ? 'checked' : ''} onchange="setFmt('bom',this.checked)">UTF-8 avec BOM (accents dans Excel)</label>
-      <label class="chk" style="margin-top:16px"><input type="checkbox" ${EX.fmt.dateFr ? 'checked' : ''} onchange="setFmt('dateFr',this.checked)">Dates JJ/MM/AAAA</label>
-      <label class="chk" style="margin-top:16px"><input type="checkbox" ${EX.fmt.decComma ? 'checked' : ''} onchange="setFmt('decComma',this.checked)">Décimale avec virgule</label></div></div>
-    <div id="ex-body"></div>`;
-  renderExportBody();
-}
-function renderExportBody(){
-  const body = document.getElementById('ex-body'); if (!body) return;
-  const matching = P.filter(p => matches(p, FE)).sort((a, b) => a.id - b.id);
-  body.innerHTML = `<div class="panel"><h3>5. Lignes retenues pour l'export</h3>
-    <div class="row"><span id="ex-count" class="count"></span><button class="btn small" onclick="setAllRows(true)">Tout cocher</button><button class="btn small" onclick="setAllRows(false)">Tout décocher</button><span class="t-sub">Décoche une ligne pour l'exclure de l'export.</span></div>
-    ${matching.length ? `<div class="tbl-wrap" style="margin-top:8px;max-height:260px;overflow-y:auto"><table class="t" style="min-width:560px"><thead><tr><th></th><th>N°</th><th>Titre</th><th>Structure</th><th>Action</th></tr></thead><tbody>${matching.map(p => `<tr><td><input type="checkbox" style="width:auto" ${EX.excluded.has(p.id) ? '' : 'checked'} onchange="toggleRow(${p.id},this.checked)"></td><td>${p.id}</td><td>${esc(p.Titre || 'Sans titre')}</td><td>${esc(sCode(refId(p.Structure_porteuse)))}</td><td>${refId(p.Action_SD) ? 'Action ' + esc(aNum(refId(p.Action_SD))) : '–'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty" style="padding:20px">Aucune proposition ne correspond aux filtres.</div>'}</div>
-    <div class="panel"><h3>6. Aperçu</h3><div id="ex-preview"></div><div class="row" style="margin-top:10px"><button class="btn primary" id="ex-dl" onclick="downloadExport()">Télécharger le CSV</button></div></div>`;
-  renderExportPreview();
-}
-function renderExportPreview(){
-  const rows = exportRows(), cols = selectedCols(), c = document.getElementById('ex-count'), pv = document.getElementById('ex-preview'); if (!pv) return;
-  document.getElementById('count').textContent = `${rows.length} ligne(s) · ${cols.length} colonne(s)`;
-  if (c) c.textContent = `${rows.length} proposition(s) sélectionnée(s) sur ${P.length}`;
-  const dl = document.getElementById('ex-dl'); if (dl) dl.disabled = !rows.length || !cols.length;
-  if (!cols.length || !rows.length) { pv.innerHTML = `<div class="t-sub">${!cols.length ? 'Aucune colonne cochée.' : 'Aucune ligne à exporter.'}</div>`; return; }
-  pv.innerHTML = `<div class="tbl-wrap"><table class="t" style="min-width:${Math.max(560, cols.length * 130)}px"><thead><tr>${cols.map(x => `<th>${esc(EX.fmt.headers === 'codes' ? x.k : x.l)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 5).map(p => `<tr>${cols.map(x => { const t = cellText(x, p); return `<td title="${esc(t)}">${esc(t.length > 90 ? t.slice(0, 90) + '…' : t)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div><div class="t-sub" style="margin-top:4px">Aperçu des ${Math.min(5, rows.length)} premières lignes sur ${rows.length}.</div>`;
-}
 
 /* ============================== démarrage ============================== */
 async function start(){
@@ -995,9 +842,9 @@ async function start(){
     let n = 0; while (!grist.docApi && n < 20) { await new Promise(r => setTimeout(r, 100)); n++; }
     if (!(await checkAccess())) {
       document.getElementById('toolbar').style.display = 'none';
-      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Propriétaires et à la DGRH.</span></div>`; return;
+      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Responsables de suivi, aux Propriétaires et à la DGRH.</span></div>`; return;
     }
-    await loadAll(); IS_OWNER = await detectOwner(); applyPreset('std-sans'); renderAll();
+    await loadAll(); IS_OWNER = await detectOwner(); ROLE = IS_OWNER ? 'owner' : CLS === 'Proprietaire' ? 'proprio' : CLS === 'DGRH' ? 'dgrh' : CLS === 'Responsable_suivi' ? 'rs' : 'chef'; RESTRICT = ['chef', 'rs', 'dgrh'].includes(ROLE); renderAll();
   } catch (e) { console.error(e); document.getElementById('page').innerHTML = `<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
   finally { showLoader(false); }
 }
