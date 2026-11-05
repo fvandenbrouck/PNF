@@ -26,6 +26,10 @@
 <!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
 <!-- Version v3.13 : la classe DGRH accède à l'Arbitrage (évaluation, corrections, instruction, fusions, export avec ou sans cotation) ; le versement dans le catalogue et l'enregistrement de modèles d'export partagés lui restent fermés -->
 <!-- Version v3.14 : gel du catalogue réservé à l'Owner — « Figer » marque toutes les propositions (colonnes Gele / Date_gel) qui passent en lecture seule (corrections, évaluation, instruction, fusions) ; le versement reste possible (seul le lien est écrit) ; « Dégeler » par l'Owner. La règle d'accès sur Gele, à poser dans Grist, rend le gel effectif hors du widget -->
+<!-- Version v3.26 : consultation seule — sur une proposition où le profil n'a aucune procédure permise (hors périmètre, ou profil limité à Visualiser), la fiche n'affiche que la version déposée par le porteur (ni version consolidée, ni volet, ni analyse, ni instruction, ni versement) ; message de refus précisé quand le périmètre est bon mais que le droit manque -->
+<!-- Version v3.25 : droits d'arbitrage pilotés par deux matrices stockées dans Grist, sans plus aucun périmètre en dur dans le code : « Droits_arbitrage » (profil, référence à Classe × Visualiser / Consolider / Instruire / Verser) et colonnes « Perimetre_<profil> » de la table Structures (structure × profil : affichage par défaut et lieu d'exercice des droits). L'accès à la page est gouverné par Visualiser, l'Owner a tous les droits, refus par défaut si le profil n'a pas de ligne. La DGRH instruit (retenir ou non, fusionner) dans son périmètre mais ne verse pas (case Verser décochée) : la restriction « retenir seulement » de la v3.24 disparaît. Un nouveau profil s'ajoute sans toucher au code -->
+<!-- Version v3.24 : la DGRH se limite à consolider et à retenir, dans son périmètre : onglet Instruction réduit au statut (choix limité au statut courant et à « Retenue »), sans commentaire, motif, fusion ni défusion ; onglet Versement toujours masqué -->
+<!-- Version v3.23 : la DGRH n'a plus accès au versement : l'onglet Versement est masqué pour elle et les fonctions de versement (simulation, effacement, versement) sont refusées ; elle conserve l'instruction (statut, commentaire, fusions) dans son périmètre -->
 <!-- Version v3.22 : consolidation — l'action du schéma directeur est obligatoire pour enregistrer (comme le volet) -->
 <!-- Version v3.21 : consolidation — l'axe n'est plus un menu indépendant : seule l'action se choisit (liste groupée par axe) et l'axe qui s'en déduit est affiché -->
 <!-- Version v3.20 : onglet Dépôt/Consolidation — menu « Volet de rattachement » (colonne Propositions_PNF.Volet, Ref:Volets) ; mention obligatoire : l'enregistrement des corrections est refusé tant que le volet n'est pas choisi ; au versement, le volet consolidé est présélectionné (modifiable) -->
@@ -176,15 +180,10 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.22 action obligatoire à la consolidation chargé');
+console.info('[widget-recueil-arbitrage] v3.26 consultation seule chargée');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF';
-/* Périmètres (identifiants de la table Structures) : Chefferie = Dgesco, IGESR, DNE (1 à 35) + DNE TN1 (50) ; DGRH = 36 à 55 sauf DJEPVA, DS, DE (38, 39, 40) et DNE TN1 (50). Ils fixent l'affichage par défaut et le droit d'instruire et de verser. */
-const rng = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
-const IDS_CHEF = new Set([...rng(1, 35), 50]);
-const IDS_DGRH = new Set(rng(36, 55).filter(i => ![38, 39, 40, 50].includes(i)));
-const SCOPE_TXT = { rs: 'les propositions des structures DGESCO, IGESR et DNE (DNE TN1 comprise)', chef: 'les propositions des structures DGESCO, IGESR et DNE (DNE TN1 comprise)', dgrh: 'les propositions des structures d\'identifiant 36 à 55 (DGRH, IH2EF, DAF, DAJ, SG…), hors DJEPVA, DS, DE et DNE TN1' };
 const STATUTS = ['Reçue', "En cours d'instruction", 'Retenue', 'Refusée', 'Fusionnée'];
 const PERIODES_DEFAUT = ['Septembre - décembre 2027', 'Janvier - mars 2028', 'Avril - juin 2028', "Au fil de l'année"];
 const PARCOURS = ['Magistère', 'Mentor', "Ni l'un ni l'autre"];
@@ -192,7 +191,7 @@ const ARR = [['Arr_besoins','Évaluation préalable des besoins (art. 2)'],['Arr
 
 /* ============================== état ============================== */
 let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBLIC = {}, ANNEE = {}, CRIT = [], PARAMS = {}, PERIODES = PERIODES_DEFAUT.slice();
-let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, IS_DGRH = false, RESTRICT = false, ROLE = '', CLS = '', GEL_ASK = '', MODE_ROW = 0, MODE_ASK = '';
+let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, RESTRICT = false, PROFIL = '', CLS = '', DROITS = {}, CLASSE = {}, GEL_ASK = '', MODE_ROW = 0, MODE_ASK = '';
 let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
 let SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
 const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', format:'', periode:'', du:'', au:'', rouge:false, versees:'' });
@@ -273,15 +272,17 @@ const cDuree = p => (p.C_Duree_heures ?? p.Duree_heures);
 /* ============================== chargement ============================== */
 async function fetchRows(t){ try { return toRows(await grist.docApi.fetchTable(t)); } catch (e) { console.warn('[arbitrage] lecture impossible :', t, e); return []; } }
 async function loadAll(){
-  const [props, structs, axes, acts, mods, pubs, annees, crit, params, contacts, volets, degres, lieux, formats] = await Promise.all([
+  const [props, structs, axes, acts, mods, pubs, annees, crit, params, contacts, volets, degres, lieux, formats, droits, classes] = await Promise.all([
     fetchRows(PROP), fetchRows('Structures'), fetchRows('Axes'), fetchRows('Actions_axes'), fetchRows('Modalites'), fetchRows('Publics'), fetchRows('Annees'), fetchRows('Criteres_evaluation'), fetchRows('Parametres_recueil'),
-    fetchRows('Contacts'), fetchRows('Volets'), fetchRows('Degres'), fetchRows('Lieux'), fetchRows('Formats')
+    fetchRows('Contacts'), fetchRows('Volets'), fetchRows('Degres'), fetchRows('Lieux'), fetchRows('Formats'), fetchRows('Droits_arbitrage'), fetchRows('Classe')
   ]);
   AF = await fetchRows('Actions_formation');
   CONTACTS = contacts; VOLETS = Object.fromEntries(volets.map(r => [r.id, r])); DEGRES = Object.fromEntries(degres.map(r => [r.id, r])); FORMAT = Object.fromEntries(formats.map(r => [r.id, r])); LIEUX = Object.fromEntries(lieux.map(r => [r.id, r]));
   P = props; STRUCT = Object.fromEntries(structs.map(r => [r.id, r])); AXE = Object.fromEntries(axes.map(r => [r.id, r]));
   ACTION = Object.fromEntries(acts.map(r => [r.id, r])); MODALITE = Object.fromEntries(mods.map(r => [r.id, r])); PUBLIC = Object.fromEntries(pubs.map(r => [r.id, r]));
   ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); CRIT = crit; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur])); MODE_ROW = (params.find(r => r.cle === 'mode_versement') || {}).id || 0;
+  CLASSE = Object.fromEntries(classes.map(r => [r.id, r.Type]));
+  DROITS = {}; droits.forEach(r => { const t = CLASSE[refId(r.Profil)] || (typeof r.Profil === 'string' && isNaN(Number(r.Profil)) ? r.Profil : ''); if (t) DROITS[t] = { Visualiser: r.Visualiser === true, Consolider: r.Consolider === true, Instruire: r.Instruire === true, Verser: r.Verser === true }; });
   if (P.length) { const k = Object.keys(P[0]).find(x => x.startsWith('Report')); if (k) REPCOL = k; }
   const used = [...new Set(P.map(p => p.Periode).filter(Boolean))];
   PERIODES = [...new Set([...PERIODES_DEFAUT, ...used])];
@@ -296,22 +297,29 @@ function scheduleReload(){ clearTimeout(RELOAD_TIMER); RELOAD_TIMER = setTimeout
 
 /* ============================== accès ============================== */
 // Garde-fou d'affichage (la vraie barrière reste l'ACL) : Utilisateurs n'est lisible en entier que par Owner et Chefferie.
-// Périmètre par rôle (affichage et garde-fous du widget, pas une barrière de sécurité) : ROLE = owner | proprio | chef | rs | dgrh.
-// Chefferie et Responsables de suivi ne voient par défaut que IDS_CHEF, la DGRH que IDS_DGRH ; les autres structures s'affichent en les choisissant dans le filtre.
-const defIds = () => ROLE === 'dgrh' ? IDS_DGRH : IDS_CHEF;
-const isDefStruct = p => { const id = refId(p.Structure_porteuse); return !id || defIds().has(id); };
-// Instruire et verser : Owner et Proprietaire sans limite ; Chefferie dans IDS_CHEF (ou sans structure) ; DGRH dans IDS_DGRH ; Responsables de suivi jamais.
-const canTabs = () => ['owner', 'proprio', 'chef', 'dgrh'].includes(ROLE);
-const canInstruct = p => { if (ROLE === 'owner' || ROLE === 'proprio') return true; const id = refId(p.Structure_porteuse); if (ROLE === 'chef') return !id || IDS_CHEF.has(id); if (ROLE === 'dgrh') return !!id && IDS_DGRH.has(id); return false; };
-// Consolider (onglet Dépôt/Consolidation) : même périmètre que l'instruction ; les Responsables de suivi consolident dans le périmètre de la Chefferie.
-const canConsolidate = p => { if (ROLE !== 'rs') return canInstruct(p); const id = refId(p.Structure_porteuse); return !id || IDS_CHEF.has(id); };
-const horsPerimetre = (p, verbe = 'instruire et verser') => `<div class="warn">Cette proposition est portée par « ${esc(sCode(refId(p.Structure_porteuse)) || 'structure inconnue')} », hors de votre périmètre : vous ne pouvez ${verbe} que ${SCOPE_TXT[ROLE] || 'aucune proposition'}.</div>`;
+// Matrices des droits d'arbitrage, lues dans Grist (garde-fous d'affichage du widget ; la vraie barrière reste l'ACL) :
+//  - « Droits_arbitrage » (profil × procédure : Visualiser, Consolider, Instruire, Verser) ;
+//  - colonnes « Perimetre_<profil> » de la table Structures (structure × profil) : affichage par défaut, et lieu où le profil peut consolider, instruire, verser.
+// L'Owner a tous les droits ; un non-Owner sans ligne dans la matrice n'a aucun droit (refus par défaut).
+const droit = op => IS_OWNER || !!(DROITS[PROFIL] && DROITS[PROFIL][op]);
+const perim = p => { if (IS_OWNER) return true; const id = refId(p.Structure_porteuse); return !!id && !!STRUCT[id] && STRUCT[id]['Perimetre_' + PROFIL] === true; };
+const permis = (op, p) => droit(op) && perim(p);
+const isDefStruct = p => IS_OWNER || !refId(p.Structure_porteuse) || perim(p);   // sans structure : visible par défaut, pour ne pas être perdue
+const canTabs = () => droit('Instruire');                                       // onglet Instruction
+const canVerse = () => droit('Verser');                                         // onglet Versement
+const canInstruct = p => permis('Instruire', p);
+const canConsolidate = p => permis('Consolider', p);
+// Consultation seule : aucune procédure (consolider, instruire, verser) n'est permise sur cette proposition → la fiche n'affiche que la version déposée par le porteur.
+const consultation = p => !IS_OWNER && !permis('Consolider', p) && !permis('Instruire', p) && !permis('Verser', p);
+const horsPerimetre = (p, verbe) => perim(p) ? `<div class="warn">Votre profil n'est pas autorisé à ${verbe} (table « Droits_arbitrage »).</div>` : refId(p.Structure_porteuse)
+  ? `<div class="warn">Cette proposition est portée par « ${esc(sCode(refId(p.Structure_porteuse)))} », hors du périmètre de votre profil (colonne « Périmètre — ${esc(PROFIL)} » de la table Structures) : vous ne pouvez ${verbe} que les propositions des structures de votre périmètre.</div>`
+  : `<div class="warn">Cette proposition n'a pas de structure porteuse : elle ne relève d'aucun périmètre (seul l'Owner peut agir dessus).</div>`;
 const visible = p => !RESTRICT || isDefStruct(p) || (!!FL.structure && String(refId(p.Structure_porteuse)) === FL.structure);
 async function checkAccess(){
   try {
     const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
     if (rows.length > 1) return true;           // Owner ou Chefferie (seuls à lire toute la table) : CLS reste vide, l'Owner est reconnu ensuite par detectOwner
-    if (rows.length === 1) { CLS = rows[0].ClasseNom || ''; IS_DGRH = CLS === 'DGRH'; return ['Chefferie', 'Responsable_suivi', 'Proprietaire', 'DGRH'].includes(CLS); }
+    if (rows.length === 1) { CLS = rows[0].ClasseNom || ''; return !!CLS; }          // l'accès à la page est ensuite décidé par la matrice (Visualiser)
     return false;
   } catch (e) { console.warn('[arbitrage] vérification des droits impossible :', e); return false; }
 }
@@ -328,7 +336,7 @@ const nbSimul = () => P.filter(p => num(p.Versement_simule) > 0).length;
 function renderModeBar(){
   const el = document.getElementById('mode-banner'); if (!el) return;
   const sim = modeSimulation();
-  if ((!IS_OWNER && !sim) || (IS_DGRH && !MODE_ROW)) { el.className = 'mode-test hidden'; el.innerHTML = ''; return; }   // si la DGRH ne lit pas Parametres_recueil (règle non posée) : mode inconnu, bandeau masqué
+  if (!IS_OWNER && (!sim || !MODE_ROW)) { el.className = 'mode-test hidden'; el.innerHTML = ''; return; }   // sans lecture de Parametres_recueil (règle non posée) : mode inconnu, bandeau masqué
   el.className = 'mode-test' + (sim ? '' : ' reel');
   let h = `<span>${sim ? 'MODE TEST — le versement dans le catalogue des actions est simulé : rien n\'est écrit dans Actions_formation ni dans Contacts.' : 'Versement réel — les actions retenues sont créées dans le catalogue des actions.'}</span>`;
   if (IS_OWNER) {
@@ -424,7 +432,7 @@ function filterPanel(){
     <div class="fld"><label>Recherche</label><input type="text" value="${esc(f.q)}" placeholder="Titre, structure, email…" oninput="setFQ(this.value)"></div>
     <div class="fld"><label>Axe</label><select onchange="setF('axe',this.value)"><option value="">Tous</option>${Object.values(AXE).map(a => opt(a.id, clean(a.libelle), f.axe)).join('')}</select></div>
     <div class="fld"><label>Action</label><select onchange="setF('action',this.value)"><option value="">Toutes</option>${acts.map(a => opt(a.id, 'Action ' + a.num_action, f.action)).join('')}</select></div>
-    <div class="fld"><label>Structure porteuse</label><select onchange="setF('structure',this.value)"><option value="">${RESTRICT ? (ROLE === 'dgrh' ? 'DGRH, IH2EF, DAF, DAJ, SG et rattachées' : 'DGESCO, IGESR, DNE') : 'Toutes'}</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
+    <div class="fld"><label>Structure porteuse</label><select onchange="setF('structure',this.value)"><option value="">${RESTRICT ? 'Mon périmètre (par défaut)' : 'Toutes'}</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
     <div class="fld"><label>Modalité</label><select onchange="setF('modalite',this.value)"><option value="">Toutes</option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), f.modalite)).join('')}</select></div>
     <div class="fld"><label>Modalité pédagogique</label><select onchange="setF('format',this.value)"><option value="">Tous</option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), f.format)).join('')}</select></div>
     <div class="fld"><label>Période</label><select onchange="setF('periode',this.value)"><option value="">Toutes</option>${PERIODES.map(x => opt(x, x, f.periode)).join('')}</select></div>
@@ -482,22 +490,24 @@ function renderListBody(){
 /* ============================== fiche (modale) ============================== */
 function overlayDown(e){ if (e.target.id === 'overlay') closeModal(); }
 function closeModal(){ MODAL = null; document.getElementById('overlay').classList.add('hidden'); }
-function openModal(id, tab){ MODAL = { id, tab: (['instr', 'verse'].includes(tab) && !canTabs()) ? 'dep' : (tab || 'dep') }; renderModal(); document.getElementById('overlay').classList.remove('hidden'); }
+function openModal(id, tab){ MODAL = { id, tab: ((tab === 'instr' && !canTabs()) || (tab === 'verse' && !canVerse())) ? 'dep' : (tab || 'dep') }; renderModal(); document.getElementById('overlay').classList.remove('hidden'); }
 function setMTab(t){ MODAL.tab = t; document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.dataset.t === t)); document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.dataset.t === t)); }
 const cur = () => P.find(x => x.id === MODAL.id);
 function renderModal(){
   const p = cur(); if (!p) { closeModal(); return; }
-  const st = statutOf(p), e = ev(p);
+  const st = statutOf(p), e = ev(p), lect = consultation(p);
+  const tabs = lect ? [['dep', 'Dépôt (consultation)']] : [['dep', 'Dépôt/Consolidation'], ['eval', 'Analyse'], ...(canTabs() ? [['instr', 'Instruction']] : []), ...(canVerse() ? [['verse', 'Versement']] : [])];
+  if (!tabs.some(t => t[0] === MODAL.tab)) MODAL.tab = 'dep';
   document.getElementById('modal').innerHTML = `
     <div class="modal-head"><div><h2>${esc(p.Titre || 'Sans titre')}</h2>
       <div class="modal-meta">N° ${p.id} · déposée le ${esc(fmtDate(p.Date_depot) || '–')} · ${esc(p.Email_contact || '')} · <span class="chip ${stClass(st)}">${esc(st)}</span>${isVersee(p) ? ' · versée dans le catalogue des actions' : ''}${isSimulee(p) ? ' · versement simulé (test)' : ''}</div></div>
       <button class="btn-close" onclick="closeModal()">×</button></div>
-    <div class="modal-tabs">${[['dep', 'Dépôt/Consolidation'], ['eval', 'Analyse'], ...(canTabs() ? [['instr', 'Instruction'], ['verse', 'Versement']] : [])].map(([t, l]) => `<button class="mtab${MODAL.tab === t ? ' active' : ''}" data-t="${t}" onclick="setMTab('${t}')">${l}</button>`).join('')}</div>
+    <div class="modal-tabs">${tabs.map(([t, l]) => `<button class="mtab${MODAL.tab === t ? ' active' : ''}" data-t="${t}" onclick="setMTab('${t}')">${l}</button>`).join('')}</div>
     <div class="modal-body">
       <div class="pane${MODAL.tab === 'dep' ? ' active' : ''}" data-t="dep">${paneDep(p)}</div>
-      <div class="pane${MODAL.tab === 'eval' ? ' active' : ''}" data-t="eval">${paneEval(p, e)}</div>
-      ${canTabs() ? `<div class="pane${MODAL.tab === 'instr' ? ' active' : ''}" data-t="instr">${paneInstr(p)}</div>
-      <div class="pane${MODAL.tab === 'verse' ? ' active' : ''}" data-t="verse">${paneVerse(p)}</div>` : ''}
+      ${lect ? '' : `<div class="pane${MODAL.tab === 'eval' ? ' active' : ''}" data-t="eval">${paneEval(p, e)}</div>`}
+      ${(!lect && canTabs()) ? `<div class="pane${MODAL.tab === 'instr' ? ' active' : ''}" data-t="instr">${paneInstr(p)}</div>` : ''}
+      ${(!lect && canVerse()) ? `<div class="pane${MODAL.tab === 'verse' ? ' active' : ''}" data-t="verse">${paneVerse(p)}</div>` : ''}
     </div>`;
   lockModal(p);
 }
@@ -557,24 +567,34 @@ function axeDeduit(id){
   const el = document.getElementById(id + '-axe'); if (el) el.textContent = 'Axe : ' + (axeLib(Number(document.getElementById(id).value) || 0) || '–') + ' (déduit de l\'action)';
 }
 const voletLib = id => VOLETS[id] ? clean(VOLETS[id].libelle) + (clean(VOLETS[id].description) ? ' — ' + clean(VOLETS[id].description) : '') : '';
+const autresDeposes = p => {
+  const arr = ARR.map(([k, l]) => `${esc(l)} : <b>${esc(p[k] || '–')}</b>`).join('<br>'), ori = oriOf(p);
+  return `<div class="section-title">Autres éléments déposés (lecture seule)</div>
+    <div class="box"><b>Contexte de la demande</b><br>${esc(p.Contexte || '–')}</div>
+    <div class="box">Pluriannuelle : <b>${esc(p.Action_pluriannuelle || '–')}</b> · Report d'une action prévue au PNF précédent : <b>${esc(p[REPCOL] || '–')}</b> · Indicateur du schéma directeur : <b>${esc(p.Indicateur_SD || '–')}</b></div>
+    <div class="box"><b>Conformité à l'arrêté du 1er août 2023 (déclaré)</b><br>${arr}</div>
+    <div class="box"><b>Principes et orientations du schéma directeur</b> : ${ori.length ? esc(ori.join(' · ')) : '–'}</div>
+    ${p.Commentaire_porteur ? `<div class="box"><b>Commentaire du porteur</b><br>${esc(p.Commentaire_porteur)}</div>` : ''}`;
+};
+function paneConsultation(p){
+  const motif = perim(p) ? 'votre profil peut seulement visualiser' : (refId(p.Structure_porteuse) ? 'cette proposition est hors du périmètre de votre profil' : 'cette proposition n\'a pas de structure porteuse');
+  const rows = EDITS.map(f => `<div class="lab">${esc(f.l)}</div><div class="dep">${esc(depText(p, f))}</div>`).join('');
+  return `<div class="note" style="background:var(--navy-l);color:var(--navy)">Consultation seule : ${motif}. Seule la version déposée par le porteur est affichée.</div>
+    <div class="cmp" style="grid-template-columns:150px 1fr"><div class="h"></div><div class="h">Version déposée</div>${rows}</div>
+    ${autresDeposes(p)}`;
+}
 function paneDep(p){
+  if (consultation(p)) return paneConsultation(p);
   const can = canConsolidate(p), vId = refId(p.Volet);
   const voletRow = `<div class="lab">Volet de rattachement *</div><div class="dep">–\n(non demandé au porteur)</div>${can ? `<div><select id="ed-volet"><option value="0">— choisir (obligatoire) —</option>${Object.values(VOLETS).map(v => opt(v.id, voletLib(v.id), vId)).join('')}</select></div><div></div>` : `<div class="dep">${esc(voletLib(vId) || '–')}</div><div></div>`}`;
   const rows = voletRow + EDITS.map(f => {
     const modif = !sameVal(f, p[f.k], p[f.c]);
     return `<div class="lab">${esc(f.l)}${f.t === 'action' ? ' *' : ''}${modif ? '<span class="mod-flag" title="Valeur corrigée par la chefferie"></span>' : ''}</div><div class="dep">${esc(depText(p, f))}</div>${can ? `<div>${inputFor(p, f)}</div><div><button class="btn small" title="Remettre la valeur déposée dans le champ (à enregistrer)" onclick="resetField('${f.c}')">Rétablir</button></div>` : `<div class="dep">${esc(depText(p, f, true))}</div><div></div>`}`;
   }).join('');
-  const arr = ARR.map(([k, l]) => `${esc(l)} : <b>${esc(p[k] || '–')}</b>`).join('<br>');
-  const ori = oriOf(p);
   const am = autreMsg(p);
   return `${can ? '' : horsPerimetre(p, 'consolider')}${am ? `<div class="warn" style="margin-bottom:8px">${esc(am)}</div>` : ''}<div class="cmp"><div class="h"></div><div class="h">Version déposée</div><div class="h">Version consolidée</div><div class="h"></div>${rows}</div>
     ${can ? `<div class="row"><button class="btn primary" onclick="saveEdits()">Enregistrer les corrections</button><span class="t-sub">Seules les valeurs modifiées sont écrites. Les valeurs déposées ne sont jamais modifiées. L'action du schéma directeur et le volet de rattachement (*) sont obligatoires pour enregistrer.</span></div>` : ''}
-    <div class="section-title">Autres éléments déposés (lecture seule)</div>
-    <div class="box"><b>Contexte de la demande</b><br>${esc(p.Contexte || '–')}</div>
-    <div class="box">Pluriannuelle : <b>${esc(p.Action_pluriannuelle || '–')}</b> · Report d'une action prévue au PNF précédent : <b>${esc(p[REPCOL] || '–')}</b> · Indicateur du schéma directeur : <b>${esc(p.Indicateur_SD || '–')}</b></div>
-    <div class="box"><b>Conformité à l'arrêté du 1er août 2023 (déclaré)</b><br>${arr}</div>
-    <div class="box"><b>Principes et orientations du schéma directeur</b> : ${ori.length ? esc(ori.join(' · ')) : '–'}</div>
-    ${p.Commentaire_porteur ? `<div class="box"><b>Commentaire du porteur</b><br>${esc(p.Commentaire_porteur)}</div>` : ''}`;
+    ${autresDeposes(p)}`;
 }
 function resetField(c){
   const p = cur(), f = EDITS.find(x => x.c === c), v = p[f.k], el = document.getElementById('ed-' + c); if (!el) return;
@@ -639,9 +659,10 @@ function treeRows(id, depth, versee){
   return fusionnees(id).map(k => `<div class="row" style="margin:4px 0;padding-left:${depth * 18}px"><span class="chip st-Fusionnée">n° ${k.id}</span><span>${esc(k.Titre)} <span class="t-sub">(${esc(sCode(refId(k.Structure_porteuse)))})</span></span><button class="btn small" onclick="openModal(${k.id}, 'instr')">Ouvrir</button>${(versee || !canInstruct(k)) ? '' : `<button class="btn small danger" onclick="doDefusion(${k.id})">Défusionner</button>`}</div>` + treeRows(k.id, depth + 1, versee)).join('');
 }
 function paneInstr(p){
-  if (!canInstruct(p)) return horsPerimetre(p);
+  if (!canInstruct(p)) return horsPerimetre(p, 'instruire');
   const st = statutOf(p), fd = fusionDans(p), kids = fusionnees(p.id), desc = descendants(p.id), versee = isVersee(p), fused = st === 'Fusionnée', gv = groupeVerse(p);
-  const opts = (fused ? STATUTS : STATUTS.filter(s => s !== 'Fusionnée')).map(s => opt(s, s, st)).join('');
+  const stBase = fused ? STATUTS : STATUTS.filter(s => s !== 'Fusionnée');
+  const opts = stBase.map(s => opt(s, s, st)).join('');
   const warns = [];
   if (isRouge(p)) warns.push('Cette proposition présente une incompatibilité rédhibitoire.');
   if (autreMsg(p)) warns.push(autreMsg(p));
@@ -668,10 +689,12 @@ function paneInstr(p){
 async function saveInstr(){
   const p = cur(), sel = document.getElementById('in-statut'), fields = {};
   if (!canInstruct(p)) { toast('Proposition hors de votre périmètre d\'instruction.', true); return; }
-  if (!sel.disabled && sel.value !== statutOf(p)) fields.Statut_instruction = sel.value;
-  const com = document.getElementById('in-com').value, motif = document.getElementById('in-motif').value;
-  if (com !== (p.Commentaire_chefferie || '')) fields.Commentaire_chefferie = com;
-  if (motif !== (p.Motif_decision || '')) fields.Motif_decision = motif;
+  if (!sel.disabled && sel.value !== statutOf(p)) {
+    fields.Statut_instruction = sel.value;
+  }
+  const comEl = document.getElementById('in-com'), motifEl = document.getElementById('in-motif');
+  if (comEl && comEl.value !== (p.Commentaire_chefferie || '')) fields.Commentaire_chefferie = comEl.value;
+  if (motifEl && motifEl.value !== (p.Motif_decision || '')) fields.Motif_decision = motifEl.value;
   if (!Object.keys(fields).length) { toast('Aucune modification à enregistrer.'); return; }
   await writeFields(p.id, fields, 'Instruction enregistrée.');
 }
@@ -716,7 +739,7 @@ function versePlan(p){
     heures: duree, js: Math.round(duree * eff / jourHeures() * 100) / 100, volet: refId(p.Volet), annee: refId(p.Annee_scolaire), titre: clean(p.C_Titre ?? p.Titre), objectif: String(p.C_Objectifs ?? p.Objectifs ?? '').trim() };
 }
 function paneVerse(p){
-  if (!canInstruct(p)) return horsPerimetre(p);
+  if (!permis('Verser', p)) return horsPerimetre(p, 'verser');
   const st = statutOf(p), fd = fusionDans(p);
   if (isVersee(p)) { const a = AF.find(x => x.id === refId(p.Id_action_creee)); return `<div class="note">Cette proposition a été versée dans <b>le catalogue des actions</b> : action n° <b>${refId(p.Id_action_creee)}</b>${a ? ' « ' + esc(a.titre) + ' »' : ''}.</div><div class="t-sub">Les modifications se font désormais depuis le widget de pilotage des actions.</div>`; }
   if (fd) return `<div class="warn">Cette proposition est fusionnée dans la proposition n° ${fd}. Le versement se fait depuis la proposition principale de tête (n° ${racine(p).id}).</div>`;
@@ -767,7 +790,8 @@ function readVerse(p){
   return { pl, d1, d2, volet, contacts, deg, lieux };
 }
 function askVerse(){
-  const p = cur(); if (!canInstruct(p)) { toast('Versement impossible : proposition hors de votre périmètre.', true); return; }
+  const p = cur(); if (!canVerse()) { toast('Le versement n\'est pas ouvert à votre profil.', true); return; }
+  if (!permis('Verser', p)) { toast('Versement impossible : proposition hors de votre périmètre.', true); return; }
   const v = readVerse(p); if (v.err) { toast(v.err, true); return; }
   const neu = v.contacts.filter(c => !c.existing).length;
   if (modeSimulation()) { document.getElementById('vs-zone').innerHTML = `<div class="note" style="background:#FFF3CD;color:#7A5A00">Confirmer la simulation ? Aucune action ne sera créée dans le catalogue${neu ? ' et ' + neu + ' contact(s) NE seront PAS ajouté(s) à la table Contacts' : ''} ; la proposition sera seulement marquée « versement simulé ».</div>
@@ -776,12 +800,12 @@ function askVerse(){
     <div class="row" style="margin-top:8px"><button class="btn primary" id="vs-confirm" onclick="doVerse()">Oui, verser</button><button class="btn" onclick="renderModal()">Annuler</button></div>`;
 }
 async function clearSimul(){
-  const p = cur(); if (!p || !canInstruct(p)) return;
+  const p = cur(); if (!p || !permis('Verser', p)) return;
   try { await grist.docApi.applyUserActions([['UpdateRecord', PROP, p.id, { Versement_simule: null }]]); await loadAll(); renderAll(); toast('Simulation effacée.'); }
   catch (e) { toast('Échec : ' + (e.message || e), true); }
 }
 async function doVerse(){
-  if (VERSING || !canInstruct(cur())) return; VERSING = true;
+  if (VERSING || !permis('Verser', cur() || {})) return; VERSING = true;
   const btn = document.getElementById('vs-confirm'); if (btn) btn.disabled = true;
   const zone = document.getElementById('vs-zone'); if (zone) zone.insertAdjacentHTML('afterbegin', '<div class="note" id="vs-busy">Versement en cours (plusieurs étapes, quelques secondes)… ne ferme pas cette fiche.</div>');
   let createdId = 0;
@@ -844,7 +868,13 @@ async function start(){
       document.getElementById('toolbar').style.display = 'none';
       document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Responsables de suivi, aux Propriétaires et à la DGRH.</span></div>`; return;
     }
-    await loadAll(); IS_OWNER = await detectOwner(); ROLE = IS_OWNER ? 'owner' : CLS === 'Proprietaire' ? 'proprio' : CLS === 'DGRH' ? 'dgrh' : CLS === 'Responsable_suivi' ? 'rs' : 'chef'; RESTRICT = ['chef', 'rs', 'dgrh'].includes(ROLE); renderAll();
+    await loadAll(); IS_OWNER = await detectOwner();
+    PROFIL = IS_OWNER ? '' : (CLS || 'Chefferie'); RESTRICT = !IS_OWNER;           // CLS vide = non-Owner lisant toute la table Utilisateurs = Chefferie
+    if (!droit('Visualiser')) {
+      document.getElementById('toolbar').style.display = 'none';
+      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Votre profil n'est pas autorisé à visualiser l'arbitrage (table « Droits_arbitrage »).</span></div>`; return;
+    }
+    renderAll();
   } catch (e) { console.error(e); document.getElementById('page').innerHTML = `<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
   finally { showLoader(false); }
 }
