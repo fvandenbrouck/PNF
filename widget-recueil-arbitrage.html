@@ -26,6 +26,7 @@
 <!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
 <!-- Version v3.13 : la classe DGRH accède à l'Arbitrage (évaluation, corrections, instruction, fusions, export avec ou sans cotation) ; le versement dans le catalogue et l'enregistrement de modèles d'export partagés lui restent fermés -->
 <!-- Version v3.14 : gel du catalogue réservé à l'Owner — « Figer » marque toutes les propositions (colonnes Gele / Date_gel) qui passent en lecture seule (corrections, évaluation, instruction, fusions) ; le versement reste possible (seul le lien est écrit) ; « Dégeler » par l'Owner. La règle d'accès sur Gele, à poser dans Grist, rend le gel effectif hors du widget -->
+<!-- Version v3.27 : consolidation — champs obligatoires pour enregistrer : volet, titre, objectifs, action du schéma directeur, structure porteuse (marqués d'un *, liste des champs manquants dans le message de refus) -->
 <!-- Version v3.26 : consultation seule — sur une proposition où le profil n'a aucune procédure permise (hors périmètre, ou profil limité à Visualiser), la fiche n'affiche que la version déposée par le porteur (ni version consolidée, ni volet, ni analyse, ni instruction, ni versement) ; message de refus précisé quand le périmètre est bon mais que le droit manque -->
 <!-- Version v3.25 : droits d'arbitrage pilotés par deux matrices stockées dans Grist, sans plus aucun périmètre en dur dans le code : « Droits_arbitrage » (profil, référence à Classe × Visualiser / Consolider / Instruire / Verser) et colonnes « Perimetre_<profil> » de la table Structures (structure × profil : affichage par défaut et lieu d'exercice des droits). L'accès à la page est gouverné par Visualiser, l'Owner a tous les droits, refus par défaut si le profil n'a pas de ligne. La DGRH instruit (retenir ou non, fusionner) dans son périmètre mais ne verse pas (case Verser décochée) : la restriction « retenir seulement » de la v3.24 disparaît. Un nouveau profil s'ajoute sans toucher au code -->
 <!-- Version v3.24 : la DGRH se limite à consolider et à retenir, dans son périmètre : onglet Instruction réduit au statut (choix limité au statut courant et à « Retenue »), sans commentaire, motif, fusion ni défusion ; onglet Versement toujours masqué -->
@@ -180,7 +181,7 @@ table.t tbody tr.clickable:hover { background:var(--navy-l); }
 </div>
 <div id="toast"></div>
 <script>
-console.info('[widget-recueil-arbitrage] v3.26 consultation seule chargée');
+console.info('[widget-recueil-arbitrage] v3.27 champs obligatoires de la consolidation chargés');
 
 /* ============================== constantes ============================== */
 const PROP = 'Propositions_PNF';
@@ -514,8 +515,8 @@ function renderModal(){
 
 /* ----- onglet Dépôt/Consolidation ----- */
 const EDITS = [
-  { k:'Titre', c:'C_Titre', l:'Titre', t:'text' }, { k:'Objectifs', c:'C_Objectifs', l:'Objectifs', t:'area' },
-  { k:'Action_SD', c:'C_Action_SD', l:'Action du schéma directeur', t:'action' }, { k:'Structure_porteuse', c:'C_Structure_porteuse', l:'Structure porteuse', t:'struct' },
+  { k:'Titre', c:'C_Titre', l:'Titre', t:'text', req:true }, { k:'Objectifs', c:'C_Objectifs', l:'Objectifs', t:'area', req:true },
+  { k:'Action_SD', c:'C_Action_SD', l:'Action du schéma directeur', t:'action', req:true }, { k:'Structure_porteuse', c:'C_Structure_porteuse', l:'Structure porteuse', t:'struct', req:true },
   { k:'Modalite', c:'C_Modalite', l:'Modalité', t:'modalite' }, { k:'Format', c:'C_Format', l:'Modalité pédagogique', t:'format' }, { k:'Public_cible', c:'C_Publics', l:'Public cible', t:'publics' }, { k:'Public_autre', c:'C_Public_autre', l:'Précision sur le public « Autres »', t:'text' },
   { k:'Periode', c:'C_Periode', l:'Période', t:'periode' }, { k:'Duree_heures', c:'C_Duree_heures', l:'Durée (en heures)', t:'num' },
   { k:'Effectif_previsionnel', c:'C_Effectif_previsionnel', l:'Effectif prévisionnel', t:'int' }, { k:'Nb_sessions', c:'C_Nb_sessions', l:'Nombre prévisionnel de sessions', t:'int' }, { k:'Lieu', c:'C_Lieu', l:'Lieu', t:'text' },
@@ -549,7 +550,7 @@ function inputFor(p, f){
   if (f.t === 'oui') return `<select id="${id}"><option value=""></option>${['Oui', 'Non'].map(x => opt(x, x, v)).join('')}</select>`;
   if (f.t === 'format') return `<select id="${id}"><option value="0"></option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), refId(v))).join('')}</select>`;
   if (f.t === 'modalite') return `<select id="${id}"><option value="0"></option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), refId(v))).join('')}</select>`;
-  if (f.t === 'struct') return `<select id="${id}"><option value="0"></option>${Object.values(STRUCT).sort((a, b) => String(a.code).localeCompare(String(b.code), 'fr', { numeric:true })).map(s => opt(s.id, sFull(s.id), refId(v))).join('')}</select>`;
+  if (f.t === 'struct') return `<select id="${id}"><option value="0">${f.req ? '— choisir (obligatoire) —' : ''}</option>${Object.values(STRUCT).sort((a, b) => String(a.code).localeCompare(String(b.code), 'fr', { numeric:true })).map(s => opt(s.id, sFull(s.id), refId(v))).join('')}</select>`;
   if (f.t === 'action') {                       // seule l'action se choisit : l'axe s'en déduit (affiché, jamais saisi)
     const a = refId(v);
     const groups = Object.values(AXE).map(ax => { const acts = Object.values(ACTION).filter(x => x.id_axe === ax.id).sort((x, y) => x.num_action - y.num_action);
@@ -589,11 +590,11 @@ function paneDep(p){
   const voletRow = `<div class="lab">Volet de rattachement *</div><div class="dep">–\n(non demandé au porteur)</div>${can ? `<div><select id="ed-volet"><option value="0">— choisir (obligatoire) —</option>${Object.values(VOLETS).map(v => opt(v.id, voletLib(v.id), vId)).join('')}</select></div><div></div>` : `<div class="dep">${esc(voletLib(vId) || '–')}</div><div></div>`}`;
   const rows = voletRow + EDITS.map(f => {
     const modif = !sameVal(f, p[f.k], p[f.c]);
-    return `<div class="lab">${esc(f.l)}${f.t === 'action' ? ' *' : ''}${modif ? '<span class="mod-flag" title="Valeur corrigée par la chefferie"></span>' : ''}</div><div class="dep">${esc(depText(p, f))}</div>${can ? `<div>${inputFor(p, f)}</div><div><button class="btn small" title="Remettre la valeur déposée dans le champ (à enregistrer)" onclick="resetField('${f.c}')">Rétablir</button></div>` : `<div class="dep">${esc(depText(p, f, true))}</div><div></div>`}`;
+    return `<div class="lab">${esc(f.l)}${f.req ? ' *' : ''}${modif ? '<span class="mod-flag" title="Valeur corrigée par la chefferie"></span>' : ''}</div><div class="dep">${esc(depText(p, f))}</div>${can ? `<div>${inputFor(p, f)}</div><div><button class="btn small" title="Remettre la valeur déposée dans le champ (à enregistrer)" onclick="resetField('${f.c}')">Rétablir</button></div>` : `<div class="dep">${esc(depText(p, f, true))}</div><div></div>`}`;
   }).join('');
   const am = autreMsg(p);
   return `${can ? '' : horsPerimetre(p, 'consolider')}${am ? `<div class="warn" style="margin-bottom:8px">${esc(am)}</div>` : ''}<div class="cmp"><div class="h"></div><div class="h">Version déposée</div><div class="h">Version consolidée</div><div class="h"></div>${rows}</div>
-    ${can ? `<div class="row"><button class="btn primary" onclick="saveEdits()">Enregistrer les corrections</button><span class="t-sub">Seules les valeurs modifiées sont écrites. Les valeurs déposées ne sont jamais modifiées. L'action du schéma directeur et le volet de rattachement (*) sont obligatoires pour enregistrer.</span></div>` : ''}
+    ${can ? `<div class="row"><button class="btn primary" onclick="saveEdits()">Enregistrer les corrections</button><span class="t-sub">Seules les valeurs modifiées sont écrites. Les valeurs déposées ne sont jamais modifiées. Le volet de rattachement, le titre, les objectifs, l'action du schéma directeur et la structure porteuse (*) sont obligatoires pour enregistrer.</span></div>` : ''}
     ${autresDeposes(p)}`;
 }
 function resetField(c){
@@ -615,9 +616,11 @@ async function saveEdits(){
   const p = cur(), fields = {};
   if (!canConsolidate(p)) { toast('Proposition hors de votre périmètre de consolidation.', true); return; }
   const vSel = document.getElementById('ed-volet'), vol = vSel ? Number(vSel.value) || 0 : 0;
-  if (!vol) { toast('Indique le volet auquel se rattache l\'action : mention obligatoire pour enregistrer.', true); if (vSel) vSel.focus(); return; }
-  const aSel = document.getElementById('ed-C_Action_SD');
-  if (aSel && !(Number(aSel.value) > 0)) { toast('Indique l\'action du schéma directeur : mention obligatoire pour enregistrer.', true); aSel.focus(); return; }
+  // champs obligatoires de la version consolidée : volet, titre, objectifs, action du schéma directeur, structure porteuse
+  const manque = [];
+  if (!vol) manque.push({ l:'Volet de rattachement', el:vSel });
+  EDITS.filter(f => f.req).forEach(f => { const v = readEdit(f); if (!(f.t === 'action' || f.t === 'struct' ? v > 0 : String(v ?? '').trim())) manque.push({ l:f.l, el:document.getElementById('ed-' + f.c) }); });
+  if (manque.length) { toast('Enregistrement impossible, champ(s) obligatoire(s) à renseigner : ' + manque.map(m => m.l).join(', ') + '.', true); if (manque[0].el) manque[0].el.focus(); return; }
   EDITS.forEach(f => { const nv = readEdit(f); if (!sameVal(f, nv, p[f.c])) fields[f.c] = nv; });
   if (vol !== refId(p.Volet)) fields.Volet = vol;
   if (!Object.keys(fields).length) { toast('Aucune correction à enregistrer.'); return; }
