@@ -9,6 +9,8 @@
 <!-- Version v3 : filtre par Classe ajouté dans la barre d'outils, combinable avec le filtre Structure -->
 <!-- Version v4 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère -->
 <!-- Version v5 : rôles Grist suggérés pour les classes Doyen et DGRH (Viewer) -->
+<!-- Version v6 : cartes cliquables, ajout, modification et suppression réservés aux Owners (détection par une écriture sans effet sur la table Classe, que seuls les Owners peuvent écrire) ; les autres profils voient la liste en lecture seule -->
+<!-- Version v7 : le libellé de la structure s'affiche aussi pour les profils qui ne lisent pas la table Structures (Public : leur seule fiche affichait « sans structure ») ; il est repris de la colonne de référence telle que Grist la fournit avec les lignes du widget -->
 <!-- Accès réservé aux Propriétaires : protégé par une règle ACL sur les tables Utilisateurs et Classe,
      pas par ce script. Voir onglet Access Rules du document. -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
@@ -57,6 +59,8 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .list-pane { max-width:640px; margin:0 auto; background:var(--white); }
 .urow { display:flex; flex-direction:column; gap:3px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; }
 .urow:hover { background:var(--bg); }
+.urow.ro { cursor:default; }
+.urow.ro:hover { background:transparent; }
 .urow-name { font-size:13px; font-weight:600; color:var(--ink); }
 .urow-email { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); }
 .urow-tags { display:flex; gap:5px; margin-top:2px; flex-wrap:wrap; }
@@ -104,6 +108,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
     <div class="tb-filter"><select id="filter-structure" onchange="onStructureFilterChange()"><option value="">Structure</option></select></div>
     <div class="tb-filter"><select id="filter-classe" onchange="onClasseFilterChange()"><option value="">Classe</option></select></div>
     <span class="count" id="count">–</span>
+    <span class="count" id="ro-note" style="display:none">Lecture seule : modification réservée aux propriétaires</span>
     <button class="btn btn-primary" onclick="openNew()">+ Ajouter un utilisateur</button>
   </div>
 
@@ -152,6 +157,24 @@ let PENDING_DELETE_ID = null;
 let IS_NEW = false;
 let FILTER_STRUCTURE = '';
 let FILTER_CLASSE = '';
+let STRUCT_BY_USER = {};   // libellé de structure fourni avec la ligne (utile quand la table Structures n'est pas lisible)
+let IS_OWNER = false, OWNER_CHECKED = false;   // refus par défaut : sans preuve d'être Owner, la liste reste en lecture seule
+
+// Seuls les Owners peuvent écrire dans Classe (règles d'accès) : une écriture sans effet sert de test.
+async function detectOwner() {
+  if (OWNER_CHECKED) return;
+  const c = CLASSES[0];
+  if (!c) return;
+  try { await grist.docApi.applyUserActions([['UpdateRecord', CLASSE_TABLE, c.id, { Droits: c.Droits ?? '' }]]); IS_OWNER = true; }
+  catch (e) { IS_OWNER = false; }
+  OWNER_CHECKED = true;
+}
+
+function applyModeLecture() {
+  document.querySelector('.toolbar .btn-primary').style.display = IS_OWNER ? '' : 'none';
+  document.querySelector('.tb-search').style.display = IS_OWNER ? '' : 'none';
+  document.getElementById('ro-note').style.display = IS_OWNER ? 'none' : '';
+}
 
 grist.ready({ requiredAccess: 'full', columns: [] });
 
@@ -165,12 +188,14 @@ async function loadAll() {
     USERS = rowsFromTable(u);
     STRUCTURES = rowsFromTable(s);
     CLASSES = rowsFromTable(c);
+    await detectOwner();
   } catch (e) {
     console.error(e);
   } finally {
     document.getElementById('loader').classList.add('hidden');
     populateStructureFilter();
     populateClasseFilter();
+    applyModeLecture();
     renderList();
     if (SELECTED_ID) selectUser(SELECTED_ID);
   }
@@ -269,8 +294,8 @@ function renderList() {
   }
   pane.innerHTML = sorted.map(u => {
     const classe = classeLabel(u.Classe);
-    const struct = structLabel(u.Structure);
-    return `<div class="urow" onclick="selectUser(${u.id})">
+    const struct = structLabel(u.Structure) || STRUCT_BY_USER[u.id] || '';
+    return `<div class="urow${IS_OWNER ? '' : ' ro'}"${IS_OWNER ? ` onclick="selectUser(${u.id})"` : ''}>
       <div class="urow-name">${esc(u.NOM_Prenom) || '(sans nom)'}</div>
       <div class="urow-email">${esc(u.Email)}</div>
       <div class="urow-tags">
@@ -282,6 +307,7 @@ function renderList() {
 }
 
 function selectUser(id) {
+  if (!IS_OWNER) return;
   SELECTED_ID = id;
   IS_NEW = false;
   const u = USERS.find(x => x.id === id);
@@ -291,6 +317,7 @@ function selectUser(id) {
 }
 
 function openNew() {
+  if (!IS_OWNER) return;
   SELECTED_ID = null;
   IS_NEW = true;
   renderForm({ id: null, NOM: '', Prenom: '', Email: '', Structure: null, Classe: null });
@@ -357,6 +384,7 @@ function updateDroitsBox() {
 }
 
 async function saveUser(id) {
+  if (!IS_OWNER) return;
   const msg = document.getElementById('form-msg');
   msg.textContent = 'Enregistrement…'; msg.className = 'msg';
 
@@ -408,6 +436,7 @@ async function saveUser(id) {
 }
 
 function askDelete(id, label) {
+  if (!IS_OWNER) return;
   PENDING_DELETE_ID = id;
   document.getElementById('confirm-text').textContent =
     `« ${label} » sera définitivement retiré de la table Utilisateurs. Cela ne supprime pas son éventuel accès de partage Grist (à retirer séparément si besoin). Cette action est irréversible.`;
@@ -418,6 +447,7 @@ function closeConfirm() {
   document.getElementById('confirm-overlay').classList.add('hidden');
 }
 async function confirmDelete() {
+  if (!IS_OWNER) return;
   if (!PENDING_DELETE_ID) return;
   const id = PENDING_DELETE_ID;
   closeConfirm();
@@ -431,7 +461,11 @@ async function confirmDelete() {
   }
 }
 
-grist.onRecords(() => loadAll());
+grist.onRecords(recs => {
+  STRUCT_BY_USER = {};
+  (recs || []).forEach(r => { const v = r.Structure; if (typeof v === 'string' && v.trim() && isNaN(Number(v))) STRUCT_BY_USER[r.id] = v.trim(); });
+  loadAll();
+}, { includeColumns: 'normal' });
 loadAll();
 </script>
 </body>
