@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Calendrier des sessions — PNF</title>
 <!-- Version v1 : calendrier semaine par semaine des dates de session (table Dates_sessions, onglet « Date des sessions » du Journal de bord) ; sessions multi-jours étalées, dates validées / prévisionnelles, présentiel / distanciel ; modale de détail en lecture seule -->
+<!-- Version v2 : bascule Semaine / Mois (vue mensuelle : sessions étalées sur leurs jours, 3 lignes par semaine puis « +N », clic sur un jour ou « +N » pour ouvrir la semaine ; liste chronologique sur téléphone) ; la vue choisie est mémorisée -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -52,6 +53,11 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .week-label { font-family:'Fraunces',serif; font-size:17px; font-weight:500; margin:0 6px; }
 .week-label small { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-left:6px; letter-spacing:.04em; }
 .weekbar input[type=date] { font-family:'DM Sans',sans-serif; font-size:11px; padding:6px 8px; border:1px solid var(--border); border-radius:7px; background:var(--white); color:var(--ink) !important; -webkit-text-fill-color:var(--ink) !important; }
+.seg { display:inline-flex; border:1px solid var(--border); border-radius:7px; overflow:hidden; background:var(--white); }
+.seg-btn { font-family:'DM Sans',sans-serif; font-size:11px; padding:7px 12px; border:none; background:transparent; color:var(--ink2); cursor:pointer; }
+.seg-btn + .seg-btn { border-left:1px solid var(--border); }
+.seg-btn:hover { color:var(--navy); }
+.seg-btn.active { background:var(--navy); color:#fff; }
 .legend { display:flex; flex-wrap:wrap; gap:12px; padding:8px 16px 0; font-size:10.5px; color:var(--ink2); }
 .legend span { display:inline-flex; align-items:center; gap:5px; }
 .lg { width:14px; height:10px; border-radius:3px; display:inline-block; }
@@ -126,6 +132,30 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
+/* Vue mensuelle */
+.month { background:var(--white); border:1.5px solid var(--border); border-radius:12px; overflow:hidden; }
+.mhead, .mrow, .mbg { display:grid; grid-template-columns:repeat(var(--cols),minmax(0,1fr)); }
+.mrow { position:relative; min-height:104px; border-top:1px solid var(--border); align-content:start; }
+.mhead .mh { padding:8px 10px; text-align:center; background:var(--bg); border-right:1px solid var(--border); font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink3); }
+.mhead .mh:last-child { border-right:none; }
+.mhead .mh.weekend { background:var(--lilas); }
+.mbg { position:absolute; inset:0; }
+.mbg .bg-cell.out { background:rgba(224,216,204,.28); }
+.mday { position:relative; grid-row:1; padding:4px 7px 2px; font-family:'DM Mono',monospace; font-size:10px; color:var(--ink2); cursor:pointer; }
+.mday:hover { color:var(--navy); text-decoration:underline; }
+.mday.out { color:var(--ink3); opacity:.6; }
+.mday .tn { display:inline-block; min-width:20px; text-align:center; padding:1px 4px; border-radius:999px; }
+.mday.today .tn { background:var(--navy); color:#fff; }
+.mrow .ev { position:relative; padding:2px 6px; margin:1px 3px; flex-direction:row; align-items:center; gap:4px; border-radius:6px; }
+.mrow .ev .ev-title { font-size:11px; font-weight:500; display:block; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; -webkit-line-clamp:unset; }
+.mrow .ev .ev-top { flex:1; min-width:0; align-items:center; }
+.mrow .ev .ev-sub, .mrow .ev .ev-date { display:none; }
+.more { position:relative; margin:1px 3px; padding:2px 6px; border:none; background:transparent; font-family:'DM Mono',monospace; font-size:10px; color:var(--navy); text-align:left; cursor:pointer; border-radius:6px; }
+.more:hover { background:var(--navy-l); }
+.month-list { display:none; }
+.month-list .day-sep { font-family:'DM Mono',monospace; font-size:10px; font-weight:700; color:var(--navy); margin:10px 2px 4px; text-transform:uppercase; letter-spacing:.06em; }
+.month-list .ev { margin:0 0 6px; }
+
 /* Téléphone : la grille devient une liste chronologique de la semaine. */
 @media (max-width:820px) {
   .week-head, .week-bg { display:none; }
@@ -133,6 +163,9 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   .ev { grid-column:1 / -1 !important; margin:0; }
   .ev.cont-left, .ev.cont-right { border-radius:8px; }
   .ev-date { display:block; }
+  .month .mhead, .month .mrow { display:none; }
+  .month-list { display:block; padding:8px; }
+  .month-list .ev-date { display:none; }
   .modal { max-height:98vh; }
 }
 </style>
@@ -153,9 +186,13 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   <span class="count" id="count">–</span>
 </div>
 <div class="weekbar" id="weekbar">
-  <button class="btn" onclick="shiftWeek(-1)" title="Semaine précédente">◀</button>
+  <div class="seg" role="group" aria-label="Affichage">
+    <button class="seg-btn active" id="seg-week" onclick="setView('week')">Semaine</button>
+    <button class="seg-btn" id="seg-month" onclick="setView('month')">Mois</button>
+  </div>
+  <button class="btn" onclick="shift(-1)" id="btn-prev" title="Période précédente">◀</button>
   <button class="btn" onclick="goToday()">Aujourd’hui</button>
-  <button class="btn" onclick="shiftWeek(1)" title="Semaine suivante">▶</button>
+  <button class="btn" onclick="shift(1)" id="btn-next" title="Période suivante">▶</button>
   <span class="week-label" id="week-label"></span>
   <input type="date" id="go-date" onchange="goToDate(this.value)" title="Aller à une date">
 </div>
@@ -183,12 +220,13 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 </div>
 
 <script>
-console.info('[widget-calendrier-sessions] v1 chargé');
+console.info('[widget-calendrier-sessions] v2 vue semaine / mois chargé');
 // Lecture seule : ce widget ne modifie rien. Les dates se saisissent, se valident et se suppriment
 // dans l'onglet « Date des sessions » du Journal de bord (widget-journal_actions.html).
 let ALL_ACTIONS = [], DATES_ROWS = [], SESSIONS = [];
 let CONTACT_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STRUCT_MAP = {}, ANNEE_MAP = {};
-let CURRENT_CLASS = null, WEEK_START = null, LOADED = false;
+let CURRENT_CLASS = null, ANCHOR = null, VIEW = 'week', LOADED = false;
+const MAX_LANES = 3;
 const DAY_MS = 86400000;
 const DAY_NAMES = ['lun.','mar.','mer.','jeu.','ven.','sam.','dim.'];
 const MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -289,7 +327,7 @@ async function loadData(){
     STRUCT_MAP=Object.fromEntries(toRows(structs).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
     ANNEE_MAP=Object.fromEntries(toRows(annees).map(r=>[String(r.id), firstText(r,['Annee_scolaire','annee','Annee','Année','nom','Nom','libelle','Libelle'])]).filter(([,v])=>v));
     buildSessions();
-    if(WEEK_START===null) WEEK_START=mondayOf(todayNum());
+    if(ANCHOR===null){ ANCHOR=todayNum(); try{ const v=localStorage.getItem('pnf-calendrier-sessions-vue'); if(v==='month'||v==='week') VIEW=v; }catch(e){} }
     fillFilters(); LOADED=true; render();
   }catch(e){ console.error(e); document.getElementById('cal-wrap').innerHTML=`<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
   finally{ showLoader(false); }
@@ -331,16 +369,47 @@ function filteredSessions(){
 }
 
 // ---- Navigation ----
-function shiftWeek(n){ WEEK_START += 7*n; render(); }
-function goToday(){ WEEK_START=mondayOf(todayNum()); render(); }
-function goToDate(v){ const n=dayNumOfValue(v); if(n!==null){ WEEK_START=mondayOf(n); render(); } }
-function goToWeekOf(n){ WEEK_START=mondayOf(n); render(); }
+// ANCHOR : un jour quelconque de la période affichée (semaine : sa semaine ; mois : son mois).
+function monthStartOf(n){ const d=dateOf(n); return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)/DAY_MS); }
+function addMonths(n, k){ const d=dateOf(n); return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+k, 1)/DAY_MS); }
+function shift(k){ ANCHOR = VIEW==='month' ? addMonths(ANCHOR, k) : ANCHOR + 7*k; render(); }
+function goToday(){ ANCHOR=todayNum(); render(); }
+function goToDate(v){ const n=dayNumOfValue(v); if(n!==null){ ANCHOR=n; render(); } }
+function goToWeekOf(n){ VIEW='week'; ANCHOR=n; render(); }
+function setView(v){
+  if(v===VIEW) return;
+  // En passant de la semaine au mois, on prend le jeudi de la semaine : le mois qui contient la majorité de ses jours.
+  if(v==='month') ANCHOR = mondayOf(ANCHOR)+3;
+  VIEW=v; try{ localStorage.setItem('pnf-calendrier-sessions-vue', v); }catch(e){}
+  render();
+}
 
-// ---- Rendu d'une semaine ----
+// ---- Rendu ----
+function evHtml(s, o){
+  const cs=o.cs, ce=o.ce, left=o.left, right=o.right;
+  const ico=s.mode==='Présentiel'?'🏫':s.mode==='Distanciel'?'💻':'📅';
+  const sub=[getCodeGaia(s.action), s.modalite, s.nb>1?`${s.nb} j.`:'', s.valid?'':'prévisionnelle'].filter(Boolean).join(' · ');
+  const dateTxt = s.nb>1 ? `${fmtFull(s.start)} → ${fmtFull(s.end)}` : fmtFull(s.start);
+  const place = o.style ? ` style="${o.style}"` : '';
+  const tip = `${getTitre(s.action)} — ${dateTxt}${s.valid?'':' (prévisionnelle)'}`;
+  return `<div class="ev ${s.valid?'valid':'prov'} mode-${s.mode==='Présentiel'?'presentiel':s.mode==='Distanciel'?'distanciel':'inconnu'}${left?' cont-left':''}${right?' cont-right':''}${isReadOnlyViewer()?' locked':''}"${place} ${isReadOnlyViewer()?'':`onclick="openSession(${s.row.id})"`} title="${esc(tip)}">
+      <span class="ev-date">${esc(dateTxt)}</span>
+      <span class="ev-top"><span class="ev-ico">${left?'◀ ':''}${ico}</span><span class="ev-title">${esc(getTitre(s.action))}</span>${right?'<span class="ev-ico">▶</span>':''}</span>
+      <span class="ev-sub">${esc(sub)}</span>
+    </div>`;
+}
+function sortSessions(a,b){ return a.start-b.start || b.nb-a.nb || a.row.id-b.row.id; }
 function render(){
   if(!LOADED) return;
-  const ws=WEEK_START, list=filteredSessions();
-  const inWeek=list.filter(s=>s.start<=ws+6 && s.end>=ws).sort((a,b)=>a.start-b.start || b.nb-a.nb || a.row.id-b.row.id);
+  document.getElementById('seg-week').classList.toggle('active', VIEW==='week');
+  document.getElementById('seg-month').classList.toggle('active', VIEW==='month');
+  document.getElementById('btn-prev').title = VIEW==='month' ? 'Mois précédent' : 'Semaine précédente';
+  document.getElementById('btn-next').title = VIEW==='month' ? 'Mois suivant' : 'Semaine suivante';
+  if(VIEW==='month') renderMonth(); else renderWeek();
+}
+function renderWeek(){
+  const ws=mondayOf(ANCHOR), list=filteredSessions();
+  const inWeek=list.filter(s=>s.start<=ws+6 && s.end>=ws).sort(sortSessions);
   // Samedi et dimanche n'apparaissent que si une session de la semaine s'y étend.
   const cols = inWeek.some(s=>s.end>=ws+5) ? 7 : 5;
   const today=todayNum();
@@ -351,15 +420,7 @@ function render(){
   const bg=Array.from({length:cols},(_,i)=>`<div class="bg-cell${ws+i===today?' today':''}${i>=5?' weekend':''}"></div>`).join('');
   const events=inWeek.map(s=>{
     const cs=Math.max(s.start,ws)-ws, ce=Math.min(s.end,ws+cols-1)-ws;
-    const left=s.start<ws, right=s.end>ws+cols-1;
-    const ico=s.mode==='Présentiel'?'🏫':s.mode==='Distanciel'?'💻':'📅';
-    const sub=[getCodeGaia(s.action), s.modalite, s.nb>1?`${s.nb} j.`:'', s.valid?'':'prévisionnelle'].filter(Boolean).join(' · ');
-    const dateTxt = s.nb>1 ? `${fmtFull(s.start)} → ${fmtFull(s.end)}` : fmtFull(s.start);
-    return `<div class="ev ${s.valid?'valid':'prov'} mode-${s.mode==='Présentiel'?'presentiel':s.mode==='Distanciel'?'distanciel':'inconnu'}${left?' cont-left':''}${right?' cont-right':''}${isReadOnlyViewer()?' locked':''}" style="grid-column:${cs+1} / ${ce+2}" ${isReadOnlyViewer()?'':`onclick="openSession(${s.row.id})"`} title="${esc(getTitre(s.action))}">
-      <span class="ev-date">${esc(dateTxt)}</span>
-      <span class="ev-top"><span class="ev-ico">${left?'◀ ':''}${ico}</span><span class="ev-title">${esc(getTitre(s.action))}</span>${right?'<span class="ev-ico">▶</span>':''}</span>
-      <span class="ev-sub">${esc(sub)}</span>
-    </div>`;
+    return evHtml(s,{cs,ce,left:s.start<ws,right:s.end>ws+cols-1,style:`grid-column:${cs+1} / ${ce+2}`});
   }).join('');
   let empty='';
   if(!inWeek.length){
@@ -368,6 +429,41 @@ function render(){
     empty=`<div class="empty-week"><div>Aucune session cette semaine${list.length?'':' (aucune date de session enregistrée avec ces filtres)'}.</div>${next?`<button class="btn" onclick="goToWeekOf(${next.start})">Prochaine session : ${esc(fmtShort(next.start))} →</button>`:''}${prev?`<button class="btn" onclick="goToWeekOf(${prev.start})">← Session précédente : ${esc(fmtShort(prev.start))}</button>`:''}</div>`;
   }
   document.getElementById('cal-wrap').innerHTML=`<div class="week" style="--cols:${cols}"><div class="week-head">${heads}</div><div class="week-body"><div class="week-bg">${bg}</div><div class="week-events">${events}</div>${empty}</div></div>`;
+}
+function renderMonth(){
+  const list=filteredSessions();
+  const m0=monthStartOf(ANCHOR), m1=addMonths(m0,1)-1;            // premier et dernier jour du mois
+  const gridStart=mondayOf(m0), gridEnd=mondayOf(m1)+6;           // semaines complètes qui couvrent le mois
+  const inMonth=list.filter(s=>s.start<=m1 && s.end>=m0).sort(sortSessions);
+  const inGrid=list.filter(s=>s.start<=gridEnd && s.end>=gridStart);
+  // Samedi et dimanche n'apparaissent que si une session du mois s'y étend.
+  const weekendNeeded=inGrid.some(s=>{ for(let n=Math.max(s.start,gridStart); n<=Math.min(s.end,gridEnd); n++){ const dow=(dateOf(n).getUTCDay()+6)%7; if(dow>=5) return true; } return false; });
+  const cols=weekendNeeded?7:5, today=todayNum(), d0=dateOf(m0);
+  document.getElementById('week-label').innerHTML = `${MONTHS[d0.getUTCMonth()].charAt(0).toUpperCase()+MONTHS[d0.getUTCMonth()].slice(1)} ${d0.getUTCFullYear()}`;
+  document.getElementById('go-date').value = isoOf(m0);
+  document.getElementById('count').textContent = `${inMonth.length} session${inMonth.length>1?'s':''} ce mois · ${list.length} au total`;
+  const heads=Array.from({length:cols},(_,i)=>`<div class="mh${i>=5?' weekend':''}">${DAY_NAMES[i]}</div>`).join('');
+  let rows='';
+  for(let ws=gridStart; ws<=gridEnd; ws+=7){
+    const evs=list.filter(s=>s.start<=ws+cols-1 && s.end>=ws).sort(sortSessions);
+    const laneEnd=[]; const placed=[]; const hidden=Array(cols).fill(0);
+    evs.forEach(s=>{
+      const cs=Math.max(s.start,ws)-ws, ce=Math.min(s.end,ws+cols-1)-ws;
+      let lane=laneEnd.findIndex(e=>e<cs); if(lane<0){ lane=laneEnd.length; laneEnd.push(-1); }
+      laneEnd[lane]=ce;
+      if(lane<MAX_LANES) placed.push({s,cs,ce,lane}); else for(let c=cs;c<=ce;c++) hidden[c]++;
+    });
+    const bg=Array.from({length:cols},(_,i)=>`<div class="bg-cell${ws+i<m0||ws+i>m1?' out':''}${ws+i===today?' today':''}${i>=5?' weekend':''}"></div>`).join('');
+    const days=Array.from({length:cols},(_,i)=>{ const n=ws+i, d=dateOf(n); const out=n<m0||n>m1; return `<div class="mday${out?' out':''}${n===today?' today':''}" style="grid-column:${i+1}" onclick="goToWeekOf(${n})" title="Voir la semaine"><span class="tn">${d.getUTCDate()}</span></div>`; }).join('');
+    const evHtmlRow=placed.map(p=>evHtml(p.s,{cs:p.cs,ce:p.ce,left:p.s.start<ws,right:p.s.end>ws+cols-1,style:`grid-column:${p.cs+1} / ${p.ce+2};grid-row:${p.lane+2}`})).join('');
+    const more=hidden.map((c,i)=>c?`<button class="more" style="grid-column:${i+1};grid-row:${MAX_LANES+2}" onclick="goToWeekOf(${ws+i})">+${c} autre${c>1?'s':''}</button>`:'').join('');
+    rows+=`<div class="mrow"><div class="mbg">${bg}</div>${days}${evHtmlRow}${more}</div>`;
+  }
+  // Téléphone : liste chronologique des sessions du mois.
+  let listHtml='', last=null;
+  inMonth.forEach(s=>{ const dayKey=Math.max(s.start,m0); if(dayKey!==last){ listHtml+=`<div class="day-sep">${esc(fmtFull(dayKey))}</div>`; last=dayKey; } listHtml+=evHtml(s,{cs:0,ce:0,left:false,right:false,style:''}); });
+  if(!inMonth.length) listHtml=`<div class="empty-week" style="position:static;padding:30px 10px">Aucune session ce mois-ci${list.length?'':' (aucune date de session enregistrée avec ces filtres)'}.</div>`;
+  document.getElementById('cal-wrap').innerHTML=`<div class="month" style="--cols:${cols}"><div class="mhead">${heads}</div>${rows}<div class="month-list">${listHtml}</div></div>`;
 }
 
 // ---- Modale de détail (lecture seule) ----
