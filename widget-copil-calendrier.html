@@ -17,6 +17,7 @@
 <!-- Version v11 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
 <!-- Version v12 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v13 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) -->
+<!-- Version v14 : le bilan de la fiche récapitulative lit les dates de session dans la table Dates_sessions (onglet « Date des sessions » du Journal de bord) ; seules les dates validées comptent dans les indicateurs -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -204,9 +205,9 @@ details.agenda-past .agenda-list { margin-top:12px; }
 </div>
 
 <script>
-console.info('[widget-copil-calendrier] v13 modalité pédagogique chargé');
+console.info('[widget-copil-calendrier] v14 dates de session (Dates_sessions) chargé');
 let ALL_ACTIONS = [], JOURNAL_ROWS = [], ENTRIES = [], FILTERED = [];
-let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [];
+let CONTACT_ROWS = [], CHEFFERIE_ROWS = [], LIEU_ROWS = [], MODALITEX_ROWS = [], STATUS_ROWS = [], SESSION_ROWS = [], DATES_ROWS = [];
 let CONTACT_MAP = {}, CHEFFERIE_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STATUS_MAP = {};
 let AXE_MAP = {}, VOLET_MAP = {}, STRUCT_MAP = {}, MODAL_MAP = {}, FORMAT_MAP = {}, PUBLIC_MAP = {}, DEGRE_MAP = {}, ANNEE_MAP = {};
 const ACTION_TABLE = 'Actions_formation';
@@ -219,7 +220,6 @@ const AVANCEMENT_STEPS = [
   { key:'Emargement', label:'Émargement', naLabel:'Aucun émargement', done:'Avancement_Emargement', na:'NA_Emargement' },
   { key:'Evaluation', label:'Évaluation', naLabel:'Aucune évaluation', done:'Avancement_Evaluation', na:'NA_Evaluation' }
 ];
-const MAX_SESSIONS = 10;
 
 // ---- Fonctions utilitaires (reprises de widget-journal_actions.html) ----
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -304,38 +304,34 @@ function getJournalForAction(actionId){ return JOURNAL_ROWS.filter(j=>String(get
 function getStatutSuivi(a){ const latest=getJournalForAction(a.id)[0]; return latest ? statusTextFromEntry(latest) : ''; }
 function statutSuiviChipHtml(a){ const stat=getStatutSuivi(a); return stat ? `<span class="tag status ${statusClass(stat)}">${esc(stat)}</span>` : ''; }
 
-function sessionNb(session){ const n=session && session.Nb_sessions; if(n===null||n===undefined||n==='') return ''; return String(n).replace('.',','); }
 function sessionComment(session){ return firstText(session,['Commentaire_logistique','commentaire_logistique','Commentaire logistique']); }
-function sessionDateValue(session,i){ return session ? session[`Date${i}`] : ''; }
-function sessionModaliteLabel(session,i){ return session ? labelFor(session[`Modalite${i}`], MODALITEX_MAP) : ''; }
-function sessionLieuLabel(session,i){ return session ? labelFor(session[`Lieu${i}`], LIEU_MAP) : ''; }
-function sessionFilledDateCount(session){ let n=0; for(let i=0;i<MAX_SESSIONS;i++){ if(sessionDateValue(session,i)) n++; } return n; }
-function sessionStructuredDates(session){ const out=[]; for(let i=0;i<MAX_SESSIONS;i++){ const d=formatDateValue(sessionDateValue(session,i)); const m=sessionModaliteLabel(session,i); const l=sessionLieuLabel(session,i); if(d||m||l) out.push([`Session ${i+1}`,d,m,l].filter(Boolean).join(' · ')); } return out; }
-function sessionStructuredLieux(session){ const out=[]; for(let i=0;i<MAX_SESSIONS;i++){ const l=sessionLieuLabel(session,i); if(l) out.push(l); } return [...new Set(out)]; }
-function sessionPresentsValue(session,i){ return session ? session[`Presents${i}`] : ''; }
+// Dates de session : table Dates_sessions (une ligne par date) ; seules les dates validées comptent dans le bilan.
+function datesForAction(actionId){ return DATES_ROWS.filter(d=>String(refId(d.Action))===String(actionId)).sort((a,b)=>dateSortValue(a.Date)-dateSortValue(b.Date) || a.id-b.id); }
+function validatedDates(actionId){ return datesForAction(actionId).filter(d=>boolValue(d.Validee) && d.Date); }
+function dateModaliteLabel(d){ return d && d.Modalite ? labelFor(d.Modalite, MODALITEX_MAP) : ''; }
+function dateLieuLabel(d){ return d && d.Lieu ? labelFor(d.Lieu, LIEU_MAP) : ''; }
+function dateCoefficient(d){ const label=dateModaliteLabel(d); if(norm(label).includes('plusieurs')){ const n=parseNum(d.NbJours); return n&&n>0?n:0; } return modaliteCoefficient(label); }
+function sessionStructuredDates(actionId){ return datesForAction(actionId).map((d,i)=>{ let m=dateModaliteLabel(d); if(m && norm(m).includes('plusieurs')) m=`${m} (${d.NbJours||'?'} j.)`; return [`Session ${i+1}`, formatDateValue(d.Date), d.Mode, m, dateLieuLabel(d), boolValue(d.Validee)?'validée':'prévisionnelle'].filter(Boolean).join(' · '); }); }
 function modaliteCoefficient(label){ const s=norm(label); if(s.includes('journee entiere')) return 1; if(s.includes('webinaire') || s.includes('1/2') || s.includes('demi')) return 0.5; return 0; }
 function parseNum(v){ if(v===null||v===undefined||v==='') return null; if(typeof v==='number') return Number.isFinite(v)?v:null; const n=Number(String(v).replace(/\s/g,'').replace(',','.')); return Number.isFinite(n)?n:null; }
 function formatNumber(v, digits=0){ const n=parseNum(v); return n===null?'—':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:digits, minimumFractionDigits:digits?0:0}).format(n); }
 function formatPercentValue(v){ const n=parseNum(v); if(n===null) return '—'; const pct=Math.abs(n)<=1?n*100:n; return new Intl.NumberFormat('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1}).format(pct)+' %'; }
-function getSessionComputed(session){
-  const filledDates=sessionFilledDateCount(session);
+function getSessionComputed(session, actionId){
+  const ds=validatedDates(actionId); const filledDates=ds.length;
   let totalPresents=0, journeesStagiaires=0;
-  for(let i=0;i<MAX_SESSIONS;i++){ const p=parseNum(sessionPresentsValue(session,i)) || 0; totalPresents += p; journeesStagiaires += p * modaliteCoefficient(sessionModaliteLabel(session,i)); }
+  ds.forEach(d=>{ const p=parseNum(d.Presents)||0; totalPresents+=p; journeesStagiaires+=p*dateCoefficient(d); });
   const participantsPrevus=parseNum(session&&session.Participants_prevus);
   const inscritsGaia=parseNum(session&&session.Inscrits_GAIA);
   const presentsMoyen=filledDates ? totalPresents / filledDates : null;
   return {
     nombreCopil: parseNum(session&&session.Nombre_COPIL),
-    participantsPrevus, inscritsGaia, filledDates,
-    totalPresents: parseNum(session&&session.Total_presents) ?? totalPresents,
-    presentsMoyen: parseNum(session&&session.Presents_moyen) ?? presentsMoyen,
-    journeesStagiaires: parseNum(session&&session.Journees_stagiaires) ?? journeesStagiaires,
-    tauxGaia: parseNum(session&&session.Taux_presence_GAIA) ?? (inscritsGaia ? presentsMoyen / inscritsGaia : null),
-    tauxPrevu: parseNum(session&&session.Taux_presence_prevu) ?? (participantsPrevus ? presentsMoyen / participantsPrevus : null)
+    participantsPrevus, inscritsGaia, filledDates, totalPresents, presentsMoyen, journeesStagiaires,
+    tauxGaia: inscritsGaia && presentsMoyen!==null ? presentsMoyen / inscritsGaia : null,
+    tauxPrevu: participantsPrevus && presentsMoyen!==null ? presentsMoyen / participantsPrevus : null
   };
 }
-function bilanIndicatorsHtml(session){
-  const c=getSessionComputed(session);
+function bilanIndicatorsHtml(session, actionId){
+  const c=getSessionComputed(session, actionId);
   return `<div class="bilan-indicators">
     <div class="bilan-indicator"><span class="label">Total présents</span><span class="value">${esc(formatNumber(c.totalPresents))}</span></div>
     <div class="bilan-indicator"><span class="label">Présents moyens</span><span class="value">${esc(formatNumber(c.presentsMoyen,1))}</span></div>
@@ -388,10 +384,10 @@ async function loadData(){
     }
     if (toolbar) toolbar.style.display = '';
 
-    const [actionsFull, contacts, chefferie, lieux, modalitex, statuts, jsessions, jactions, structs, modals, publics, annees, axes, volets, degres, formats] = await Promise.all([
-      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Chefferie'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Statuts_suivi'), fetchSafe('Journal_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Structures'), fetchSafe('Modalites'), fetchSafe('Publics'), fetchSafe('Annees'), fetchSafe('Axes'), fetchSafe('Volets'), fetchSafe('Degres'), fetchSafe('Formats')
+    const [actionsFull, contacts, chefferie, lieux, modalitex, statuts, jsessions, jactions, datesSessions, structs, modals, publics, annees, axes, volets, degres, formats] = await Promise.all([
+      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Chefferie'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Statuts_suivi'), fetchSafe('Journal_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Dates_sessions'), fetchSafe('Structures'), fetchSafe('Modalites'), fetchSafe('Publics'), fetchSafe('Annees'), fetchSafe('Axes'), fetchSafe('Volets'), fetchSafe('Degres'), fetchSafe('Formats')
     ]);
-    CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); LIEU_ROWS=toRows(lieux); MODALITEX_ROWS=toRows(modalitex); STATUS_ROWS=toRows(statuts); SESSION_ROWS=toRows(jsessions); JOURNAL_ROWS=toRows(jactions);
+    CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); LIEU_ROWS=toRows(lieux); MODALITEX_ROWS=toRows(modalitex); STATUS_ROWS=toRows(statuts); SESSION_ROWS=toRows(jsessions); DATES_ROWS=toRows(datesSessions); JOURNAL_ROWS=toRows(jactions);
     CONTACT_MAP=Object.fromEntries(CONTACT_ROWS.map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
     CHEFFERIE_MAP=Object.fromEntries(CHEFFERIE_ROWS.map(r=>[String(r.id),chefferieLabel(r)]).filter(([,v])=>v));
     LIEU_MAP=Object.fromEntries(LIEU_ROWS.map(r=>[String(r.id),lieuLabel(r)]).filter(([,v])=>v));
@@ -507,7 +503,7 @@ function buildModalBody(a){
   const publics=getPublics(a).join(', ')||'—';
   const code=getCodeGaia(a)||'—';
   const annee=getAnnee(a)||'—';
-  const dates=sessionStructuredDates(session);
+  const dates=sessionStructuredDates(a.id);
   const notes=sessionComment(session);
   return `
   <div><div class="section-title">Identité et responsabilité</div><div class="box"><div class="identity-grid">
@@ -525,7 +521,7 @@ function buildModalBody(a){
   <div><div class="section-title">État d’avancement</div><div class="box">${avancementBarHtml(a)}</div></div>
   <div><div class="section-title">Historique du journal</div><div class="history">${entries.length?entries.map(historyItemReadOnlyHtml).join(''):'<div class="box help">Aucune entrée de journal pour cette action.</div>'}</div></div>
   <div><div class="section-title">Bilan</div><div class="box">
-    ${bilanIndicatorsHtml(session)}
+    ${bilanIndicatorsHtml(session, a.id)}
     ${dates.length?`<div class="bilan-sessions"><span class="bilan-sessions-label">Sessions de formation</span>${dates.map(esc).join('<br>')}</div>`:''}
     ${notes?`<div class="bilan-notes"><span class="bilan-notes-label">Notes</span><div class="description">${esc(notes)}</div></div>`:''}
   </div></div>`;

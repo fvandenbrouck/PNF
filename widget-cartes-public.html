@@ -19,6 +19,7 @@
 <!-- Version v58 : articulation Magistère / Mentor lue dans la colonne unique articulation_parcours -->
 <!-- Version v59 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v60 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) -->
+<!-- Version v61 : les lieux d'une action sont lus dans les dates de session validées (table Dates_sessions) : lieu des sessions en présentiel, « À distance » pour les sessions en distanciel -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -597,7 +598,7 @@ let DEGRE_MAP = {};
 let DEGRE_VALUES = [];
 let LIEU_MAP = {};
 let LIEU_VALUES = [];
-let SESSION_ROWS = [];
+let SESSION_ROWS = [], DATES_ROWS = [];
 let STATUT_MAP = {};
 let STATUT_VALUES = [];
 let MODALITE_MAP = {};
@@ -888,16 +889,16 @@ function sessionActionId(s) {
   return refId(s.Action || s.action || s.id_action || s.Action_formation || s.actions_formation);
 }
 
+// Lieux d'une action : dates de session validées (table Dates_sessions). Une session en distanciel compte comme « À distance ».
 function lieuxForAction(a) {
   const actionId = String(a && a.id || '');
   const lieux = [];
-  SESSION_ROWS
-    .filter(s => String(sessionActionId(s)) === actionId)
-    .forEach(s => {
-      for (let i = 0; i < 10; i++) {
-        const label = lieuValue(s[`Lieu${i}`]);
-        if (label) lieux.push(label);
-      }
+  DATES_ROWS
+    .filter(d => String(sessionActionId(d)) === actionId && boolValue(d.Validee))
+    .forEach(d => {
+      if (String(d.Mode || '').trim() === 'Distanciel') { lieux.push('À distance'); return; }
+      const label = lieuValue(d.Lieu);
+      if (label) lieux.push(label);
     });
   return [...new Set(lieux)];
 }
@@ -905,9 +906,10 @@ function lieuxForAction(a) {
 async function loadLieuxSessionsIfAllowed() {
   try {
     if (!grist.docApi || !grist.docApi.fetchTable) return;
-    const [lieux, sessions] = await Promise.all([
+    const [lieux, sessions, datesSessions] = await Promise.all([
       grist.docApi.fetchTable('Lieux').catch(() => ({id:[]})),
-      grist.docApi.fetchTable('Journal_sessions').catch(() => ({id:[]}))
+      grist.docApi.fetchTable('Journal_sessions').catch(() => ({id:[]})),
+      grist.docApi.fetchTable('Dates_sessions').catch(() => ({id:[]}))
     ]);
     const tableToRows = table => (table && table.id || []).map((id, i) => {
       const row = { id };
@@ -919,11 +921,13 @@ async function loadLieuxSessionsIfAllowed() {
     LIEU_VALUES = [...new Set(lieuRows.map(lieuLabelFromRow).filter(Boolean))]
       .sort((a,b) => a.localeCompare(b, 'fr', {numeric:true}));
     SESSION_ROWS = tableToRows(sessions);
+    DATES_ROWS = tableToRows(datesSessions);
   } catch(e) {
     console.warn('Lieux ou Journal_sessions non accessibles : filtre Lieux désactivé.', e);
     LIEU_MAP = {};
     LIEU_VALUES = [];
     SESSION_ROWS = [];
+    DATES_ROWS = [];
   }
 }
 

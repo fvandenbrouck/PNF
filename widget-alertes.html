@@ -13,6 +13,7 @@
 <!-- Version v7 : Statut de l'action (Prévu…) affiché sur les cartes, à côté du statut de suivi -->
 <!-- Version v8 : Statut de l'action également affiché dans la fiche détail (modale) -->
 <!-- Version v9 : correctif — le statut de l'action est reconnu qu'onRecords fournisse l'identifiant ou le libellé affiché (les actions annulées, fusionnées ou reportées restaient dans les alertes) -->
+<!-- Version v10 : le bilan incomplet se contrôle sur les dates de session validées (table Dates_sessions, onglet « Date des sessions » du Journal de bord) : au moins une date validée, et le nombre de présents renseigné pour chaque date validée -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -136,13 +137,14 @@ select option { color:var(--ink); background:var(--white); }
 console.info('[widget-alertes] v9 statut de l\'action reconnu par identifiant ou libellé chargé');
 
 let ALL_ACTIONS = [], FILTERED = [], CURRENT_TAB = 'suivi', CURRENT_ACTION = null;
-let JOURNAL_ROWS = [], SESSION_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
+let JOURNAL_ROWS = [], SESSION_ROWS = [], DATES_ROWS = [], CONTACT_ROWS = [], CHEFFERIE_ROWS = [];
 let ANNEE_MAP = {}, CONTACT_MAP = {}, CHEFFERIE_MAP = {}, STATUS_MAP = {};
 let STATUT_ACTION_EXCLUDED_IDS = new Set(), STATUT_ACTION_MAP = {};
 let ANNEE_VALUES = [], RESPONSABLE_VALUES = [], CHEFFERIE_VALUES = [];
 const ACTION_TABLE = 'Actions_formation';
 const JOURNAL_TABLE = 'Journal_Actions';
 const SESSION_TABLE = 'Journal_sessions';
+const DATES_TABLE = 'Dates_sessions';
 const STATUS_BLOCAGE_ID = '2';
 const STATUS_ARBITRAGE_ID = '3';
 const STATUS_CLOTURE_ID = '5';
@@ -223,15 +225,15 @@ function latestJournal(actionId){
   return rows.slice().sort((a,b)=> dateValue(b.Date)-dateValue(a.Date) || Number(b.id||0)-Number(a.id||0))[0];
 }
 function sessionForAction(actionId){ return SESSION_ROWS.find(s=>String(actionIdFromSession(s))===String(actionId)) || null; }
-function sessionComputedMissing(s){
+// Dates de session : table Dates_sessions (une ligne par date). Seules les dates validées comptent dans le bilan.
+function validatedDatesForAction(actionId){ return DATES_ROWS.filter(d=>boolValue(d.Validee) && !isEmpty(d.Date) && String(refId(d.Action))===String(actionId)).sort((x,y)=>dateValue(x.Date)-dateValue(y.Date)); }
+function sessionComputedMissing(s, actionId){
   if(!s) return ['Aucune ligne Journal_sessions'];
   const missing=[];
-  [['Nb_sessions','Nombre de sessions'],['Nombre_COPIL','Nombre COPIL'],['Participants_prevus','Participants prévus'],['Inscrits_GAIA','Inscrits GAIA']].forEach(([k,label])=>{ if(isEmpty(s[k])) missing.push(label); });
-  for(let i=0;i<10;i++){
-    const date = s[`Date${i}`];
-    const presents = s[`Presents${i}`];
-    if(!isEmpty(date) && isEmpty(presents)) missing.push(`Présents session ${i+1}`);
-  }
+  const dates=validatedDatesForAction(actionId);
+  if(!dates.length) missing.push('Date de session validée');
+  [['Nombre_COPIL','Nombre COPIL'],['Participants_prevus','Participants prévus'],['Inscrits_GAIA','Inscrits GAIA']].forEach(([k,label])=>{ if(isEmpty(s[k])) missing.push(label); });
+  dates.forEach(d=>{ if(isEmpty(d.Presents)) missing.push(`Présents session du ${formatDateValue(d.Date)}`); });
   // AlerteData (formule Grist) peut signaler un bilan incomplet non détectable ici : on garde un libellé lisible.
   if(!missing.length && Object.prototype.hasOwnProperty.call(s,'AlerteData') && boolValue(s.AlerteData)) missing.push('Bilan incomplet');
   return missing;
@@ -240,13 +242,13 @@ function isDataAlert(actionId, latest){
   if(!latest || statusIdFromJournal(latest)!==STATUS_CLOTURE_ID) return false;
   const s = sessionForAction(actionId);
   if(s && Object.prototype.hasOwnProperty.call(s,'AlerteData')) return boolValue(s.AlerteData);
-  return sessionComputedMissing(s).length > 0;
+  return sessionComputedMissing(s, actionId).length > 0;
 }
 function enrichedAction(a){
   const latest = latestJournal(a.id);
   const statusId = latest ? statusIdFromJournal(latest) : '';
   const statusText = latest ? statusTextFromJournal(latest) : '';
-  const missing = sessionComputedMissing(sessionForAction(a.id));
+  const missing = sessionComputedMissing(sessionForAction(a.id), a.id);
   return {...a, _latest:latest, _statusId:statusId, _statusText:statusText, _missing:missing};
 }
 // Statut de l'action (table Statut), distinct du statut de suivi du journal affiché dans la pastille principale.
@@ -379,7 +381,7 @@ function openModal(id){
     ${latest&&latest.Prochaine_etape?`<div><div class="section-title">Prochaine étape</div><div class="box description">${esc(latest.Prochaine_etape)}</div></div>`:''}
     ${latest&&latest.Echeance?`<div><div class="section-title">Échéance</div><div class="box tags"><span class="tag tag-ok">${esc(formatDateValue(latest.Echeance))}</span></div></div>`:''}
     ${CURRENT_TAB==='donnees'?`<div><div class="section-title">Données manquantes ou incomplètes</div><div class="box tags">${missing.length?missing.map(m=>`<span class="tag tag-data">${esc(m)}</span>`).join(''):'—'}</div></div>`:''}
-    ${CURRENT_TAB==='donnees'&&session?`<div><div class="section-title">Synthèse Journal_sessions</div><div class="box description">Nb sessions : ${esc(session.Nb_sessions??'—')} · COPIL : ${esc(session.Nombre_COPIL??'—')} · Participants prévus : ${esc(session.Participants_prevus??'—')} · Inscrits GAIA : ${esc(session.Inscrits_GAIA??'—')}</div></div>`:''}
+    ${CURRENT_TAB==='donnees'&&session?`<div><div class="section-title">Synthèse Journal_sessions</div><div class="box description">Sessions validées : ${esc(validatedDatesForAction(a.id).length||'—')} · COPIL : ${esc(session.Nombre_COPIL??'—')} · Participants prévus : ${esc(session.Participants_prevus??'—')} · Inscrits GAIA : ${esc(session.Inscrits_GAIA??'—')}</div></div>`:''}
   `;
   document.getElementById('overlay').classList.remove('hidden');
 }
@@ -422,7 +424,7 @@ async function loadData(records){
     }
     if (toolbar) toolbar.style.display = '';
 
-    const [actionsFull, journal, sessions, contacts, chefferie, annees, statuses, statutsAction] = await Promise.all([
+    const [actionsFull, journal, sessions, contacts, chefferie, annees, statuses, statutsAction, datesSessions] = await Promise.all([
       grist.docApi.fetchTable(ACTION_TABLE).catch(()=>({id:[]})),
       grist.docApi.fetchTable(JOURNAL_TABLE).catch(()=>({id:[]})),
       grist.docApi.fetchTable(SESSION_TABLE).catch(()=>({id:[]})),
@@ -430,9 +432,10 @@ async function loadData(records){
       grist.docApi.fetchTable('Chefferie').catch(()=>({id:[]})),
       grist.docApi.fetchTable('Annees').catch(()=>({id:[]})),
       grist.docApi.fetchTable('Statuts_suivi').catch(()=>({id:[]})),
-      grist.docApi.fetchTable('Statut').catch(()=>({id:[]}))
+      grist.docApi.fetchTable('Statut').catch(()=>({id:[]})),
+      grist.docApi.fetchTable(DATES_TABLE).catch(()=>({id:[]}))
     ]);
-    CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); JOURNAL_ROWS=toRows(journal); SESSION_ROWS=toRows(sessions);
+    CONTACT_ROWS=toRows(contacts); CHEFFERIE_ROWS=toRows(chefferie); JOURNAL_ROWS=toRows(journal); SESSION_ROWS=toRows(sessions); DATES_ROWS=toRows(datesSessions);
     CONTACT_MAP=Object.fromEntries(CONTACT_ROWS.map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
     CHEFFERIE_MAP=Object.fromEntries(CHEFFERIE_ROWS.map(r=>[String(r.id),chefferieLabel(r)]).filter(([,v])=>v));
     ANNEE_MAP=Object.fromEntries(toRows(annees).map(r=>[String(r.id),anneeLabel(r)]).filter(([,v])=>v));

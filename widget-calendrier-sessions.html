@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendrier des sessions — PNF</title>
+<!-- Version v1 : calendrier semaine par semaine des dates de session (table Dates_sessions, onglet « Date des sessions » du Journal de bord) ; sessions multi-jours étalées, dates validées / prévisionnelles, présentiel / distanciel ; modale de détail en lecture seule -->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --turquoise:#A8DDD8;
+  --peach:#F9C59A;
+  --strawberry:#F5A0A8;
+  --lilas:#E8E8F5;
+  --navy:#1B3A6B;
+  --navy-l:#e8edf5;
+  --bg:#F7F5F2;
+  --white:#fff;
+  --ink:#1a1208;
+  --ink2:#4a3f2f;
+  --ink3:#8a8070;
+  --border:#E0D8CC;
+  --green-bg:rgba(168,221,216,.35);
+  --green:#1a6b65;
+  --orange-bg:rgba(249,197,154,.45);
+  --orange:#8a4a10;
+  --purple-bg:rgba(200,180,224,.45);
+  --purple:#4e3370;
+}
+/* Page à défilement naturel (pas de hauteur calculée) ; la barre d'outils reste visible grâce à position:sticky. */
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); color-scheme: light; }
+.toolbar { background:var(--white); border-bottom:1px solid var(--border); padding:8px 12px; display:flex; flex-wrap:wrap; gap:7px; align-items:center; position:sticky; top:0; z-index:10; }
+.tb-title { display:flex; flex-direction:column; gap:1px; min-width:170px; margin-right:4px; }
+.tb-title strong { font-family:'Fraunces',serif; font-size:14px; font-weight:500; line-height:1.1; }
+.tb-title span { font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; }
+.tb-search { position:relative; flex:2; min-width:170px; }
+.tb-search svg { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--ink3); pointer-events:none; }
+.tb-search input { width:100%; padding:7px 10px 7px 32px; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:7px; outline:none; color:var(--ink); }
+.tb-search input:focus { border-color:var(--navy); background:#fff; }
+.tb-sel { position:relative; flex:1; min-width:120px; }
+.tb-sel select { width:100%; font-family:'DM Sans',sans-serif; font-size:11px; color:var(--ink); background:var(--bg); border:1px solid var(--border); border-radius:7px; padding:7px 24px 7px 9px; outline:none; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238a8070' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 9px center; }
+.tb-sel select:focus { border-color:var(--navy); background-color:#fff; }
+.btn { font-family:'DM Sans',sans-serif; font-size:11px; border:1px solid var(--border); padding:7px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; background:var(--white); color:var(--ink2); }
+.btn:hover { border-color:var(--navy); color:var(--navy); }
+.btn-reset { background:transparent; color:var(--ink3); }
+.btn-reset:hover { border-color:var(--strawberry); color:var(--strawberry); }
+.count { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); background:var(--lilas); padding:5px 10px; border-radius:999px; white-space:nowrap; }
+
+.weekbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:12px 16px 0; }
+.week-label { font-family:'Fraunces',serif; font-size:17px; font-weight:500; margin:0 6px; }
+.week-label small { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-left:6px; letter-spacing:.04em; }
+.weekbar input[type=date] { font-family:'DM Sans',sans-serif; font-size:11px; padding:6px 8px; border:1px solid var(--border); border-radius:7px; background:var(--white); color:var(--ink) !important; -webkit-text-fill-color:var(--ink) !important; }
+.legend { display:flex; flex-wrap:wrap; gap:12px; padding:8px 16px 0; font-size:10.5px; color:var(--ink2); }
+.legend span { display:inline-flex; align-items:center; gap:5px; }
+.lg { width:14px; height:10px; border-radius:3px; display:inline-block; }
+.lg.valid { background:var(--green-bg); border:1.5px solid var(--green); }
+.lg.prov { background:#fff; border:1.5px dashed var(--ink3); }
+
+.cal-wrap { padding:12px 16px 24px; }
+.week { background:var(--white); border:1.5px solid var(--border); border-radius:12px; overflow:hidden; }
+.week-head, .week-bg, .week-events { display:grid; grid-template-columns:repeat(var(--cols),minmax(0,1fr)); }
+.day-head { padding:9px 10px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); background:var(--bg); text-align:center; }
+.day-head:last-child { border-right:none; }
+.day-head .dn { display:block; font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink3); }
+.day-head .dd { display:block; font-family:'Fraunces',serif; font-size:16px; font-weight:500; margin-top:1px; }
+.day-head.today { background:var(--navy); }
+.day-head.today .dn, .day-head.today .dd { color:#fff; }
+.day-head.weekend { background:var(--lilas); }
+.week-body { position:relative; min-height:300px; }
+.week-bg { position:absolute; inset:0; }
+.bg-cell { border-right:1px solid var(--border); }
+.bg-cell:last-child { border-right:none; }
+.bg-cell.today { background:rgba(27,58,107,.045); }
+.bg-cell.weekend { background:rgba(232,232,245,.45); }
+.week-events { position:relative; padding:8px 4px; gap:6px 0; align-content:start; grid-auto-flow:row dense; }
+.ev { margin:0 3px; padding:7px 9px; border-radius:8px; border:1.5px solid var(--green); background:var(--green-bg); cursor:pointer; display:flex; flex-direction:column; gap:3px; min-width:0; transition:.12s; }
+.ev:hover { box-shadow:0 5px 14px rgba(27,58,107,.16); transform:translateY(-1px); }
+.ev.locked { cursor:default; }
+.ev.locked:hover { box-shadow:none; transform:none; }
+.ev.prov { background:#fff; border:1.5px dashed var(--ink3); }
+.ev.mode-distanciel.valid { background:var(--purple-bg); border-color:var(--purple); }
+.ev.cont-left { border-top-left-radius:0; border-bottom-left-radius:0; margin-left:0; }
+.ev.cont-right { border-top-right-radius:0; border-bottom-right-radius:0; margin-right:0; }
+.ev-top { display:flex; gap:5px; align-items:flex-start; min-width:0; }
+.ev-ico { font-size:11px; line-height:1.4; flex-shrink:0; }
+.ev-title { font-family:'Fraunces',serif; font-size:12.5px; font-weight:600; line-height:1.3; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.ev-sub { font-family:'DM Mono',monospace; font-size:9px; color:var(--ink2); letter-spacing:.02em; line-height:1.4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ev-date { display:none; font-family:'DM Mono',monospace; font-size:10px; font-weight:700; color:var(--navy); }
+.empty-week { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:var(--ink3); font-size:12px; text-align:center; padding:20px; pointer-events:none; }
+.empty-week button { pointer-events:auto; }
+.empty { text-align:center; padding:60px 20px; color:var(--ink3); }
+.empty p { font-family:'Fraunces',serif; font-size:22px; margin-bottom:8px; }
+.empty span { font-family:'DM Mono',monospace; font-size:11px; }
+
+.overlay { position:fixed; inset:0; background:rgba(27,58,107,.45); backdrop-filter:blur(3px); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
+.overlay.hidden { display:none; }
+.modal { background:var(--white); border-radius:15px; width:100%; max-width:640px; max-height:96vh; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(27,58,107,.25); }
+.modal-head { padding:20px 24px 16px; border-bottom:1px solid var(--border); display:flex; gap:14px; align-items:flex-start; }
+.modal-band { width:5px; min-height:52px; border-radius:3px; background:var(--green); flex-shrink:0; }
+.modal-band.prov { background:var(--ink3); }
+.modal-head-text { flex:1; }
+.modal-head h2 { font-family:'Fraunces',serif; font-size:20px; line-height:1.3; font-weight:600; }
+.modal-meta { font-family:'DM Mono',monospace; font-size:10px; color:var(--ink3); margin-top:7px; letter-spacing:.04em; }
+.btn-close { margin-left:auto; border:none; background:transparent; font-size:24px; color:var(--ink3); cursor:pointer; padding:2px 6px; }
+.btn-close:hover { color:var(--ink); background:var(--bg); border-radius:6px; }
+.modal-body { overflow-y:auto; padding:18px 24px 22px; display:grid; gap:16px; }
+.section-title { font-family:'DM Mono',monospace; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em; font-size:9.5px; font-weight:700; margin-bottom:7px; }
+.box { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+.box.message { background:#fff; font-size:13px; line-height:1.6; white-space:pre-wrap; color:var(--ink); }
+.box.message.none { color:var(--ink3); font-style:italic; }
+.kv { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px 16px; }
+.kv .k { display:block; font-family:'DM Mono',monospace; font-size:9px; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:3px; }
+.kv .v { font-size:13px; color:var(--ink); line-height:1.4; }
+.tag { display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:600; padding:3px 8px; border-radius:4px; line-height:1.35; }
+.tag-valid { background:var(--green-bg); color:var(--green); }
+.tag-prov { background:rgba(27,58,107,.08); color:var(--ink2); }
+.tag-mode-presentiel { background:var(--orange-bg); color:var(--orange); }
+.tag-mode-distanciel { background:var(--purple-bg); color:var(--purple); }
+.tag-year { background:var(--green-bg); color:var(--green); font-family:'DM Mono',monospace; font-size:9px; }
+.tag-code { background:rgba(27,58,107,.10); color:var(--navy); font-family:'DM Mono',monospace; font-size:9px; font-weight:700; }
+
+#loader { position:fixed; inset:0; background:rgba(247,245,242,.92); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:500; }
+#loader.hidden { display:none; }
+.spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Téléphone : la grille devient une liste chronologique de la semaine. */
+@media (max-width:820px) {
+  .week-head, .week-bg { display:none; }
+  .week-events { grid-template-columns:1fr; padding:8px; gap:8px; }
+  .ev { grid-column:1 / -1 !important; margin:0; }
+  .ev.cont-left, .ev.cont-right { border-radius:8px; }
+  .ev-date { display:block; }
+  .modal { max-height:98vh; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div class="tb-title"><strong>Calendrier des sessions</strong><span>Pilotage PNF</span></div>
+  <div class="tb-search">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input type="text" id="f-search" placeholder="Rechercher une action, un commentaire…" oninput="render()">
+  </div>
+  <div class="tb-sel"><select id="f-annee" onchange="render()"><option value="">Années</option></select></div>
+  <div class="tb-sel"><select id="f-mode" onchange="render()"><option value="">Présentiel et distanciel</option><option value="Présentiel">Présentiel</option><option value="Distanciel">Distanciel</option></select></div>
+  <div class="tb-sel"><select id="f-etat" onchange="render()"><option value="">Validées et prévisionnelles</option><option value="valid">Validées</option><option value="prov">Prévisionnelles</option></select></div>
+  <div class="tb-sel"><select id="f-responsable-suivi" onchange="render()"><option value="">Responsables de suivi</option></select></div>
+  <button class="btn btn-reset" onclick="resetFilters()" title="Réinitialiser les filtres">✕</button>
+  <button class="btn" onclick="reloadData()" title="Relire les dates depuis Grist">↻ Actualiser</button>
+  <span class="count" id="count">–</span>
+</div>
+<div class="weekbar" id="weekbar">
+  <button class="btn" onclick="shiftWeek(-1)" title="Semaine précédente">◀</button>
+  <button class="btn" onclick="goToday()">Aujourd’hui</button>
+  <button class="btn" onclick="shiftWeek(1)" title="Semaine suivante">▶</button>
+  <span class="week-label" id="week-label"></span>
+  <input type="date" id="go-date" onchange="goToDate(this.value)" title="Aller à une date">
+</div>
+<div class="legend" id="legend">
+  <span><i class="lg valid"></i>Validée</span>
+  <span><i class="lg prov"></i>Prévisionnelle (non validée)</span>
+  <span>🏫 Présentiel</span>
+  <span>💻 Distanciel</span>
+</div>
+<div class="cal-wrap" id="cal-wrap"></div>
+<div id="loader"><div class="spinner"></div><p>Chargement du calendrier…</p></div>
+
+<div class="overlay hidden" id="overlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-band" id="modal-band"></div>
+      <div class="modal-head-text">
+        <h2 id="modal-title">–</h2>
+        <div class="modal-meta" id="modal-meta"></div>
+      </div>
+      <button class="btn-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+console.info('[widget-calendrier-sessions] v1 chargé');
+// Lecture seule : ce widget ne modifie rien. Les dates se saisissent, se valident et se suppriment
+// dans l'onglet « Date des sessions » du Journal de bord (widget-journal_actions.html).
+let ALL_ACTIONS = [], DATES_ROWS = [], SESSIONS = [];
+let CONTACT_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STRUCT_MAP = {}, ANNEE_MAP = {};
+let CURRENT_CLASS = null, WEEK_START = null, LOADED = false;
+const DAY_MS = 86400000;
+const DAY_NAMES = ['lun.','mar.','mer.','jeu.','ven.','sam.','dim.'];
+const MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+
+// ---- Fonctions utilitaires (reprises de widget-copil-calendrier.html) ----
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toRows(t){ return (t&&t.id||[]).map((id,i)=>{ const r={id}; Object.keys(t||{}).forEach(k=>{ if(k!=='id') r[k]=t[k][i]; }); return r; }); }
+function firstText(row, keys){ for(const k of keys){ const v=row&&row[k]; if(v!==undefined&&v!==null&&String(v).trim()) return String(v).trim(); } return ''; }
+function norm(s){ return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+function stripEmail(s){ return String(s||'').replace(/\s*<[^>]*>\s*/g,' ').replace(/\s+/g,' ').trim(); }
+function refIds(raw){
+  const out=[];
+  const push=id=>{ if(id!==undefined && id!==null && /^\d+$/.test(String(id))) out.push(String(id)); };
+  const walk=v=>{
+    if(v===null||v===undefined||v==='') return;
+    if(Array.isArray(v)){
+      if(v[0]==='L'){ v.slice(1).forEach(walk); return; }
+      if(v[0]==='R'){ const c=v.slice(1).filter(x=>/^\d+$/.test(String(x))); if(c.length) push(c[c.length-1]); return; }
+      v.forEach(walk); return;
+    }
+    if(typeof v==='object'){ const row=v.rowId??v.row_id??v.recordId??v.record_id??v.ref??v.id; if(row!==undefined && row!==null){ push(row); return; } if(v.value!==undefined){ walk(v.value); } return; }
+    if(typeof v==='number'){ push(v); return; }
+    const s=String(v).trim();
+    if(/^\d+$/.test(s)){ push(s); return; }
+    const m=s.match(/\[(\d+)\]$/) || s.match(/(?:^|[,;:])\s*(\d+)\s*$/);
+    if(m) push(m[1]);
+  };
+  walk(raw);
+  return [...new Set(out)];
+}
+function refId(raw){ return refIds(raw)[0] || ''; }
+function labelFor(v,map){ const id=refId(v)||String(v||'').trim(); const raw=String(v||'').trim(); const clean=stripEmail(raw); return map[id] || map[raw] || map[clean] || clean; }
+function labelsFor(v,map){
+  const ids=refIds(v); const byIds=ids.map(id=>map[id]).filter(Boolean); if(byIds.length) return byIds;
+  const asList=x=>x===null||x===undefined||x===''?[]:(Array.isArray(x)?(x[0]==='L'?x.slice(1):x):[x]);
+  return asList(v).map(x=>{ if(x===null||x===undefined||x===''||x==='L'||x==='R') return ''; if(Array.isArray(x)||typeof x==='object'){ const id=refId(x); return id&&map[id]?map[id]:''; } const raw=String(x).trim(); return map[raw]||map[stripEmail(raw)]||stripEmail(raw); }).filter(Boolean);
+}
+function simpleLabel(r){ return firstText(r,['libelle','Libelle','Libellé','label','Label','nom','Nom','code','Code']); }
+function contactLabel(r){ const np=stripEmail(firstText(r,['Nom Prénom','Nom Prenom','nom_prenom','NOM_PRENOM','Nom_prenom'])); const nom=stripEmail(firstText(r,['NOM','Nom','nom'])); const prenom=stripEmail(firstText(r,['PRENOM','Prénom','Prenom','prenom'])); return np || [nom,prenom].filter(Boolean).join(' ').trim() || [prenom,nom].filter(Boolean).join(' ').trim() || `Contact ${r&&r.id?('#'+r.id):''}`.trim(); }
+function lieuLabel(r){ return firstText(r,['Site','site','SITE','lieu','Lieu','Lieux','nom','Nom','libelle','Libelle','Libellé']); }
+function modaliteXLabel(r){ return firstText(r,['modalite','Modalite','Modalité','libelle','Libelle','Libellé','label','Label','nom','Nom']); }
+function boolValue(v){ if(v===true) return true; if(v===false || v===null || v===undefined || v==='') return false; if(typeof v==='number') return v!==0; return ['true','1','oui','yes','x','checked'].includes(String(v).trim().toLowerCase()); }
+function parseNum(v){ if(v===null||v===undefined||v==='') return null; if(typeof v==='number') return Number.isFinite(v)?v:null; const n=Number(String(v).replace(/\s/g,'').replace(',','.')); return Number.isFinite(n)?n:null; }
+function getTitre(a){ return firstText(a,['Titre','titre','title']) || 'Sans titre'; }
+function getCodeGaia(a){ return firstText(a,['Code_GAIA','Code GAIA','code_gaia','GAIA','Code']); }
+function getAnnee(a){ const raw = a.Annee_scolaire ?? a['Année scolaire'] ?? a.annee_scolaire ?? a.Annee ?? a['Année'] ?? a.id_annee; const label=labelFor(raw, ANNEE_MAP); if(label && !/^\d+$/.test(String(label).trim())) return label; const txt=firstText(a,['Annee_scolaire','Année scolaire','annee_scolaire','Annee','Année']); return txt && !/^\d+$/.test(String(txt).trim()) ? txt : (label || txt || ''); }
+function getStructures(a){ return labelsFor(a.id_structure || a.Structure || a.Structures, STRUCT_MAP); }
+function getResponsablesAction(a){ return labelsFor(a.Responsable_suivi || a.responsable_suivi || a.Responsable || a.responsable, CONTACT_MAP); }
+
+// ---- Dates : tout est calculé en jours entiers UTC (une date Grist est un minuit UTC), sans décalage de fuseau ----
+function dayNumOfValue(v){
+  if(v===null||v===undefined||v==='') return null;
+  if(typeof v==='number'){ const ms=v<1000000000000?v*1000:v; return Math.floor(ms/DAY_MS); }
+  const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return Math.floor(Date.UTC(+m[1],+m[2]-1,+m[3])/DAY_MS);
+  const d=new Date(v); return isNaN(d) ? null : Math.floor(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/DAY_MS);
+}
+function todayNum(){ const n=new Date(); return Math.floor(Date.UTC(n.getFullYear(),n.getMonth(),n.getDate())/DAY_MS); }
+function dateOf(n){ return new Date(n*DAY_MS); }
+function mondayOf(n){ const dow=(dateOf(n).getUTCDay()+6)%7; return n-dow; }
+function isoOf(n){ return dateOf(n).toISOString().slice(0,10); }
+function fmtShort(n){ const d=dateOf(n); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; }
+function fmtFull(n){ const d=dateOf(n); return `${DAY_NAMES[(d.getUTCDay()+6)%7]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`; }
+function isoWeek(n){ const d=dateOf(n); const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())); const dow=t.getUTCDay()||7; t.setUTCDate(t.getUTCDate()+4-dow); const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1)); return Math.ceil(((t-y0)/DAY_MS+1)/7); }
+
+// ---- Accès : Chefferie / Responsable_suivi / Referent_IGESR / Doyen / Owner ----
+// Referent_IGESR et Doyen voient le calendrier mais ne peuvent pas ouvrir le détail d'une session (comme le calendrier des COPIL).
+async function resolveAccess(){
+  try {
+    const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
+    if (rows.length > 1) return 'Owner';
+    if (rows.length === 1) { const cls = rows[0].ClasseNom; return ['Chefferie','Responsable_suivi','Referent_IGESR','Doyen'].includes(cls) ? cls : null; }
+    return null;
+  } catch(e) { console.warn('[calendrier-sessions] vérification des droits impossible :', e); return null; }
+}
+function isReadOnlyViewer(){ return CURRENT_CLASS === 'Referent_IGESR' || CURRENT_CLASS === 'Doyen'; }
+async function fetchSafe(name){ try { return await grist.docApi.fetchTable(name); } catch(e) { console.warn('[calendrier-sessions] table inaccessible :', name, e); return {id:[]}; } }
+
+async function loadData(){
+  showLoader(true);
+  try{
+    let attempts=0; while(!grist.docApi && attempts<20){ await new Promise(r=>setTimeout(r,100)); attempts++; }
+    CURRENT_CLASS = await resolveAccess();
+    const wrap=document.getElementById('cal-wrap');
+    if(!CURRENT_CLASS){
+      ['.toolbar','#weekbar','#legend'].forEach(s=>{ const el=document.querySelector(s); if(el) el.style.display='none'; });
+      wrap.innerHTML=`<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Responsables de suivi, aux Référents IGESR et aux Doyens.</span></div>`;
+      return;
+    }
+    ['.toolbar','#weekbar','#legend'].forEach(s=>{ const el=document.querySelector(s); if(el) el.style.display=''; });
+    const [actions, contacts, lieux, modalitex, structs, annees, dates] = await Promise.all([
+      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Structures'), fetchSafe('Annees'), fetchSafe('Dates_sessions')
+    ]);
+    ALL_ACTIONS=toRows(actions); DATES_ROWS=toRows(dates);
+    CONTACT_MAP=Object.fromEntries(toRows(contacts).map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
+    LIEU_MAP=Object.fromEntries(toRows(lieux).map(r=>[String(r.id),lieuLabel(r)]).filter(([,v])=>v));
+    MODALITEX_MAP=Object.fromEntries(toRows(modalitex).map(r=>[String(r.id),modaliteXLabel(r)]).filter(([,v])=>v));
+    STRUCT_MAP=Object.fromEntries(toRows(structs).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    ANNEE_MAP=Object.fromEntries(toRows(annees).map(r=>[String(r.id), firstText(r,['Annee_scolaire','annee','Annee','Année','nom','Nom','libelle','Libelle'])]).filter(([,v])=>v));
+    buildSessions();
+    if(WEEK_START===null) WEEK_START=mondayOf(todayNum());
+    fillFilters(); LOADED=true; render();
+  }catch(e){ console.error(e); document.getElementById('cal-wrap').innerHTML=`<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
+  finally{ showLoader(false); }
+}
+async function reloadData(){ await loadData(); }
+
+// Une ligne de Dates_sessions = une entrée. Une session « Plusieurs journées » de N jours occupe N jours consécutifs à partir de la date de début.
+function buildSessions(){
+  const byId=Object.fromEntries(ALL_ACTIONS.map(a=>[String(a.id),a]));
+  SESSIONS=DATES_ROWS.map(d=>{
+    const start=dayNumOfValue(d.Date); const a=byId[String(refId(d.Action))];
+    if(start===null || !a) return null;
+    const modalite=d.Modalite ? labelFor(d.Modalite, MODALITEX_MAP) : '';
+    const plus=norm(modalite).includes('plusieurs');
+    const nb=plus ? Math.max(1, Math.round(parseNum(d.NbJours)||1)) : 1;
+    return { row:d, action:a, start, end:start+nb-1, nb, modalite, valid:boolValue(d.Validee), mode:String(d.Mode||'').trim(), lieu:d.Lieu?labelFor(d.Lieu, LIEU_MAP):'', commentaire:String(d.Commentaire||'').trim(), presents:parseNum(d.Presents) };
+  }).filter(Boolean);
+}
+function fillSelect(id, values){ const sel=document.getElementById(id); const cur=sel.value; while(sel.options.length>1) sel.remove(1); [...new Set(values.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'fr',{numeric:true})).forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); }); if([...sel.options].some(o=>o.value===cur)) sel.value=cur; }
+function fillFilters(){
+  fillSelect('f-annee', SESSIONS.map(s=>getAnnee(s.action)));
+  fillSelect('f-responsable-suivi', SESSIONS.flatMap(s=>getResponsablesAction(s.action)));
+}
+function resetFilters(){ ['f-annee','f-mode','f-etat','f-responsable-suivi'].forEach(id=>document.getElementById(id).value=''); document.getElementById('f-search').value=''; render(); }
+function searchNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+function sessionText(s){ return searchNorm([getTitre(s.action), getCodeGaia(s.action), getAnnee(s.action), ...getStructures(s.action), ...getResponsablesAction(s.action), s.mode, s.modalite, s.lieu, s.commentaire].join(' ')); }
+function filteredSessions(){
+  const q=searchNorm(document.getElementById('f-search').value).trim();
+  const annee=document.getElementById('f-annee').value, mode=document.getElementById('f-mode').value, etat=document.getElementById('f-etat').value, resp=document.getElementById('f-responsable-suivi').value;
+  return SESSIONS.filter(s=>{
+    if(annee && getAnnee(s.action)!==annee) return false;
+    if(mode && s.mode!==mode) return false;
+    if(etat==='valid' && !s.valid) return false;
+    if(etat==='prov' && s.valid) return false;
+    if(resp && !getResponsablesAction(s.action).includes(resp)) return false;
+    if(q && !sessionText(s).includes(q)) return false;
+    return true;
+  });
+}
+
+// ---- Navigation ----
+function shiftWeek(n){ WEEK_START += 7*n; render(); }
+function goToday(){ WEEK_START=mondayOf(todayNum()); render(); }
+function goToDate(v){ const n=dayNumOfValue(v); if(n!==null){ WEEK_START=mondayOf(n); render(); } }
+function goToWeekOf(n){ WEEK_START=mondayOf(n); render(); }
+
+// ---- Rendu d'une semaine ----
+function render(){
+  if(!LOADED) return;
+  const ws=WEEK_START, list=filteredSessions();
+  const inWeek=list.filter(s=>s.start<=ws+6 && s.end>=ws).sort((a,b)=>a.start-b.start || b.nb-a.nb || a.row.id-b.row.id);
+  // Samedi et dimanche n'apparaissent que si une session de la semaine s'y étend.
+  const cols = inWeek.some(s=>s.end>=ws+5) ? 7 : 5;
+  const today=todayNum();
+  document.getElementById('week-label').innerHTML = `Semaine du ${fmtShort(ws)} au ${fmtShort(ws+cols-1)} ${dateOf(ws+cols-1).getUTCFullYear()}<small>S${isoWeek(ws)}</small>`;
+  document.getElementById('go-date').value = isoOf(ws);
+  document.getElementById('count').textContent = `${inWeek.length} session${inWeek.length>1?'s':''} cette semaine · ${list.length} au total`;
+  const heads=Array.from({length:cols},(_,i)=>{ const n=ws+i; const d=dateOf(n); return `<div class="day-head${n===today?' today':''}${i>=5?' weekend':''}"><span class="dn">${DAY_NAMES[i]}</span><span class="dd">${d.getUTCDate()} ${MONTHS[d.getUTCMonth()].slice(0,4)}${MONTHS[d.getUTCMonth()].length>4?'.':''}</span></div>`; }).join('');
+  const bg=Array.from({length:cols},(_,i)=>`<div class="bg-cell${ws+i===today?' today':''}${i>=5?' weekend':''}"></div>`).join('');
+  const events=inWeek.map(s=>{
+    const cs=Math.max(s.start,ws)-ws, ce=Math.min(s.end,ws+cols-1)-ws;
+    const left=s.start<ws, right=s.end>ws+cols-1;
+    const ico=s.mode==='Présentiel'?'🏫':s.mode==='Distanciel'?'💻':'📅';
+    const sub=[getCodeGaia(s.action), s.modalite, s.nb>1?`${s.nb} j.`:'', s.valid?'':'prévisionnelle'].filter(Boolean).join(' · ');
+    const dateTxt = s.nb>1 ? `${fmtFull(s.start)} → ${fmtFull(s.end)}` : fmtFull(s.start);
+    return `<div class="ev ${s.valid?'valid':'prov'} mode-${s.mode==='Présentiel'?'presentiel':s.mode==='Distanciel'?'distanciel':'inconnu'}${left?' cont-left':''}${right?' cont-right':''}${isReadOnlyViewer()?' locked':''}" style="grid-column:${cs+1} / ${ce+2}" ${isReadOnlyViewer()?'':`onclick="openSession(${s.row.id})"`} title="${esc(getTitre(s.action))}">
+      <span class="ev-date">${esc(dateTxt)}</span>
+      <span class="ev-top"><span class="ev-ico">${left?'◀ ':''}${ico}</span><span class="ev-title">${esc(getTitre(s.action))}</span>${right?'<span class="ev-ico">▶</span>':''}</span>
+      <span class="ev-sub">${esc(sub)}</span>
+    </div>`;
+  }).join('');
+  let empty='';
+  if(!inWeek.length){
+    const next=list.filter(s=>s.start>ws+6).sort((a,b)=>a.start-b.start)[0];
+    const prev=list.filter(s=>s.end<ws).sort((a,b)=>b.end-a.end)[0];
+    empty=`<div class="empty-week"><div>Aucune session cette semaine${list.length?'':' (aucune date de session enregistrée avec ces filtres)'}.</div>${next?`<button class="btn" onclick="goToWeekOf(${next.start})">Prochaine session : ${esc(fmtShort(next.start))} →</button>`:''}${prev?`<button class="btn" onclick="goToWeekOf(${prev.start})">← Session précédente : ${esc(fmtShort(prev.start))}</button>`:''}</div>`;
+  }
+  document.getElementById('cal-wrap').innerHTML=`<div class="week" style="--cols:${cols}"><div class="week-head">${heads}</div><div class="week-body"><div class="week-bg">${bg}</div><div class="week-events">${events}</div>${empty}</div></div>`;
+}
+
+// ---- Modale de détail (lecture seule) ----
+function openSession(id){
+  if(isReadOnlyViewer()) return;
+  const s=SESSIONS.find(x=>String(x.row.id)===String(id)); if(!s) return;
+  const a=s.action;
+  document.getElementById('modal-band').className='modal-band'+(s.valid?'':' prov');
+  document.getElementById('modal-title').textContent=getTitre(a);
+  const annee=getAnnee(a), code=getCodeGaia(a);
+  document.getElementById('modal-meta').innerHTML=[annee?`<span class="tag tag-year">${esc(annee)}</span>`:'', code?`<span class="tag tag-code">${esc(code)}</span>`:''].join(' ');
+  const modeTag = s.mode ? `<span class="tag tag-mode-${s.mode==='Présentiel'?'presentiel':'distanciel'}">${s.mode==='Présentiel'?'🏫':'💻'} ${esc(s.mode)}</span>` : '<span class="v">Non renseigné</span>';
+  const dateTxt = s.nb>1 ? `du ${esc(fmtFull(s.start))} au ${esc(fmtFull(s.end))} (${s.nb} jours)` : esc(fmtFull(s.start));
+  const structs=getStructures(a).join(', '), resp=getResponsablesAction(a).join(', ');
+  document.getElementById('modal-body').innerHTML=`
+    <div><div class="section-title">Session</div><div class="box"><div class="kv">
+      <div><span class="k">${s.nb>1?'Dates (premier jour : début)':'Date'}</span><span class="v">${dateTxt}</span></div>
+      <div><span class="k">Mode</span><span class="v">${modeTag}</span></div>
+      ${s.modalite?`<div><span class="k">Modalité (durée)</span><span class="v">${esc(s.modalite)}</span></div>`:''}
+      ${s.mode==='Présentiel'&&s.lieu?`<div><span class="k">Lieu</span><span class="v">${esc(s.lieu)}</span></div>`:''}
+      <div><span class="k">Statut</span><span class="v"><span class="tag ${s.valid?'tag-valid':'tag-prov'}">${s.valid?'Validée':'Prévisionnelle (non validée)'}</span></span></div>
+      ${s.presents!==null?`<div><span class="k">Présents</span><span class="v">${esc(new Intl.NumberFormat('fr-FR').format(s.presents))}</span></div>`:''}
+    </div></div></div>
+    <div><div class="section-title">Commentaire</div><div class="box message${s.commentaire?'':' none'}">${s.commentaire?esc(s.commentaire):'Aucun commentaire pour cette date.'}</div></div>
+    <div><div class="section-title">Action de formation</div><div class="box"><div class="kv">
+      <div><span class="k">Structure</span><span class="v">${esc(structs||'—')}</span></div>
+      <div><span class="k">Responsable(s) du suivi</span><span class="v">${esc(resp||'—')}</span></div>
+    </div></div></div>`;
+  document.getElementById('overlay').classList.remove('hidden');
+}
+function closeModal(e){ if(e && e.target!==document.getElementById('overlay')) return; document.getElementById('overlay').classList.add('hidden'); }
+function showLoader(v){ document.getElementById('loader').classList.toggle('hidden',!v); }
+
+grist.ready({requiredAccess:'full', columns:[]});
+grist.onRecords(()=>loadData());
+// Les modifications faites dans le Journal de bord (table Dates_sessions) ne déclenchent pas onRecords :
+// on relit les dates quand la page redevient visible.
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && LOADED) loadData(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+</script>
+</body>
+</html>

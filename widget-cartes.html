@@ -28,6 +28,7 @@
 <!-- Version v79 : export CSV protégé contre l'injection de formules -->
 <!-- Version v80 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v81 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) ; colonne CSV « modalite_pedagogique » -->
+<!-- Version v82 : les lieux d'une action sont lus dans les dates de session validées (table Dates_sessions) : lieu des sessions en présentiel, « À distance » pour les sessions en distanciel -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -910,7 +911,7 @@ const RESPONSABLE_SUIVI_STRUCTURE_ID = '8';
 let STATUT_ACTION_COL = 'Statut';
 let ACTION_AXE_OPTIONS = [];
 let ACTION_COL = 'id_action_referentiel';
-let SESSION_ROWS = [];
+let SESSION_ROWS = [], DATES_ROWS = [];
 let selectedId = null;
 
 const ROMAN = {I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8};
@@ -1185,16 +1186,16 @@ function sessionActionId(s) {
   return refId(s.Action || s.action || s.id_action || s.Action_formation || s.actions_formation);
 }
 
+// Lieux d'une action : dates de session validées (table Dates_sessions). Une session en distanciel compte comme « À distance ».
 function lieuValues(action) {
   const actionId = String(action && action.id || '');
   const lieux = [];
-  SESSION_ROWS
-    .filter(s => String(sessionActionId(s)) === actionId)
-    .forEach(s => {
-      for (let i = 0; i < 10; i++) {
-        const label = lieuValue(s[`Lieu${i}`]);
-        if (label) lieux.push(label);
-      }
+  DATES_ROWS
+    .filter(d => String(sessionActionId(d)) === actionId && boolValue(d.Validee))
+    .forEach(d => {
+      if (String(d.Mode || '').trim() === 'Distanciel') { lieux.push('À distance'); return; }
+      const label = lieuValue(d.Lieu);
+      if (label) lieux.push(label);
     });
   return [...new Set(lieux)];
 }
@@ -1762,7 +1763,7 @@ grist.onRecords(async (records) => {
     }
     if (toolbar) toolbar.style.display = '';
 
-    const [volets, axes, actionsAxes, structs, modals, contacts, publics, degres, annees, statuts, lieux, sessions, actionsFull, formats] = await Promise.all([
+    const [volets, axes, actionsAxes, structs, modals, contacts, publics, degres, annees, statuts, lieux, sessions, actionsFull, formats, datesSessions] = await Promise.all([
       grist.docApi.fetchTable('Volets'),
       grist.docApi.fetchTable('Axes'),
       grist.docApi.fetchTable('Actions_axes').catch(() => ({id:[], 'N° action':[], libelle:[], Libelle:[], 'Libellé':[]})),
@@ -1777,6 +1778,7 @@ grist.onRecords(async (records) => {
       grist.docApi.fetchTable('Journal_sessions').catch(() => ({id:[]})),
       grist.docApi.fetchTable('Actions_formation').catch(() => ({id:[]})),
       grist.docApi.fetchTable('Formats').catch(() => ({id:[], libelle:[]})),
+      grist.docApi.fetchTable('Dates_sessions').catch(() => ({id:[]})),
     ]);
 
     const toRows = t => (t.id||[]).map((id,i) => {
@@ -1806,6 +1808,7 @@ grist.onRecords(async (records) => {
     const stRows = toRows(statuts);
     const lRows = toRows(lieux);
     SESSION_ROWS = toRows(sessions);
+    DATES_ROWS = toRows(datesSessions);
     const actionFullRows = toRows(actionsFull);
 
     VOLET_MAP  = Object.fromEntries(vRows.map(r => [String(r.id), tableLabelFromRow(r, 'Volets')]).filter(([,v]) => v));
