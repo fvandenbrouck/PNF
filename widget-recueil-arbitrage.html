@@ -26,6 +26,7 @@
 <!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
 <!-- Version v3.13 : la classe DGRH accède à l'Arbitrage (évaluation, corrections, instruction, fusions, export avec ou sans cotation) ; le versement dans le catalogue et l'enregistrement de modèles d'export partagés lui restent fermés -->
 <!-- Version v3.14 : gel du catalogue réservé à l'Owner — « Figer » marque toutes les propositions (colonnes Gele / Date_gel) qui passent en lecture seule (corrections, évaluation, instruction, fusions) ; le versement reste possible (seul le lien est écrit) ; « Dégeler » par l'Owner. La règle d'accès sur Gele, à poser dans Grist, rend le gel effectif hors du widget -->
+<!-- Version v3.30 : le menu « Structure porteuse » ne liste plus des structures mais des périmètres, strictement : « Mon périmètre » (par défaut), « Périmètre DGRH », « Périmètre DS », « Périmètre DJEPVA » et « Tous périmètres confondus » (toutes les structures, y compris celles hors périmètre) ; l'Owner (sans périmètre propre) a « Tous périmètres confondus » par défaut. Chacun connaît ainsi toutes les actions déposées -->
 <!-- Version v3.29 : le menu « Structure porteuse » se limite au périmètre du profil de l'utilisateur (colonne Perimetre_<profil> de la table Structures) ; l'Owner voit toutes les structures -->
 <!-- Version v3.28 : message d'accès réservé générique (les profils DS et DJEPVA, ajoutés à la matrice des droits le 25/11/2026, accèdent à l'Arbitrage sans changement de code) -->
 <!-- Version v3.27 : consolidation — champs obligatoires pour enregistrer : volet, titre, objectifs, action du schéma directeur, structure porteuse (marqués d'un *, liste des champs manquants dans le message de refus) -->
@@ -197,7 +198,7 @@ let P = [], STRUCT = {}, AXE = {}, ACTION = {}, MODALITE = {}, FORMAT = {}, PUBL
 let CONTACTS = [], VOLETS = {}, DEGRES = {}, LIEUX = {}, AF = [], VERSING = false, IS_OWNER = false, RESTRICT = false, PROFIL = '', CLS = '', DROITS = {}, CLASSE = {}, GEL_ASK = '', MODE_ROW = 0, MODE_ASK = '';
 let REPCOL = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
 let SORT = 'date_desc', MODAL = null, RELOAD_TIMER = null;
-const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', structure:'', modalite:'', format:'', periode:'', du:'', au:'', rouge:false, versees:'' });
+const newF = () => ({ q:'', statuts:new Set(), axe:'', action:'', perim:'', modalite:'', format:'', periode:'', du:'', au:'', rouge:false, versees:'' });
 let FL = newF();
 
 /* ============================== utilitaires ============================== */
@@ -308,6 +309,12 @@ const droit = op => IS_OWNER || !!(DROITS[PROFIL] && DROITS[PROFIL][op]);
 const perim = p => { if (IS_OWNER) return true; const id = refId(p.Structure_porteuse); return !!id && !!STRUCT[id] && STRUCT[id]['Perimetre_' + PROFIL] === true; };
 const permis = (op, p) => droit(op) && perim(p);
 const isDefStruct = p => IS_OWNER || !refId(p.Structure_porteuse) || perim(p);   // sans structure : visible par défaut, pour ne pas être perdue
+// Menu « Périmètre » : '' = périmètre de l'utilisateur (Owner : toutes), 'all' = toutes les structures, 'p:<profil>' = périmètre d'un autre profil (colonne Perimetre_<profil>).
+const inPerimOf = (p, profil) => { const id = refId(p.Structure_porteuse); return !!id && !!STRUCT[id] && STRUCT[id]['Perimetre_' + profil] === true; };
+const perimOk = (p, v) => !v ? (!RESTRICT || isDefStruct(p)) : v === 'all' ? true : v.startsWith('p:') ? inPerimOf(p, v.slice(2)) : true;
+// Périmètres proposés (strictement) : « Mon périmètre », ceux des profils DGRH, DS et DJEPVA (colonne Perimetre_<profil> de Structures, si elle existe), « Tous périmètres confondus ».
+const PERIM_PROFILS = ['DGRH', 'DS', 'DJEPVA'];
+function perimOptions(){ return PERIM_PROFILS.filter(pr => Object.values(STRUCT).some(r => 'Perimetre_' + pr in r)).map(pr => ({ v:'p:' + pr, l:'Périmètre ' + pr })); }
 const canTabs = () => droit('Instruire');                                       // onglet Instruction
 const canVerse = () => droit('Verser');                                         // onglet Versement
 const canInstruct = p => permis('Instruire', p);
@@ -317,7 +324,7 @@ const consultation = p => !IS_OWNER && !permis('Consolider', p) && !permis('Inst
 const horsPerimetre = (p, verbe) => perim(p) ? `<div class="warn">Votre profil n'est pas autorisé à ${verbe} (table « Droits_arbitrage »).</div>` : refId(p.Structure_porteuse)
   ? `<div class="warn">Cette proposition est portée par « ${esc(sCode(refId(p.Structure_porteuse)))} », hors du périmètre de votre profil (colonne « Périmètre — ${esc(PROFIL)} » de la table Structures) : vous ne pouvez ${verbe} que les propositions des structures de votre périmètre.</div>`
   : `<div class="warn">Cette proposition n'a pas de structure porteuse : elle ne relève d'aucun périmètre (seul l'Owner peut agir dessus).</div>`;
-const visible = p => !RESTRICT || isDefStruct(p) || (!!FL.structure && String(refId(p.Structure_porteuse)) === FL.structure);
+const visible = p => perimOk(p, FL.perim);
 async function checkAccess(){
   try {
     const rows = toRows(await grist.docApi.fetchTable('Utilisateurs'));
@@ -406,12 +413,11 @@ function lockModal(p){
 /* ============================== filtres ============================== */
 function matches(p, f){
   const act = refId(p.Action_SD);
-  if (RESTRICT && !f.structure && !isDefStruct(p)) return false;
+  if (!perimOk(p, f.perim)) return false;
   if (f.q && !norm([p.id, p.Titre, p.Email_contact, sCode(refId(p.Structure_porteuse)), p.Objectifs].join(' ')).includes(norm(f.q))) return false;
   if (f.statuts.size && !f.statuts.has(statutOf(p))) return false;
   if (f.axe && String(axeOf(act)) !== f.axe) return false;
   if (f.action && String(act) !== f.action) return false;
-  if (f.structure && String(refId(p.Structure_porteuse)) !== f.structure) return false;
   if (f.modalite && String(refId(p.Modalite)) !== f.modalite) return false;
   if (f.format && String(refId(p.Format)) !== f.format) return false;
   if (f.periode && p.Periode !== f.periode) return false;
@@ -429,13 +435,13 @@ function resetF(){ FL = newF(); renderList(); }
 function opt(v, label, sel){ return `<option value="${esc(v)}"${String(sel) === String(v) ? ' selected' : ''}>${esc(label)}</option>`; }
 function filterPanel(){
   const f = FL;
-  const structIds = [...new Set(P.map(p => refId(p.Structure_porteuse)).filter(Boolean))].filter(id => IS_OWNER || (STRUCT[id] && STRUCT[id]['Perimetre_' + PROFIL] === true)).sort((a, b) => sCode(a).localeCompare(sCode(b), 'fr', { numeric:true }));
+  const perims = perimOptions();
   const acts = Object.values(ACTION).sort((a, b) => a.num_action - b.num_action);
   return `<div class="grid-f">
     <div class="fld"><label>Recherche</label><input type="text" value="${esc(f.q)}" placeholder="Titre, structure, email…" oninput="setFQ(this.value)"></div>
     <div class="fld"><label>Axe</label><select onchange="setF('axe',this.value)"><option value="">Tous</option>${Object.values(AXE).map(a => opt(a.id, clean(a.libelle), f.axe)).join('')}</select></div>
     <div class="fld"><label>Action</label><select onchange="setF('action',this.value)"><option value="">Toutes</option>${acts.map(a => opt(a.id, 'Action ' + a.num_action, f.action)).join('')}</select></div>
-    <div class="fld"><label>Structure porteuse</label><select onchange="setF('structure',this.value)"><option value="">${RESTRICT ? 'Mon périmètre (par défaut)' : 'Toutes'}</option>${structIds.map(s => opt(s, sCode(s), f.structure)).join('')}</select></div>
+    <div class="fld"><label>Structure porteuse</label><select onchange="setF('perim',this.value)"><option value="">${RESTRICT ? 'Mon périmètre' : 'Tous périmètres confondus'}</option>${perims.map(x => opt(x.v, x.l, f.perim)).join('')}${RESTRICT ? opt('all', 'Tous périmètres confondus', f.perim) : ''}</select></div>
     <div class="fld"><label>Modalité</label><select onchange="setF('modalite',this.value)"><option value="">Toutes</option>${Object.values(MODALITE).map(m => opt(m.id, clean(m.libelle), f.modalite)).join('')}</select></div>
     <div class="fld"><label>Modalité pédagogique</label><select onchange="setF('format',this.value)"><option value="">Tous</option>${Object.values(FORMAT).map(m => opt(m.id, clean(m.libelle), f.format)).join('')}</select></div>
     <div class="fld"><label>Période</label><select onchange="setF('periode',this.value)"><option value="">Toutes</option>${PERIODES.map(x => opt(x, x, f.periode)).join('')}</select></div>
