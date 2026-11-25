@@ -6,6 +6,7 @@
 <title>Calendrier des sessions — PNF</title>
 <!-- Version v1 : calendrier semaine par semaine des dates de session (table Dates_sessions, onglet « Date des sessions » du Journal de bord) ; sessions multi-jours étalées, dates validées / prévisionnelles, présentiel / distanciel ; modale de détail en lecture seule -->
 <!-- Version v2 : bascule Semaine / Mois (vue mensuelle : sessions étalées sur leurs jours, 3 lignes par semaine puis « +N », clic sur un jour ou « +N » pour ouvrir la semaine ; liste chronologique sur téléphone) ; la vue choisie est mémorisée -->
+<!-- Version v3 : troisième vue « Gantt » (année scolaire, zoom jours / semaines / mois / trimestres) : une ligne par action avec sa barre (date de début à date de fin, colorée selon le dernier statut de suivi), ses sessions (Dates_sessions) et ses jalons (COPIL, échéance) ; regroupement au choix (volet, axe, responsable de suivi, structure) ; actions annulées, fusionnées ou reportées masquées par défaut ; actions sans dates listées à part ; infobulles ; impression / PDF et export CSV -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -132,6 +133,64 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 .spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--navy); border-radius:50%; animation:spin .7s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
+/* Vue Gantt */
+.ganttbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:10px 16px 0; font-size:11px; color:var(--ink2); }
+.ganttbar label { display:inline-flex; align-items:center; gap:6px; }
+.ganttbar select { font-family:'DM Sans',sans-serif; font-size:11px; padding:6px 8px; border:1px solid var(--border); border-radius:7px; background:var(--white); color:var(--ink) !important; -webkit-text-fill-color:var(--ink) !important; }
+.g-spacer { flex:1; }
+.gantt { background:var(--white); border:1.5px solid var(--border); border-radius:12px; overflow:auto; max-height:78vh; position:relative; }
+.g-inner { position:relative; min-width:100%; width:max-content; }
+.g-head { position:sticky; top:0; z-index:5; display:flex; background:var(--bg); border-bottom:1px solid var(--border); }
+.g-corner { position:sticky; left:0; z-index:6; flex:0 0 var(--lw); width:var(--lw); background:var(--bg); border-right:1px solid var(--border); padding:8px 10px; font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink3); display:flex; align-items:flex-end; }
+.g-scale { position:relative; flex:0 0 var(--w); width:var(--w); height:46px; }
+.g-seg { position:absolute; height:23px; overflow:hidden; white-space:nowrap; border-right:1px solid var(--border); padding:4px 6px; font-family:'DM Mono',monospace; font-size:9.5px; color:var(--ink2); }
+.g-seg.top { top:0; background:var(--lilas); font-weight:700; border-bottom:1px solid var(--border); }
+.g-seg.bot { top:23px; text-align:center; padding:4px 0; }
+.g-seg.bot.we { background:rgba(232,232,245,.8); }
+.g-seg.bot.today { background:var(--navy); color:#fff; }
+.g-body { position:relative; }
+.g-lines { position:absolute; left:var(--lw); top:0; bottom:0; width:var(--w); pointer-events:none; z-index:1; }
+.g-line { position:absolute; top:0; bottom:0; width:1px; background:rgba(224,216,204,.75); }
+.g-line.major { background:rgba(138,128,112,.45); }
+.g-wk { position:absolute; top:0; bottom:0; background:rgba(232,232,245,.55); }
+.g-today { position:absolute; top:0; bottom:0; width:2px; background:var(--strawberry); }
+.g-row { display:flex; height:46px; border-bottom:1px solid rgba(224,216,204,.6); }
+.g-label { position:sticky; left:0; z-index:3; flex:0 0 var(--lw); width:var(--lw); background:#fff; border-right:1px solid var(--border); padding:4px 10px; display:flex; flex-direction:column; justify-content:center; gap:1px; min-width:0; }
+.g-label.clickable { cursor:pointer; }
+.g-label.clickable:hover { background:var(--navy-l); }
+.gl-title { font-size:11px; font-weight:500; line-height:1.25; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.gl-sub { font-family:'DM Mono',monospace; font-size:8.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.g-track { position:relative; flex:0 0 var(--w); width:var(--w); }
+.g-grp { display:flex; height:28px; border-bottom:1px solid var(--border); background:var(--lilas); cursor:pointer; }
+.g-grp .g-label { background:var(--lilas); flex-direction:row; align-items:center; gap:6px; font-family:'DM Mono',monospace; font-size:10px; font-weight:700; color:var(--navy); text-transform:uppercase; letter-spacing:.05em; }
+.g-grp .g-label small { font-weight:500; color:var(--ink3); letter-spacing:0; }
+.g-grp:hover .g-label { background:var(--navy-l); }
+.gbar { position:absolute; top:7px; height:13px; border-radius:4px; border:1.5px solid var(--ink3); background:var(--navy-l); z-index:2; cursor:default; }
+.gbar.clickable { cursor:pointer; }
+.gbar.cl { border-top-left-radius:0; border-bottom-left-radius:0; border-left-width:0; }
+.gbar.cr { border-top-right-radius:0; border-bottom-right-radius:0; border-right-width:0; }
+.gbar.st-green { background:#A8DDD8; border-color:var(--green); }
+.gbar.st-orange { background:#F9C59A; border-color:var(--orange); }
+.gbar.st-red { background:#F5A0A8; border-color:#8a2030; }
+.gbar.st-purple { background:#C8B4E0; border-color:var(--purple); }
+.gbar.st-grey { background:#d6d6d6; border-color:#666; }
+.gsess { position:absolute; top:28px; height:10px; min-width:8px; border-radius:3px; z-index:2; background:var(--navy); border:1.5px solid var(--navy); cursor:default; }
+.gsess.clickable { cursor:pointer; }
+.gsess.mode-presentiel { background:var(--green); border-color:var(--green); }
+.gsess.mode-distanciel { background:var(--purple); border-color:var(--purple); }
+.gsess.prov { background:#fff; border-style:dashed; }
+.gmile { position:absolute; top:4px; width:13px; height:13px; transform:rotate(45deg) scale(.8); z-index:3; border:2px solid #fff; box-shadow:0 0 0 1px var(--navy); background:var(--navy); }
+.gmile.ech { background:#8a2030; box-shadow:0 0 0 1px #8a2030; border-radius:50%; transform:scale(.8); }
+.g-nodates { padding:12px 16px 16px; font-size:11.5px; color:var(--ink2); line-height:1.6; }
+.g-nodates strong { font-family:'DM Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink3); display:block; margin-bottom:4px; }
+.g-nodates span { display:inline-block; background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:2px 7px; margin:2px 3px 2px 0; }
+.tip { position:fixed; z-index:400; max-width:340px; background:var(--ink); color:#fff; border-radius:9px; padding:9px 12px; font-size:11px; line-height:1.5; pointer-events:none; box-shadow:0 8px 24px rgba(0,0,0,.28); }
+.tip.hidden { display:none; }
+.tip b { font-family:'Fraunces',serif; font-weight:600; font-size:12.5px; display:block; margin-bottom:3px; }
+.tip i { font-style:normal; color:#c9c2b4; font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.05em; }
+.lg2 { display:inline-block; width:14px; height:9px; border-radius:3px; border:1.5px solid; vertical-align:middle; }
+.lgd { display:inline-block; width:9px; height:9px; transform:rotate(45deg); vertical-align:middle; }
+
 /* Vue mensuelle */
 .month { background:var(--white); border:1.5px solid var(--border); border-radius:12px; overflow:hidden; }
 .mhead, .mrow, .mbg { display:grid; grid-template-columns:repeat(var(--cols),minmax(0,1fr)); }
@@ -164,6 +223,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   .ev.cont-left, .ev.cont-right { border-radius:8px; }
   .ev-date { display:block; }
   .month .mhead, .month .mrow { display:none; }
+  .gantt { max-height:70vh; }
   .month-list { display:block; padding:8px; }
   .month-list .ev-date { display:none; }
   .modal { max-height:98vh; }
@@ -189,12 +249,22 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   <div class="seg" role="group" aria-label="Affichage">
     <button class="seg-btn active" id="seg-week" onclick="setView('week')">Semaine</button>
     <button class="seg-btn" id="seg-month" onclick="setView('month')">Mois</button>
+    <button class="seg-btn" id="seg-gantt" onclick="setView('gantt')">Gantt</button>
   </div>
   <button class="btn" onclick="shift(-1)" id="btn-prev" title="Période précédente">◀</button>
   <button class="btn" onclick="goToday()">Aujourd’hui</button>
   <button class="btn" onclick="shift(1)" id="btn-next" title="Période suivante">▶</button>
   <span class="week-label" id="week-label"></span>
   <input type="date" id="go-date" onchange="goToDate(this.value)" title="Aller à une date">
+</div>
+<div class="ganttbar" id="ganttbar" style="display:none">
+  <label>Regrouper par <select id="g-group" onchange="onGanttOption()"></select></label>
+  <label>Échelle <select id="g-zoom" onchange="onGanttZoom()"></select></label>
+  <label class="g-check"><input type="checkbox" id="g-showexcl" onchange="onGanttOption()"> Afficher les actions annulées, fusionnées ou reportées</label>
+  <span class="g-spacer"></span>
+  <button class="btn" onclick="toggleAllGroups()" id="g-fold" title="Replier ou déplier tous les groupes">⇕ Groupes</button>
+  <button class="btn" onclick="printGantt()" title="Imprimer ou enregistrer en PDF">🖨 Imprimer / PDF</button>
+  <button class="btn" onclick="exportGanttCsv()" title="Tableau des actions, sessions et jalons (ouvrable dans Excel)">⬇ Export CSV</button>
 </div>
 <div class="legend" id="legend">
   <span><i class="lg valid"></i>Validée</span>
@@ -203,6 +273,7 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
   <span>💻 Distanciel</span>
 </div>
 <div class="cal-wrap" id="cal-wrap"></div>
+<div class="tip hidden" id="tip"></div>
 <div id="loader"><div class="spinner"></div><p>Chargement du calendrier…</p></div>
 
 <div class="overlay hidden" id="overlay" onclick="closeModal(event)">
@@ -220,10 +291,11 @@ html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(-
 </div>
 
 <script>
-console.info('[widget-calendrier-sessions] v2 vue semaine / mois chargé');
+console.info('[widget-calendrier-sessions] v3 vues semaine / mois / Gantt chargé');
 // Lecture seule : ce widget ne modifie rien. Les dates se saisissent, se valident et se suppriment
 // dans l'onglet « Date des sessions » du Journal de bord (widget-journal_actions.html).
-let ALL_ACTIONS = [], DATES_ROWS = [], SESSIONS = [];
+let ALL_ACTIONS = [], DATES_ROWS = [], SESSIONS = [], JOURNAL_ROWS = [], JOURNAL_BY_ACTION = {};
+let VOLET_MAP = {}, AXE_MAP = {}, STATUS_MAP = {}, STATUT_ACTION_MAP = {};
 let CONTACT_MAP = {}, LIEU_MAP = {}, MODALITEX_MAP = {}, STRUCT_MAP = {}, ANNEE_MAP = {};
 let CURRENT_CLASS = null, ANCHOR = null, VIEW = 'week', LOADED = false;
 const MAX_LANES = 3;
@@ -317,8 +389,8 @@ async function loadData(){
       return;
     }
     ['.toolbar','#weekbar','#legend'].forEach(s=>{ const el=document.querySelector(s); if(el) el.style.display=''; });
-    const [actions, contacts, lieux, modalitex, structs, annees, dates] = await Promise.all([
-      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Structures'), fetchSafe('Annees'), fetchSafe('Dates_sessions')
+    const [actions, contacts, lieux, modalitex, structs, annees, dates, journal, statuts, statutAction, volets, axes] = await Promise.all([
+      fetchSafe('Actions_formation'), fetchSafe('Contacts'), fetchSafe('Lieux'), fetchSafe('ModaliteX'), fetchSafe('Structures'), fetchSafe('Annees'), fetchSafe('Dates_sessions'), fetchSafe('Journal_Actions'), fetchSafe('Statuts_suivi'), fetchSafe('Statut'), fetchSafe('Volets'), fetchSafe('Axes')
     ]);
     ALL_ACTIONS=toRows(actions); DATES_ROWS=toRows(dates);
     CONTACT_MAP=Object.fromEntries(toRows(contacts).map(r=>[String(r.id),contactLabel(r)]).filter(([,v])=>v));
@@ -326,8 +398,20 @@ async function loadData(){
     MODALITEX_MAP=Object.fromEntries(toRows(modalitex).map(r=>[String(r.id),modaliteXLabel(r)]).filter(([,v])=>v));
     STRUCT_MAP=Object.fromEntries(toRows(structs).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
     ANNEE_MAP=Object.fromEntries(toRows(annees).map(r=>[String(r.id), firstText(r,['Annee_scolaire','annee','Annee','Année','nom','Nom','libelle','Libelle'])]).filter(([,v])=>v));
+    JOURNAL_ROWS=toRows(journal);
+    STATUS_MAP=Object.fromEntries(toRows(statuts).map(r=>[String(r.id),firstText(r,['statut_suivi','Statut_suivi','statut','Statut','label','Label'])]).filter(([,v])=>v));
+    if(!Object.keys(STATUS_MAP).length){ ['En cours','Blocage','Arbitrage nécessaire','Report','Clôturé'].forEach((x,i)=>{ STATUS_MAP[String(i+1)]=x; }); }
+    STATUT_ACTION_MAP=Object.fromEntries(toRows(statutAction).map(r=>[String(r.id),firstText(r,['statut','Statut','label','Label'])]).filter(([,v])=>v));
+    VOLET_MAP=Object.fromEntries(toRows(volets).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    AXE_MAP=Object.fromEntries(toRows(axes).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    JOURNAL_BY_ACTION={};
+    JOURNAL_ROWS.forEach(j=>{ const id=String(refId(j.Action)); if(id) (JOURNAL_BY_ACTION[id]=JOURNAL_BY_ACTION[id]||[]).push(j); });
+    Object.values(JOURNAL_BY_ACTION).forEach(l=>l.sort((a,b)=>(dayNumOfValue(b.Date)||0)-(dayNumOfValue(a.Date)||0) || b.id-a.id));
     buildSessions();
-    if(ANCHOR===null){ ANCHOR=todayNum(); try{ const v=localStorage.getItem('pnf-calendrier-sessions-vue'); if(v==='month'||v==='week') VIEW=v; }catch(e){} }
+    if(ANCHOR===null){ ANCHOR=todayNum(); try{ const v=localStorage.getItem('pnf-calendrier-sessions-vue'); if(v==='month'||v==='week'||v==='gantt') VIEW=v; const z=localStorage.getItem('pnf-gantt-echelle'); if(ZOOMS[z]) GZOOM=z; const g=localStorage.getItem('pnf-gantt-groupe'); if(GROUPS[g]) GGROUP=g; }catch(e){} }
+    // Doyens et Référents IGESR : pas de lecture des responsables de suivi ni des structures porteuses (règles d'accès de Actions_formation).
+    document.getElementById('f-responsable-suivi').parentElement.style.display = isReadOnlyViewer() ? 'none' : '';
+    initGanttBar();
     fillFilters(); LOADED=true; render();
   }catch(e){ console.error(e); document.getElementById('cal-wrap').innerHTML=`<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
   finally{ showLoader(false); }
@@ -372,14 +456,15 @@ function filteredSessions(){
 // ANCHOR : un jour quelconque de la période affichée (semaine : sa semaine ; mois : son mois).
 function monthStartOf(n){ const d=dateOf(n); return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)/DAY_MS); }
 function addMonths(n, k){ const d=dateOf(n); return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+k, 1)/DAY_MS); }
-function shift(k){ ANCHOR = VIEW==='month' ? addMonths(ANCHOR, k) : ANCHOR + 7*k; render(); }
-function goToday(){ ANCHOR=todayNum(); render(); }
-function goToDate(v){ const n=dayNumOfValue(v); if(n!==null){ ANCHOR=n; render(); } }
-function goToWeekOf(n){ VIEW='week'; ANCHOR=n; render(); }
+function shift(k){ ANCHOR = VIEW==='gantt' ? addMonths(ANCHOR, 12*k) : VIEW==='month' ? addMonths(ANCHOR, k) : ANCHOR + 7*k; render(); }
+function goToday(){ ANCHOR=todayNum(); PENDING_SCROLL=ANCHOR; render(); }
+function goToDate(v){ const n=dayNumOfValue(v); if(n!==null){ ANCHOR=n; PENDING_SCROLL=n; render(); } }
+function goToWeekOf(n){ VIEW='week'; try{ localStorage.setItem('pnf-calendrier-sessions-vue','week'); }catch(e){} ANCHOR=n; render(); }
 function setView(v){
   if(v===VIEW) return;
   // En passant de la semaine au mois, on prend le jeudi de la semaine : le mois qui contient la majorité de ses jours.
   if(v==='month') ANCHOR = mondayOf(ANCHOR)+3;
+  if(v==='gantt') PENDING_SCROLL=todayNum();
   VIEW=v; try{ localStorage.setItem('pnf-calendrier-sessions-vue', v); }catch(e){}
   render();
 }
@@ -403,9 +488,12 @@ function render(){
   if(!LOADED) return;
   document.getElementById('seg-week').classList.toggle('active', VIEW==='week');
   document.getElementById('seg-month').classList.toggle('active', VIEW==='month');
-  document.getElementById('btn-prev').title = VIEW==='month' ? 'Mois précédent' : 'Semaine précédente';
-  document.getElementById('btn-next').title = VIEW==='month' ? 'Mois suivant' : 'Semaine suivante';
-  if(VIEW==='month') renderMonth(); else renderWeek();
+  document.getElementById('seg-gantt').classList.toggle('active', VIEW==='gantt');
+  document.getElementById('btn-prev').title = VIEW==='gantt' ? 'Année scolaire précédente' : VIEW==='month' ? 'Mois précédent' : 'Semaine précédente';
+  document.getElementById('btn-next').title = VIEW==='gantt' ? 'Année scolaire suivante' : VIEW==='month' ? 'Mois suivant' : 'Semaine suivante';
+  document.getElementById('ganttbar').style.display = VIEW==='gantt' ? '' : 'none';
+  renderLegend();
+  if(VIEW==='gantt') renderGantt(); else if(VIEW==='month') renderMonth(); else renderWeek();
 }
 function renderWeek(){
   const ws=mondayOf(ANCHOR), list=filteredSessions();
@@ -464,6 +552,251 @@ function renderMonth(){
   inMonth.forEach(s=>{ const dayKey=Math.max(s.start,m0); if(dayKey!==last){ listHtml+=`<div class="day-sep">${esc(fmtFull(dayKey))}</div>`; last=dayKey; } listHtml+=evHtml(s,{cs:0,ce:0,left:false,right:false,style:''}); });
   if(!inMonth.length) listHtml=`<div class="empty-week" style="position:static;padding:30px 10px">Aucune session ce mois-ci${list.length?'':' (aucune date de session enregistrée avec ces filtres)'}.</div>`;
   document.getElementById('cal-wrap').innerHTML=`<div class="month" style="--cols:${cols}"><div class="mhead">${heads}</div>${rows}<div class="month-list">${listHtml}</div></div>`;
+}
+
+// ===== Vue Gantt =====
+// Une ligne par action : barre (date de début → date de fin) colorée selon le dernier statut de suivi, sessions (Dates_sessions)
+// et jalons (COPIL, échéance du dernier suivi). Lecture seule.
+const ZOOMS = { jour:{px:24,label:'Jours'}, semaine:{px:8,label:'Semaines'}, mois:{px:3,label:'Mois'}, trimestre:{px:1.2,label:'Trimestres'} };
+const GROUPS = { volet:'Volet', axe:'Axe', resp:'Responsable de suivi', struct:'Structure porteuse', none:'Aucun regroupement' };
+let GZOOM='mois', GGROUP='volet', GSHOWEXCL=false, PENDING_SCROLL=null, LAST_GKEY='';
+const COLLAPSED=new Set();
+let GVIEW=null;           // dernier modèle calculé (utilisé par l'impression et l'export)
+function glw(){ return window.innerWidth<=820 ? 150 : 260; }
+function schoolYearOf(n){ const d=dateOf(n); return d.getUTCMonth()>=8 ? d.getUTCFullYear() : d.getUTCFullYear()-1; }
+function syBounds(sy){ return [Math.floor(Date.UTC(sy,8,1)/DAY_MS), Math.floor(Date.UTC(sy+1,8,1)/DAY_MS)-1]; }
+function getVolet(a){ return a.id_volet ? labelFor(a.id_volet, VOLET_MAP) : ''; }
+function getAxe(a){ return a.id_axe ? labelFor(a.id_axe, AXE_MAP) : ''; }
+function statutActionLabel(a){ const v=a.Statut; return v ? labelFor(v, STATUT_ACTION_MAP) : ''; }
+function isExcludedAction(a){ const l=norm(statutActionLabel(a)); return l.includes('annul') || l.includes('fusionn') || l.includes('report'); }
+function statusKey(label){ const s=norm(label); if(s.includes('en cours')) return 'st-green'; if(s.includes('blocage')) return 'st-orange'; if(s.includes('arbitrage')) return 'st-red'; if(s.includes('report')) return 'st-purple'; if(s.includes('cloture')) return 'st-grey'; return ''; }
+function lastEntry(actionId){ return (JOURNAL_BY_ACTION[String(actionId)]||[])[0] || null; }
+function lastStatusLabel(actionId){ const e=lastEntry(actionId); return e && e.Statut_suivi ? labelFor(e.Statut_suivi, STATUS_MAP) : ''; }
+function isCopilRow(j){ return String(j&&j.Type_entree||'').trim()==='COPIL'; }
+function fmtD(n){ return n===null||n===undefined ? '—' : new Intl.DateTimeFormat('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'UTC'}).format(dateOf(n)); }
+// Les Doyens et Référents IGESR ne voient ni statuts, ni échéances, ni responsables : seulement les COPIL (comme le calendrier des COPIL).
+function jalonsOf(a){
+  const out=[]; const list=JOURNAL_BY_ACTION[String(a.id)]||[];
+  list.filter(isCopilRow).forEach(j=>{ const d=dayNumOfValue(j.Date); if(d!==null) out.push({type:'copil', day:d, heure:j.Heure_copil||''}); });
+  if(!isReadOnlyViewer() && list[0]){ const d=dayNumOfValue(list[0].Echeance); if(d!==null) out.push({type:'ech', day:d}); }
+  return out;
+}
+function groupKeysOf(a){
+  if(GGROUP==='volet') return [getVolet(a)||'Sans volet'];
+  if(GGROUP==='axe') return [getAxe(a)||'Sans axe'];
+  if(GGROUP==='resp'){ const r=getResponsablesAction(a); return r.length?r:['Sans responsable de suivi']; }
+  if(GGROUP==='struct'){ const r=getStructures(a); return r.length?r:['Sans structure']; }
+  return [''];
+}
+function ganttModel(){
+  const sy=schoolYearOf(ANCHOR), [rs,re]=syBounds(sy);
+  const q=searchNorm(document.getElementById('f-search').value).trim();
+  const annee=document.getElementById('f-annee').value, mode=document.getElementById('f-mode').value, etat=document.getElementById('f-etat').value, resp=document.getElementById('f-responsable-suivi').value;
+  const sessBy={}; SESSIONS.forEach(s=>{ (sessBy[String(s.action.id)]=sessBy[String(s.action.id)]||[]).push(s); });
+  const rows=[], noDates=[]; let nSess=0;
+  ALL_ACTIONS.forEach(a=>{
+    if(annee && getAnnee(a)!==annee) return;
+    if(resp && !getResponsablesAction(a).includes(resp)) return;
+    if(!GSHOWEXCL && isExcludedAction(a)) return;
+    let sess=(sessBy[String(a.id)]||[]).slice().sort((x,y)=>x.start-y.start);
+    const sessFilter = mode || etat;
+    if(mode) sess=sess.filter(s=>s.mode===mode);
+    if(etat==='valid') sess=sess.filter(s=>s.valid); else if(etat==='prov') sess=sess.filter(s=>!s.valid);
+    if(sessFilter && !sess.length) return;
+    if(q){ const txt=searchNorm([getTitre(a), getCodeGaia(a), getAnnee(a), getVolet(a), getAxe(a), ...getStructures(a), ...getResponsablesAction(a), ...sess.map(s=>[s.mode,s.modalite,s.lieu,s.commentaire].join(' '))].join(' ')); if(!txt.includes(q)) return; }
+    let start=dayNumOfValue(a.date_debut), end=dayNumOfValue(a.date_fin);
+    if(start!==null && end===null) end=start; if(end!==null && start===null) start=end;
+    if(start!==null && end<start) end=start;                       // dates incohérentes dans les données : repère d'un seul jour
+    const jal=jalonsOf(a);
+    const sessIn=sess.filter(s=>s.start<=re && s.end>=rs), jalIn=jal.filter(j=>j.day>=rs && j.day<=re);
+    const barIn = start!==null && start<=re && end>=rs;
+    if(barIn || sessIn.length || jalIn.length){ rows.push({a, start, end, bar:barIn, sess:sessIn, jal:jalIn, status:isReadOnlyViewer()?'':lastStatusLabel(a.id)}); nSess+=sessIn.length; }
+    else if(start===null && !sess.length && !jal.length) noDates.push(a);
+  });
+  const key=r=>r.start!==null?r.start:(r.sess[0]?r.sess[0].start:(r.jal[0]?r.jal[0].day:1e9));
+  const groups={};
+  rows.sort((x,y)=>key(x)-key(y) || getTitre(x.a).localeCompare(getTitre(y.a),'fr'));
+  rows.forEach(r=>{ groupKeysOf(r.a).forEach(k=>{ (groups[k]=groups[k]||[]).push(r); }); });
+  const names=Object.keys(groups).sort((a,b)=>{ const sa=/^Sans /.test(a), sb=/^Sans /.test(b); return sa!==sb ? (sa?1:-1) : a.localeCompare(b,'fr',{numeric:true}); });
+  return { sy, rs, re, groups:names.map(n=>({name:n, rows:groups[n]})), nActions:rows.length, nSess, noDates };
+}
+function scaleSegments(rs, re, zoom){
+  const top=[], bot=[]; const add=(arr,from,to,label,cls)=>arr.push({from:Math.max(from,rs), to:Math.min(to,re), label, cls:cls||''});
+  const monthsOf=(fn)=>{ let n=rs; while(n<=re){ const d=dateOf(n); const nx=Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 1)/DAY_MS); fn(n,nx-1,d); n=nx; } };
+  const yearsOf=()=>{ let n=rs; while(n<=re){ const d=dateOf(n); const nx=Math.floor(Date.UTC(d.getUTCFullYear()+1,0,1)/DAY_MS); add(top,n,nx-1,String(d.getUTCFullYear())); n=nx; } };
+  if(zoom==='jour' || zoom==='semaine'){
+    monthsOf((f,t,d)=>add(top,f,t,`${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`));
+    if(zoom==='jour'){ const today=todayNum(); for(let n=rs;n<=re;n++){ const dow=(dateOf(n).getUTCDay()+6)%7; add(bot,n,n,`${DAY_NAMES[dow].charAt(0)}${dateOf(n).getUTCDate()}`, (dow>=5?'we ':'')+(n===today?'today':'')); } }
+    else { let n=mondayOf(rs); while(n<=re){ add(bot,n,n+6,`S${isoWeek(n)}`); n+=7; } }
+  } else if(zoom==='mois'){
+    yearsOf(); monthsOf((f,t,d)=>add(bot,f,t,MONTHS[d.getUTCMonth()].slice(0,4)+(MONTHS[d.getUTCMonth()].length>4?'.':'')));
+  } else {
+    yearsOf(); let n=rs; while(n<=re){ const d=dateOf(n); const q=Math.floor(d.getUTCMonth()/3); const nx=Math.floor(Date.UTC(d.getUTCFullYear(), q*3+3, 1)/DAY_MS); add(bot,n,nx-1,`T${q+1}`); n=nx; }
+  }
+  return {top,bot};
+}
+function ganttHtml(model, px, lw){
+  const {rs,re}=model, days=re-rs+1, W=Math.round(days*px), X=n=>(n-rs)*px;
+  const {top,bot}=scaleSegments(rs,re,px>=20?'jour':px>=6?'semaine':px>=2?'mois':'trimestre');
+  const seg=(s,pos)=>`<div class="g-seg ${pos} ${s.cls}" style="left:${X(s.from)}px;width:${(s.to-s.from+1)*px}px">${esc(s.label)}</div>`;
+  const head=`<div class="g-head"><div class="g-corner">Actions · ${model.nActions}</div><div class="g-scale">${top.map(s=>seg(s,'top')).join('')}${bot.map(s=>seg(s,'bot')).join('')}</div></div>`;
+  let lines=''; const major=new Set(top.map(s=>s.from));
+  (px>=6?bot:top).forEach(s=>{ if(s.from>rs) lines+=`<div class="g-line${major.has(s.from)?' major':''}" style="left:${X(s.from)}px"></div>`; });
+  if(px>=20) for(let n=rs;n<=re;n++){ const dow=(dateOf(n).getUTCDay()+6)%7; if(dow>=5) lines+=`<div class="g-wk" style="left:${X(n)}px;width:${px}px"></div>`; }
+  const today=todayNum(); if(today>=rs && today<=re) lines+=`<div class="g-today" style="left:${X(today)+px/2-1}px"></div>`;
+  const full=!isReadOnlyViewer();
+  const rowHtml=r=>{
+    const a=r.a, st=statusKey(r.status);
+    let t='';
+    if(r.bar){ const s0=Math.max(r.start,rs), e0=Math.min(r.end,re); t+=`<div class="gbar ${st}${r.start<rs?' cl':''}${r.end>re?' cr':''}${full?' clickable':''}" style="left:${X(s0)}px;width:${Math.max((e0-s0+1)*px,4)}px" data-tip="a:${a.id}" ${full?`onclick="openAction(${a.id})"`:''}></div>`; }
+    r.sess.forEach(s=>{ const s0=Math.max(s.start,rs), e0=Math.min(s.end,re); t+=`<div class="gsess ${s.valid?'valid':'prov'} mode-${s.mode==='Présentiel'?'presentiel':s.mode==='Distanciel'?'distanciel':'inconnu'}${full?' clickable':''}" style="left:${X(s0)}px;width:${Math.max((e0-s0+1)*px,8)}px" data-tip="s:${s.row.id}" ${full?`onclick="openSession(${s.row.id})"`:''}></div>`; });
+    r.jal.forEach(j=>{ t+=`<div class="gmile ${j.type}" style="left:${X(j.day)+px/2-6}px" data-tip="j:${a.id}:${j.type}:${j.day}"></div>`; });
+    const sub=[getCodeGaia(a), r.start!==null?`${fmtD(r.start)} → ${fmtD(r.end)}`:'sans dates'].filter(Boolean).join(' · ');
+    return `<div class="g-row"><div class="g-label${full?' clickable':''}" ${full?`onclick="openAction(${a.id})"`:''} data-tip="a:${a.id}"><span class="gl-title">${esc(getTitre(a))}</span><span class="gl-sub">${esc(sub)}</span></div><div class="g-track">${t}</div></div>`;
+  };
+  let body='';
+  model.groups.forEach(g=>{
+    if(GGROUP==='none'){ body+=g.rows.map(rowHtml).join(''); return; }
+    const closed=COLLAPSED.has(g.name);
+    body+=`<div class="g-grp" onclick="toggleGroup(this.dataset.g)" data-g="${esc(g.name)}"><div class="g-label"><span>${closed?'▸':'▾'}</span><span>${esc(g.name)}</span><small>${g.rows.length}</small></div><div class="g-track"></div></div>`;
+    if(!closed) body+=g.rows.map(rowHtml).join('');
+  });
+  return `<div class="gantt" id="gantt" style="--lw:${lw}px;--w:${W}px"><div class="g-inner">${head}<div class="g-body"><div class="g-lines">${lines}</div>${body}</div></div></div>`;
+}
+function renderLegend(){
+  const lg=document.getElementById('legend');
+  if(VIEW!=='gantt'){ lg.innerHTML='<span><i class="lg valid"></i>Validée</span><span><i class="lg prov"></i>Prévisionnelle (non validée)</span><span>🏫 Présentiel</span><span>💻 Distanciel</span>'; return; }
+  const sw=(bg,bd)=>`<i class="lg2" style="background:${bg};border-color:${bd}"></i>`;
+  lg.innerHTML = (isReadOnlyViewer() ? `<span>${sw('#e8edf5','#8a8070')}Période de l’action</span>` : `<span>Période de l’action, selon le dernier suivi :</span><span>${sw('#A8DDD8','#1a6b65')}En cours</span><span>${sw('#F9C59A','#8a4a10')}Blocage</span><span>${sw('#F5A0A8','#8a2030')}Arbitrage</span><span>${sw('#C8B4E0','#4e3370')}Report</span><span>${sw('#d6d6d6','#666')}Clôturé</span>`)
+    + `<span>Sessions : ${sw('#1a6b65','#1a6b65')}présentiel ${sw('#4e3370','#4e3370')}distanciel <i class="lg2" style="background:#fff;border-color:#1B3A6B;border-style:dashed"></i>prévisionnelle</span><span><i class="lgd" style="background:#1B3A6B"></i>COPIL</span>` + (isReadOnlyViewer()?'':`<span><i class="lgd" style="background:#8a2030;border-radius:50%"></i>Échéance</span>`) + `<span><i class="lg2" style="border-color:#F5A0A8;border-width:0 0 0 2px;background:none;height:11px"></i>Aujourd’hui</span>`;
+}
+function initGanttBar(){
+  const full=!isReadOnlyViewer();
+  const gs=document.getElementById('g-group'), zs=document.getElementById('g-zoom');
+  if(!gs.options.length){
+    Object.entries(GROUPS).forEach(([k,l])=>{ if(!full && (k==='resp'||k==='struct')) return; gs.add(new Option(l,k)); });
+    Object.entries(ZOOMS).forEach(([k,z])=>zs.add(new Option(z.label,k)));
+  }
+  if(!full && (GGROUP==='resp'||GGROUP==='struct')) GGROUP='volet';
+  gs.value=GGROUP; zs.value=GZOOM; document.getElementById('g-showexcl').checked=GSHOWEXCL;
+}
+function onGanttOption(){ GGROUP=document.getElementById('g-group').value; GSHOWEXCL=document.getElementById('g-showexcl').checked; try{ localStorage.setItem('pnf-gantt-groupe',GGROUP); }catch(e){} render(); }
+function onGanttZoom(){
+  const el=document.getElementById('gantt'); const m=GVIEW; let center=null;
+  if(el && m) center=Math.floor(m.rs + (el.scrollLeft + (el.clientWidth-glw())/2)/ZOOMS[GZOOM].px);
+  GZOOM=document.getElementById('g-zoom').value; try{ localStorage.setItem('pnf-gantt-echelle',GZOOM); }catch(e){}
+  PENDING_SCROLL=center; render();
+}
+function toggleGroup(name){ if(COLLAPSED.has(name)) COLLAPSED.delete(name); else COLLAPSED.add(name); render(); }
+function toggleAllGroups(){ if(!GVIEW) return; const names=GVIEW.groups.map(g=>g.name); const allClosed=names.every(n=>COLLAPSED.has(n)); names.forEach(n=>allClosed?COLLAPSED.delete(n):COLLAPSED.add(n)); render(); }
+function renderGantt(){
+  const m=ganttModel(); GVIEW=m; const px=ZOOMS[GZOOM].px, lw=glw();
+  const prev=document.getElementById('gantt'); const keep = prev ? {l:prev.scrollLeft,t:prev.scrollTop} : null;
+  document.getElementById('week-label').innerHTML=`Année scolaire ${m.sy}-${m.sy+1}<small>${m.nActions} action${m.nActions>1?'s':''} · ${m.nSess} session${m.nSess>1?'s':''}</small>`;
+  document.getElementById('go-date').value=isoOf(Math.min(Math.max(todayNum(),m.rs),m.re));
+  document.getElementById('count').textContent=`${m.nActions} action${m.nActions>1?'s':''} · ${m.nSess} session${m.nSess>1?'s':''}`;
+  let html = m.nActions ? ganttHtml(m, px, lw) : `<div class="empty"><p>Aucune action à afficher</p><span>Année scolaire ${m.sy}-${m.sy+1} : aucune action, session ni jalon avec ces filtres.</span></div>`;
+  if(m.noDates.length) html+=`<div class="g-nodates"><strong>Actions sans dates de début et de fin (${m.noDates.length})</strong>${m.noDates.map(a=>`<span>${esc(getCodeGaia(a)?getCodeGaia(a)+' · ':'')}${esc(getTitre(a))}</span>`).join('')}</div>`;
+  document.getElementById('cal-wrap').innerHTML=html;
+  const el=document.getElementById('gantt'); if(!el) return;
+  const gkey=`${m.sy}|${GZOOM}`;
+  if(PENDING_SCROLL!==null && PENDING_SCROLL>=m.rs && PENDING_SCROLL<=m.re){ el.scrollLeft=Math.max(0,(PENDING_SCROLL-m.rs)*px-(el.clientWidth-lw)/2); }
+  else if(keep && gkey===LAST_GKEY){ el.scrollLeft=keep.l; el.scrollTop=keep.t; }
+  else { const t=todayNum(); el.scrollLeft = (t>=m.rs && t<=m.re) ? Math.max(0,(t-m.rs)*px-(el.clientWidth-lw)/2) : 0; }
+  PENDING_SCROLL=null; LAST_GKEY=gkey;
+}
+// ---- Infobulles ----
+function tipHtml(spec){
+  const [kind,...p]=spec.split(':'); const full=!isReadOnlyViewer();
+  if(kind==='a'){
+    const a=ALL_ACTIONS.find(x=>String(x.id)===p[0]); if(!a) return '';
+    const s=dayNumOfValue(a.date_debut), e=dayNumOfValue(a.date_fin); const last=lastEntry(a.id);
+    let h=`<b>${esc(getTitre(a))}</b>${getCodeGaia(a)?esc(getCodeGaia(a))+' · ':''}${s!==null?`${fmtD(s)} → ${fmtD(Math.max(s,e))}`:'sans dates'}`;
+    if(full){
+      const st=getStructures(a).join(', '), rp=getResponsablesAction(a).join(', ');
+      if(st) h+=`<br><i>Structure</i> ${esc(st)}`; if(rp) h+=`<br><i>Suivi</i> ${esc(rp)}`;
+      if(last){ if(last.Statut_suivi) h+=`<br><i>Dernier statut</i> ${esc(labelFor(last.Statut_suivi,STATUS_MAP))}`; if(last.Prochaine_etape) h+=`<br><i>Prochaine étape</i> ${esc(String(last.Prochaine_etape).slice(0,220))}`; }
+    }
+    return h;
+  }
+  if(kind==='s'){
+    const s=SESSIONS.find(x=>String(x.row.id)===p[0]); if(!s) return '';
+    return `<b>${esc(getTitre(s.action))}</b>Session · ${s.nb>1?`${esc(fmtD(s.start))} → ${esc(fmtD(s.end))}`:esc(fmtD(s.start))}<br>${esc([s.mode||'mode à compléter', s.modalite, s.mode==='Présentiel'?s.lieu:'', s.valid?'validée':'prévisionnelle'].filter(Boolean).join(' · '))}${full&&s.commentaire?`<br><i>Commentaire</i> ${esc(s.commentaire.slice(0,200))}`:''}`;
+  }
+  if(kind==='j'){
+    const a=ALL_ACTIONS.find(x=>String(x.id)===p[0]); if(!a) return '';
+    return `<b>${esc(getTitre(a))}</b>${p[1]==='copil'?'COPIL':'Échéance du dernier suivi'} · ${esc(fmtD(Number(p[2])))}`;
+  }
+  return '';
+}
+function placeTip(e){ const tip=document.getElementById('tip'); const w=tip.offsetWidth, h=tip.offsetHeight; let x=e.clientX+14, y=e.clientY+16; if(x+w>window.innerWidth-8) x=e.clientX-w-14; if(y+h>window.innerHeight-8) y=e.clientY-h-12; tip.style.left=Math.max(4,x)+'px'; tip.style.top=Math.max(4,y)+'px'; }
+document.addEventListener('mouseover', e=>{ const t=e.target.closest && e.target.closest('[data-tip]'); const tip=document.getElementById('tip'); if(!t){ tip.classList.add('hidden'); return; } const h=tipHtml(t.dataset.tip); if(!h){ tip.classList.add('hidden'); return; } tip.innerHTML=h; tip.classList.remove('hidden'); placeTip(e); });
+document.addEventListener('mousemove', e=>{ const tip=document.getElementById('tip'); if(!tip.classList.contains('hidden')) placeTip(e); });
+document.addEventListener('scroll', ()=>document.getElementById('tip').classList.add('hidden'), true);
+// ---- Fiche d'une action (Chefferie, Responsables de suivi, Owner) ----
+function openAction(id){
+  if(isReadOnlyViewer()) return;
+  const a=ALL_ACTIONS.find(x=>String(x.id)===String(id)); if(!a) return;
+  document.getElementById('modal-band').className='modal-band';
+  document.getElementById('modal-title').textContent=getTitre(a);
+  const annee=getAnnee(a), code=getCodeGaia(a), last=lastEntry(a.id), st=lastStatusLabel(a.id), vol=getVolet(a), axe=getAxe(a);
+  document.getElementById('modal-meta').innerHTML=[annee?`<span class="tag tag-year">${esc(annee)}</span>`:'', code?`<span class="tag tag-code">${esc(code)}</span>`:'', vol?`<span class="tag tag-prov">${esc(vol)}</span>`:'', axe?`<span class="tag tag-prov">${esc(axe)}</span>`:''].join(' ');
+  const s0=dayNumOfValue(a.date_debut), e0=dayNumOfValue(a.date_fin);
+  const sess=SESSIONS.filter(s=>String(s.action.id)===String(a.id)).sort((x,y)=>x.start-y.start);
+  const cop=(JOURNAL_BY_ACTION[String(a.id)]||[]).filter(isCopilRow).map(j=>dayNumOfValue(j.Date)).filter(n=>n!==null).sort((x,y)=>x-y);
+  const sl=sess.map(s=>`<li>${esc(s.nb>1?`${fmtD(s.start)} → ${fmtD(s.end)}`:fmtD(s.start))} · ${esc([s.mode||'mode à compléter', s.modalite, s.mode==='Présentiel'?s.lieu:''].filter(Boolean).join(' · '))} · <span class="tag ${s.valid?'tag-valid':'tag-prov'}">${s.valid?'validée':'prévisionnelle'}</span>${s.commentaire?`<br><small>${esc(s.commentaire)}</small>`:''}</li>`).join('');
+  document.getElementById('modal-body').innerHTML=`
+    <div><div class="section-title">Action</div><div class="box"><div class="kv">
+      <div><span class="k">Période</span><span class="v">${s0!==null?esc(`${fmtD(s0)} → ${fmtD(Math.max(s0,e0))}`):'Non renseignée'}</span></div>
+      <div><span class="k">Dernier statut de suivi</span><span class="v">${esc(st||'—')}</span></div>
+      <div><span class="k">Statut de l’action</span><span class="v">${esc(statutActionLabel(a)||'—')}</span></div>
+      <div><span class="k">Structure</span><span class="v">${esc(getStructures(a).join(', ')||'—')}</span></div>
+      <div><span class="k">Responsable(s) du suivi</span><span class="v">${esc(getResponsablesAction(a).join(', ')||'—')}</span></div>
+    </div></div></div>
+    ${last&&last.Prochaine_etape?`<div><div class="section-title">Prochaine étape (dernier suivi)</div><div class="box message">${esc(last.Prochaine_etape)}</div></div>`:''}
+    <div><div class="section-title">Sessions (${sess.length})</div><div class="box">${sess.length?`<ul style="padding-left:18px;display:grid;gap:6px;font-size:12.5px">${sl}</ul>`:'<span class="v">Aucune date de session.</span>'}</div></div>
+    <div><div class="section-title">COPIL (${cop.length})</div><div class="box"><span class="v">${cop.length?esc(cop.map(fmtD).join(' · ')):'Aucun COPIL enregistré.'}</span></div></div>`;
+  document.getElementById('overlay').classList.remove('hidden');
+}
+// ---- Impression / PDF : année scolaire entière à l'échelle « mois », ajustée à la largeur d'une page paysage ----
+function printGantt(){
+  if(!GVIEW) return; const m=GVIEW; if(!m.nActions){ return; }
+  const lw=260, px=ZOOMS.mois.px, W=Math.round((m.re-m.rs+1)*px), scale=Math.min(1, 1040/(lw+W));
+  const css=document.querySelector('style').textContent;
+  const fonts=new URL('fonts/fonts.css', location.href).href;
+  const title=`PNF — Gantt ${m.sy}-${m.sy+1} · regroupé par ${GROUPS[GGROUP].toLowerCase()}`;
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${esc(title)}</title><link href="${fonts}" rel="stylesheet"><style>${css}
+    @page { size: landscape; margin: 8mm; }
+    html, body { background:#fff; }
+    * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    h1 { font-family:'Fraunces',serif; font-size:16px; font-weight:500; margin:4px 0; }
+    p.sub { font-family:'DM Mono',monospace; font-size:9px; color:#8a8070; margin:0 0 8px; }
+    .gantt { max-height:none; overflow:visible; border:none; border-radius:0; }
+    .g-inner { zoom:${scale}; }
+    .g-head, .g-corner, .g-label { position:static !important; }
+    .g-row, .g-grp { break-inside:avoid; }
+    .tip { display:none; }
+  </style></head><body><h1>${esc(title)}</h1><p class="sub">Imprimé le ${esc(fmtD(todayNum()))} · ${m.nActions} action${m.nActions>1?'s':''} · ${m.nSess} session${m.nSess>1?'s':''}${document.getElementById('g-showexcl').checked?' · actions annulées, fusionnées ou reportées incluses':''}</p>${ganttHtml(m, px, lw)}</body></html>`;
+  const w=window.open('', '_blank');
+  if(!w){ window.print(); return; }
+  w.document.open(); w.document.write(html); w.document.close(); w.focus();
+  setTimeout(()=>{ try{ w.print(); }catch(e){ console.warn(e); } }, 600);
+}
+// ---- Export CSV (ouvrable dans Excel) : une ligne par action, session ou jalon, selon les filtres ----
+function csvCell(v){ let t=String(v??'').replace(/\r?\n/g,' '); if(/^[=+\-@\t\r]/.test(t)) t="'"+t; return /[;"\n]/.test(t) ? '"'+t.replace(/"/g,'""')+'"' : t; }
+function exportGanttCsv(){
+  if(!GVIEW) return; const full=!isReadOnlyViewer(); const iso=n=>n===null||n===undefined?'':isoOf(n);
+  const head=['type','code_gaia','titre','annee','volet','axe', ...(full?['structure','responsables_suivi','dernier_statut_suivi']:[]), 'debut','fin','mode','modalite','lieu','etat_session','presents','commentaire'];
+  const rows=[]; const seen=new Set();
+  GVIEW.groups.forEach(g=>g.rows.forEach(r=>{ if(seen.has(r.a.id)) return; seen.add(r.a.id); const a=r.a;
+    const base=[getCodeGaia(a),getTitre(a),getAnnee(a),getVolet(a),getAxe(a), ...(full?[getStructures(a).join(', '),getResponsablesAction(a).join(', '),lastStatusLabel(a.id)]:[])];
+    rows.push(['action',...base, iso(dayNumOfValue(a.date_debut)), iso(dayNumOfValue(a.date_fin)),'','','','','','']);
+    SESSIONS.filter(s=>String(s.action.id)===String(a.id)).sort((x,y)=>x.start-y.start).forEach(s=>rows.push(['session',...base, iso(s.start), iso(s.end), s.mode, s.modalite, s.mode==='Présentiel'?s.lieu:'', s.valid?'validée':'prévisionnelle', s.presents??'', full?s.commentaire:'']));
+    jalonsOf(a).sort((x,y)=>x.day-y.day).forEach(j=>rows.push([j.type==='copil'?'COPIL':'échéance',...base, iso(j.day), iso(j.day),'','','','','','']));
+  }));
+  GVIEW.noDates.forEach(a=>rows.push(['action sans dates',getCodeGaia(a),getTitre(a),getAnnee(a),getVolet(a),getAxe(a), ...(full?[getStructures(a).join(', '),getResponsablesAction(a).join(', '),lastStatusLabel(a.id)]:[]),'','','','','','','','']));
+  const csv='﻿'+[head,...rows].map(r=>r.map(csvCell).join(';')).join('\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})); const el=document.createElement('a'); el.href=url; el.download=`gantt_pnf_${GVIEW.sy}-${GVIEW.sy+1}_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(el); el.click(); el.remove(); URL.revokeObjectURL(url);
 }
 
 // ---- Modale de détail (lecture seule) ----
