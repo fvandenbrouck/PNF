@@ -26,6 +26,7 @@
 <!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
 <!-- Version v3.13 : la classe DGRH accède à l'Arbitrage (évaluation, corrections, instruction, fusions, export avec ou sans cotation) ; le versement dans le catalogue et l'enregistrement de modèles d'export partagés lui restent fermés -->
 <!-- Version v3.14 : gel du catalogue réservé à l'Owner — « Figer » marque toutes les propositions (colonnes Gele / Date_gel) qui passent en lecture seule (corrections, évaluation, instruction, fusions) ; le versement reste possible (seul le lien est écrit) ; « Dégeler » par l'Owner. La règle d'accès sur Gele, à poser dans Grist, rend le gel effectif hors du widget -->
+<!-- Version v3.29 : le menu « Structure porteuse » se limite au périmètre du profil de l'utilisateur (colonne Perimetre_<profil> de la table Structures) ; l'Owner voit toutes les structures -->
 <!-- Version v3.28 : message d'accès réservé générique (les profils DS et DJEPVA, ajoutés à la matrice des droits le 25/11/2026, accèdent à l'Arbitrage sans changement de code) -->
 <!-- Version v3.27 : consolidation — champs obligatoires pour enregistrer : volet, titre, objectifs, action du schéma directeur, structure porteuse (marqués d'un *, liste des champs manquants dans le message de refus) -->
 <!-- Version v3.26 : consultation seule — sur une proposition où le profil n'a aucune procédure permise (hors périmètre, ou profil limité à Visualiser), la fiche n'affiche que la version déposée par le porteur (ni version consolidée, ni volet, ni analyse, ni instruction, ni versement) ; message de refus précisé quand le périmètre est bon mais que le droit manque -->
@@ -428,7 +429,7 @@ function resetF(){ FL = newF(); renderList(); }
 function opt(v, label, sel){ return `<option value="${esc(v)}"${String(sel) === String(v) ? ' selected' : ''}>${esc(label)}</option>`; }
 function filterPanel(){
   const f = FL;
-  const structIds = [...new Set(P.map(p => refId(p.Structure_porteuse)).filter(Boolean))].sort((a, b) => sCode(a).localeCompare(sCode(b), 'fr', { numeric:true }));
+  const structIds = [...new Set(P.map(p => refId(p.Structure_porteuse)).filter(Boolean))].filter(id => IS_OWNER || (STRUCT[id] && STRUCT[id]['Perimetre_' + PROFIL] === true)).sort((a, b) => sCode(a).localeCompare(sCode(b), 'fr', { numeric:true }));
   const acts = Object.values(ACTION).sort((a, b) => a.num_action - b.num_action);
   return `<div class="grid-f">
     <div class="fld"><label>Recherche</label><input type="text" value="${esc(f.q)}" placeholder="Titre, structure, email…" oninput="setFQ(this.value)"></div>

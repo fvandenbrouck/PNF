@@ -29,6 +29,7 @@
 <!-- Version v80 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v81 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) ; colonne CSV « modalite_pedagogique » -->
 <!-- Version v82 : les lieux d'une action sont lus dans les dates de session validées (table Dates_sessions) : lieu des sessions en présentiel, « À distance » pour les sessions en distanciel -->
+<!-- Version v83 : les menus « Structure » se limitent au périmètre de la classe de l'utilisateur (colonne Perimetre_<classe> de la table Structures) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -1727,6 +1728,30 @@ function detectExistingColumn(records, candidates, fallback) {
 }
 
 // ── Init Grist ────────────────────────────────────────────────────────────
+// ---- Périmètre des menus « Structure » ----
+// Chaque utilisateur ne voit dans les menus « Structure » que les structures de son périmètre : colonne Perimetre_<classe> de la table
+// Structures (classe = Utilisateurs.ClasseNom). Pas de restriction pour l'Owner, pour une classe sans colonne de périmètre
+// (Referent_IGESR, Doyen, Public…) ni si la table n'est pas lisible : le menu garde alors toutes les structures.
+// Une classe qui lit toute la table Utilisateurs est l'Owner ou la Chefferie : elle est considérée comme Owner si elle peut lire
+// Modeles_export (table réservée à l'Owner et aux classes DGRH / DS / DJEPVA), sinon comme Chefferie.
+let PERIM_IDS = null, PERIM_LABELS = null;
+function perimNorm(s){ return String(s||'').replace(/\s+/g,' ').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+async function resolvePerimeter(structRows){
+  PERIM_IDS = null; PERIM_LABELS = null;
+  try{
+    const u = await grist.docApi.fetchTable('Utilisateurs'); const n = (u.id||[]).length; let cls = '';
+    if(n===1) cls = (u.ClasseNom||[])[0] || '';
+    else if(n>1){ try{ await grist.docApi.fetchTable('Modeles_export'); return; }catch(e){ cls = 'Chefferie'; } }
+    const col = 'Perimetre_' + cls;
+    if(!cls || !structRows || !structRows.length || !(col in structRows[0])) return;
+    const ok = structRows.filter(r=>r[col]===true);
+    PERIM_IDS = new Set(ok.map(r=>String(r.id)));
+    PERIM_LABELS = new Set(ok.flatMap(r=>[r.libelle, r.code]).map(perimNorm).filter(Boolean));
+  }catch(e){ console.warn('[perimetre] périmètre des structures indisponible, menus non restreints :', e); PERIM_IDS = null; PERIM_LABELS = null; }
+}
+const inPerimLabel = l => !PERIM_LABELS || PERIM_LABELS.has(perimNorm(l));
+const inPerimId = id => !PERIM_IDS || PERIM_IDS.has(String(id));
+
 grist.ready({ requiredAccess: 'full', columns: [] });
 
 // Garde-fou d'affichage : Utilisateurs n'est lisible que sur sa propre ligne (sauf Owner qui voit tout).
@@ -1819,6 +1844,7 @@ grist.onRecords(async (records) => {
       .filter(o => o.value && o.label)
       .sort((a,b) => String(a.value).localeCompare(String(b.value), 'fr', {numeric:true}));
     STRUCT_MAP = Object.fromEntries(sRows.map(r => [String(r.id), tableLabelFromRow(r, 'Structures')]).filter(([,v]) => v));
+    await resolvePerimeter(sRows);
     STRUCT_OPTIONS = sRows
       .map(r => ({value: String(r.id || '').trim(), label: tableLabelFromRow(r, 'Structures')}))
       .filter(o => o.value && o.label)
@@ -1986,7 +2012,7 @@ function buildFilters() {
   fillAnneeFilter();
   fillFromData('f-axe',    r => labelFromRefValue(r.id_axe, AXE_MAP, 'Axes')); 
   fillFromData('f-volet',  r => labelFromRefValue(r.id_volet, VOLET_MAP, 'Volets')); 
-  fillFromData('f-struct',  r => labelsFromRefValue(r.id_structure, STRUCT_MAP, 'Structures'), true);
+  fillFromData('f-struct',  r => labelsFromRefValue(r.id_structure, STRUCT_MAP, 'Structures').filter(inPerimLabel), true);
   fillFromData('f-lieu', r => lieuValues(r), true);
   fillFromData('f-public', r => publicValues(r), true);
   fillDegreFilter();

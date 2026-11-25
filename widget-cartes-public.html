@@ -20,6 +20,7 @@
 <!-- Version v59 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v60 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) -->
 <!-- Version v61 : les lieux d'une action sont lus dans les dates de session validées (table Dates_sessions) : lieu des sessions en présentiel, « À distance » pour les sessions en distanciel -->
+<!-- Version v62 : les menus « Structure » se limitent au périmètre de la classe de l'utilisateur (colonne Perimetre_<classe> de la table Structures) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -903,6 +904,14 @@ function lieuxForAction(a) {
   return [...new Set(lieux)];
 }
 
+async function loadPerimeterIfAllowed() {
+  try {
+    const t = await grist.docApi.fetchTable('Structures');
+    const rows = (t.id || []).map((id, i) => { const r = { id }; Object.keys(t).forEach(k => { if (k !== 'id') r[k] = t[k][i]; }); return r; });
+    await resolvePerimeter(rows);
+  } catch (e) { PERIM_IDS = null; PERIM_LABELS = null; }
+}
+
 async function loadLieuxSessionsIfAllowed() {
   try {
     if (!grist.docApi || !grist.docApi.fetchTable) return;
@@ -1404,7 +1413,7 @@ function buildFilters() {
   fillFilter('f-annee',  a => [firstText(a, 'annee_scolaire')]);
   fillFilter('f-axe',    a => [firstText(a, 'id_axe')]);
   fillFilter('f-volet',  a => [firstText(a, 'id_volet')]);
-  fillFilter('f-struct', a => listText(a, 'id_structure'));
+  fillFilter('f-struct', a => listText(a, 'id_structure').filter(inPerimLabel));
   fillFilterFromValues('f-lieu', LIEU_VALUES.length ? LIEU_VALUES : [...new Set(ALL.flatMap(lieuxForAction))]);
   fillFilterFromValues('f-public', PUBLIC_VALUES.length ? PUBLIC_VALUES : [...new Set(ALL.flatMap(publicList))]);
   fillFilterFromValues('f-degre', DEGRE_VALUES.length ? DEGRE_VALUES : [...new Set(ALL.flatMap(degreList))]);
@@ -1669,6 +1678,30 @@ function showLoader(v) {
   document.getElementById('loader').classList.toggle('hidden', !v);
 }
 
+// ---- Périmètre des menus « Structure » ----
+// Chaque utilisateur ne voit dans les menus « Structure » que les structures de son périmètre : colonne Perimetre_<classe> de la table
+// Structures (classe = Utilisateurs.ClasseNom). Pas de restriction pour l'Owner, pour une classe sans colonne de périmètre
+// (Referent_IGESR, Doyen, Public…) ni si la table n'est pas lisible : le menu garde alors toutes les structures.
+// Une classe qui lit toute la table Utilisateurs est l'Owner ou la Chefferie : elle est considérée comme Owner si elle peut lire
+// Modeles_export (table réservée à l'Owner et aux classes DGRH / DS / DJEPVA), sinon comme Chefferie.
+let PERIM_IDS = null, PERIM_LABELS = null;
+function perimNorm(s){ return String(s||'').replace(/\s+/g,' ').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+async function resolvePerimeter(structRows){
+  PERIM_IDS = null; PERIM_LABELS = null;
+  try{
+    const u = await grist.docApi.fetchTable('Utilisateurs'); const n = (u.id||[]).length; let cls = '';
+    if(n===1) cls = (u.ClasseNom||[])[0] || '';
+    else if(n>1){ try{ await grist.docApi.fetchTable('Modeles_export'); return; }catch(e){ cls = 'Chefferie'; } }
+    const col = 'Perimetre_' + cls;
+    if(!cls || !structRows || !structRows.length || !(col in structRows[0])) return;
+    const ok = structRows.filter(r=>r[col]===true);
+    PERIM_IDS = new Set(ok.map(r=>String(r.id)));
+    PERIM_LABELS = new Set(ok.flatMap(r=>[r.libelle, r.code]).map(perimNorm).filter(Boolean));
+  }catch(e){ console.warn('[perimetre] périmètre des structures indisponible, menus non restreints :', e); PERIM_IDS = null; PERIM_LABELS = null; }
+}
+const inPerimLabel = l => !PERIM_LABELS || PERIM_LABELS.has(perimNorm(l));
+const inPerimId = id => !PERIM_IDS || PERIM_IDS.has(String(id));
+
 grist.ready({ requiredAccess: 'full', columns: [] });
 
 grist.onRecords(async (records) => {
@@ -1681,7 +1714,8 @@ grist.onRecords(async (records) => {
       loadStatutValuesIfAllowed(),
       loadModaliteValuesIfAllowed(),
       loadFormatValuesIfAllowed(),
-      loadLieuxSessionsIfAllowed()
+      loadLieuxSessionsIfAllowed(),
+      loadPerimeterIfAllowed()
     ]);
 
     const incomingRows = (records || []).map(r => ({ id: r.id, ...r }));

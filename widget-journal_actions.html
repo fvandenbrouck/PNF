@@ -34,6 +34,7 @@
 <!-- Version v61 : Statut de l'action (Prévu / Annulé / Reporté / Fusionné) affiché sur les cartes, à côté du statut de suivi -->
 <!-- Version v62 : correctif — le statut de l'action est reconnu qu'onRecords fournisse l'identifiant ou le libellé affiché -->
 <!-- Version v63 : onglet « Date des sessions » (entre Courrier recteurs et Programme) — table Dates_sessions : une ligne par date (début, présentiel/distanciel, modalité de durée, nb de jours, lieu si présentiel, présents, commentaire, validée) ; le bilan (nb de sessions, présents moyens, journées stagiaires, taux) ne compte que les dates validées ; les dates quittent la fiche logistique du Bilan -->
+<!-- Version v64 : les menus « Structure » se limitent au périmètre de la classe de l'utilisateur (colonne Perimetre_<classe> de la table Structures) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -848,6 +849,7 @@ async function loadData(records){
     if(!Object.keys(STATUS_MAP).length){ ['En cours','Blocage','Arbitrage nécessaire','Report','Clôturé'].forEach((s,i)=>{ STATUS_MAP[String(i+1)]=s; STATUS_ID_BY_LABEL[s]=String(i+1); }); }
     const STRUCT_ROWS=toRows(structs);
     STRUCT_MAP=Object.fromEntries(STRUCT_ROWS.map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
+    await resolvePerimeter(STRUCT_ROWS);
     STRUCT_CODE_MAP=Object.fromEntries(STRUCT_ROWS.map(r=>[String(r.id),structureCode(r)]).filter(([,v])=>v));
     CONTACT_SUIVI_ROWS=CONTACT_ROWS.filter(isSuiviContact);
     AXE_MAP=Object.fromEntries(toRows(axes).map(r=>[String(r.id),simpleLabel(r)]).filter(([,v])=>v));
@@ -878,7 +880,7 @@ function fillFilters(){
   fillSelect('f-annee', ANNEE_VALUES.length ? ANNEE_VALUES : ALL.map(getAnnee));
   fillSelect('f-axe', ALL.map(getAxe));
   fillSelect('f-volet', ALL.map(getVolet));
-  fillSelect('f-struct', ALL.flatMap(getStructures));
+  fillSelect('f-struct', ALL.flatMap(getStructures).filter(inPerimLabel));
   fillSelect('f-lieu', ALL.flatMap(a=>sessionStructuredLieux(a.id)));
   fillSelect('f-public', ALL.flatMap(getPublics));
   fillSelect('f-degre', ALL.flatMap(getDegre));
@@ -1528,6 +1530,30 @@ const csvSafe = s => /^[=+\-@\t\r]/.test(s) ? "'" + s : s;   // neutralise l'inj
 function csvEscape(v){ const s=csvSafe(String(v??'').replace(/\r?\n/g,' | ')); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function downloadCsv(){ const rows=FILTERED.map(a=>{ const session=getSessionForAction(a.id); const latest=latestJournal(a.id); return { titre:getTitre(a), annee:getAnnee(a), responsable:getResponsablesAction(a).join(', '), chefferie:getChefferieLabel(a), structure:getStructures(a).join(', '), modalite:getModalite(a), modalite_pedagogique:getFormat(a), articulation:getArtic(a).join(', '), nb_sessions:sessionNb(a.id), nombre_copil:getSessionComputed(session,a.id).nombreCopil??'', participants_prevus:getSessionComputed(session,a.id).participantsPrevus??'', inscrits_gaia:getSessionComputed(session,a.id).inscritsGaia??'', sessions:sessionStructuredDates(a.id).join(' | '), lieux:sessionStructuredLieux(a.id).join(', '), modalites_sessions:sessionStructuredModalites(a.id).join(', '), total_presents:getSessionComputed(session,a.id).totalPresents??'', journees_stagiaires:getSessionComputed(session,a.id).journeesStagiaires??'', taux_presence_gaia:formatPercentValue(getSessionComputed(session,a.id).tauxGaia), taux_presence_prevu:formatPercentValue(getSessionComputed(session,a.id).tauxPrevu), notes:sessionComment(session), avancement:avancementText(a), dernier_statut:statusTextFromEntry(latest), derniere_entree:latest?formatDateValue(latest.Date):'', compte_rendu:latest&&latest.Compte_rendu||'', prochaine_etape:latest&&latest.Prochaine_etape||'', echeance:latest?formatDateValue(latest.Echeance):'' }; }); const headers=['titre','annee','responsable','chefferie','structure','modalite','format','articulation','nb_sessions','nombre_copil','participants_prevus','inscrits_gaia','sessions','lieux','modalites_sessions','total_presents','journees_stagiaires','taux_presence_gaia','taux_presence_prevu','notes','avancement','dernier_statut','derniere_entree','compte_rendu','prochaine_etape','echeance']; const csv='﻿'+[headers.join(';'),...rows.map(r=>headers.map(h=>csvEscape(r[h])).join(';'))].join('\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='journal_actions_selection_'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
 function showLoader(v){ document.getElementById('loader').classList.toggle('hidden',!v); }
+// ---- Périmètre des menus « Structure » ----
+// Chaque utilisateur ne voit dans les menus « Structure » que les structures de son périmètre : colonne Perimetre_<classe> de la table
+// Structures (classe = Utilisateurs.ClasseNom). Pas de restriction pour l'Owner, pour une classe sans colonne de périmètre
+// (Referent_IGESR, Doyen, Public…) ni si la table n'est pas lisible : le menu garde alors toutes les structures.
+// Une classe qui lit toute la table Utilisateurs est l'Owner ou la Chefferie : elle est considérée comme Owner si elle peut lire
+// Modeles_export (table réservée à l'Owner et aux classes DGRH / DS / DJEPVA), sinon comme Chefferie.
+let PERIM_IDS = null, PERIM_LABELS = null;
+function perimNorm(s){ return String(s||'').replace(/\s+/g,' ').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+async function resolvePerimeter(structRows){
+  PERIM_IDS = null; PERIM_LABELS = null;
+  try{
+    const u = await grist.docApi.fetchTable('Utilisateurs'); const n = (u.id||[]).length; let cls = '';
+    if(n===1) cls = (u.ClasseNom||[])[0] || '';
+    else if(n>1){ try{ await grist.docApi.fetchTable('Modeles_export'); return; }catch(e){ cls = 'Chefferie'; } }
+    const col = 'Perimetre_' + cls;
+    if(!cls || !structRows || !structRows.length || !(col in structRows[0])) return;
+    const ok = structRows.filter(r=>r[col]===true);
+    PERIM_IDS = new Set(ok.map(r=>String(r.id)));
+    PERIM_LABELS = new Set(ok.flatMap(r=>[r.libelle, r.code]).map(perimNorm).filter(Boolean));
+  }catch(e){ console.warn('[perimetre] périmètre des structures indisponible, menus non restreints :', e); PERIM_IDS = null; PERIM_LABELS = null; }
+}
+const inPerimLabel = l => !PERIM_LABELS || PERIM_LABELS.has(perimNorm(l));
+const inPerimId = id => !PERIM_IDS || PERIM_IDS.has(String(id));
+
 grist.ready({requiredAccess:'full', columns:[]});
 grist.onRecords(loadData);
 grist.onRecord(record=>{ if(!record) return; selectedId=record.id; document.querySelectorAll('.card').forEach(el=>{ const match=+el.dataset.id===selectedId; el.classList.toggle('selected',match); if(match) el.scrollIntoView({behavior:'smooth',block:'nearest'}); }); });

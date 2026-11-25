@@ -25,6 +25,7 @@
 <!-- Version v29 : polices auto-hébergées (dossier fonts/) et script plugin Grist servi par l'instance du ministère, plus aucune dépendance à Google ni à docs.getgrist.com -->
 <!-- Version v30 : « Format » devient « Modalité pédagogique » dans les libellés (identifiants techniques inchangés) ; colonne CSV « modalité pédagogique » -->
 <!-- Version v31 : les lieux d'une action sont lus dans les dates de session validées (table Dates_sessions) : lieu des sessions en présentiel, « À distance » pour les sessions en distanciel -->
+<!-- Version v32 : les menus « Structure » se limitent au périmètre de la classe de l'utilisateur (colonne Perimetre_<classe> de la table Structures) -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -687,6 +688,7 @@ async function loadData(records){
     CONTACT_ROWS = toRows(contacts); STRUCT_ROWS = toRows(structures); REFERENT_ROWS = toRows(referents); ANNEE_ROWS = toRows(annees);
     rebuildContactIndexes();
     STRUCT_MAP = Object.fromEntries(STRUCT_ROWS.map(r=>[r.id, structureLabelFromRow(r)]).filter(([,v])=>v));
+    await resolvePerimeter(STRUCT_ROWS);
     PUBLIC_MAP = Object.fromEntries(toRows(publics).map(r=>[r.id, publicLabelFromRow(r)]).filter(([,v])=>v));
     MODAL_MAP = Object.fromEntries(toRows(modalites).map(r=>[r.id, simpleLabelFromRow(r)]).filter(([,v])=>v));
     FORMAT_MAP = Object.fromEntries(toRows(formats).map(r=>[r.id, simpleLabelFromRow(r)]).filter(([,v])=>v));
@@ -714,6 +716,30 @@ async function loadData(records){
   } catch(e){ console.error(e); document.getElementById('grid').innerHTML = `<div class="empty"><p>Erreur de chargement</p><span>${esc(e.message)}</span></div>`; }
   finally{ showLoader(false); }
 }
+
+// ---- Périmètre des menus « Structure » ----
+// Chaque utilisateur ne voit dans les menus « Structure » que les structures de son périmètre : colonne Perimetre_<classe> de la table
+// Structures (classe = Utilisateurs.ClasseNom). Pas de restriction pour l'Owner, pour une classe sans colonne de périmètre
+// (Referent_IGESR, Doyen, Public…) ni si la table n'est pas lisible : le menu garde alors toutes les structures.
+// Une classe qui lit toute la table Utilisateurs est l'Owner ou la Chefferie : elle est considérée comme Owner si elle peut lire
+// Modeles_export (table réservée à l'Owner et aux classes DGRH / DS / DJEPVA), sinon comme Chefferie.
+let PERIM_IDS = null, PERIM_LABELS = null;
+function perimNorm(s){ return String(s||'').replace(/\s+/g,' ').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+async function resolvePerimeter(structRows){
+  PERIM_IDS = null; PERIM_LABELS = null;
+  try{
+    const u = await grist.docApi.fetchTable('Utilisateurs'); const n = (u.id||[]).length; let cls = '';
+    if(n===1) cls = (u.ClasseNom||[])[0] || '';
+    else if(n>1){ try{ await grist.docApi.fetchTable('Modeles_export'); return; }catch(e){ cls = 'Chefferie'; } }
+    const col = 'Perimetre_' + cls;
+    if(!cls || !structRows || !structRows.length || !(col in structRows[0])) return;
+    const ok = structRows.filter(r=>r[col]===true);
+    PERIM_IDS = new Set(ok.map(r=>String(r.id)));
+    PERIM_LABELS = new Set(ok.flatMap(r=>[r.libelle, r.code]).map(perimNorm).filter(Boolean));
+  }catch(e){ console.warn('[perimetre] périmètre des structures indisponible, menus non restreints :', e); PERIM_IDS = null; PERIM_LABELS = null; }
+}
+const inPerimLabel = l => !PERIM_LABELS || PERIM_LABELS.has(perimNorm(l));
+const inPerimId = id => !PERIM_IDS || PERIM_IDS.has(String(id));
 
 grist.ready({requiredAccess:'full', columns:[]});
 grist.onRecords(loadData);
@@ -784,7 +810,7 @@ function buildFilterControls(){
   fillSelect('f-annee', anneeValues, 'Années');
   fillSelect('f-axe', axeValues, 'Axes');
   fillSelect('f-volet', voletValues, 'Volets');
-  fillSelect('f-struct', structureValues, 'Structures');
+  fillSelect('f-struct', structureValues.filter(inPerimLabel), 'Structures');
   fillSelect('f-lieu', lieuValues, 'Lieux');
   fillSelect('f-public', publicValues, 'Publics');
   fillSelect('f-degre', degreValues, 'Degrés');

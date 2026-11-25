@@ -7,6 +7,7 @@
 <!-- Version v1.1 : message « liste vide » (aucune proposition déposée) au lieu d'un chargement sans fin ; démarrage sans attendre onRecords -->
 <!-- Version v1.2 : nombre prévisionnel de sessions de formation (colonnes d'export) -->
 <!-- Version v1.3 : précision sur le public « Autres » (colonnes Public_autre / C_Public_autre) : colonnes d'export -->
+<!-- Version v1.4 : les menus « Structure » se limitent au périmètre de la classe de l'utilisateur (colonne Perimetre_<classe> de la table Structures) (menu « Structure porteuse ») -->
 <!-- Version v1 : export Excel (.xlsx) des propositions d'actions de formation, avec filtres de lignes et choix des colonnes ; lecture seule, sans cotation ni instruction ; réservé à la DGRH, à la chefferie et aux propriétaires -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
 <link href="fonts/fonts.css" rel="stylesheet">
@@ -193,6 +194,7 @@ async function loadAll(){
   const [structs, axes, acts, mods, pubs, annees, formats, params] = await Promise.all([
     fetchRows('Structures'), fetchRows('Axes'), fetchRows('Actions_axes'), fetchRows('Modalites'), fetchRows('Publics'), fetchRows('Annees'), fetchRows('Formats'), fetchRows('Parametres_recueil')
   ]);
+  await resolvePerimeter(structs);
   P = props; STRUCT = Object.fromEntries(structs.map(r => [r.id, r])); AXE = Object.fromEntries(axes.map(r => [r.id, r]));
   ACTION = Object.fromEntries(acts.map(r => [r.id, r])); MODALITE = Object.fromEntries(mods.map(r => [r.id, r])); PUBLIC = Object.fromEntries(pubs.map(r => [r.id, r]));
   ANNEE = Object.fromEntries(annees.map(r => [r.id, r])); FORMAT = Object.fromEntries(formats.map(r => [r.id, r]));
@@ -234,7 +236,7 @@ function setFQ(v){ FE.q = v; clearTimeout(_qTimer); _qTimer = setTimeout(renderE
 function resetF(){ FE = newF(); renderExport(); }
 function filterPanel(){
   const f = FE;
-  const structIds = [...new Set(P.map(p => refCur(p, 'C_Structure_porteuse', 'Structure_porteuse')).filter(Boolean))].sort((a, b) => sCode(a).localeCompare(sCode(b), 'fr', { numeric:true }));
+  const structIds = [...new Set(P.map(p => refCur(p, 'C_Structure_porteuse', 'Structure_porteuse')).filter(Boolean).filter(inPerimId))].sort((a, b) => sCode(a).localeCompare(sCode(b), 'fr', { numeric:true }));
   const acts = Object.values(ACTION).sort((a, b) => a.num_action - b.num_action);
   return `<div class="grid-f">
     <div class="fld"><label>Recherche</label><input type="text" value="${esc(f.q)}" placeholder="Titre, structure, adresse…" oninput="setFQ(this.value)"></div>
@@ -461,6 +463,30 @@ async function start(){
     document.getElementById('page').innerHTML = `<div class="empty"><p>Lecture impossible</p><span>Vos droits ne permettent pas de lire les propositions. Contactez la chefferie. (${esc(e.message || e)})</span></div>`;
   } finally { showLoader(false); }
 }
+// ---- Périmètre des menus « Structure » ----
+// Chaque utilisateur ne voit dans les menus « Structure » que les structures de son périmètre : colonne Perimetre_<classe> de la table
+// Structures (classe = Utilisateurs.ClasseNom). Pas de restriction pour l'Owner, pour une classe sans colonne de périmètre
+// (Referent_IGESR, Doyen, Public…) ni si la table n'est pas lisible : le menu garde alors toutes les structures.
+// Une classe qui lit toute la table Utilisateurs est l'Owner ou la Chefferie : elle est considérée comme Owner si elle peut lire
+// Modeles_export (table réservée à l'Owner et aux classes DGRH / DS / DJEPVA), sinon comme Chefferie.
+let PERIM_IDS = null, PERIM_LABELS = null;
+function perimNorm(s){ return String(s||'').replace(/\s+/g,' ').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+async function resolvePerimeter(structRows){
+  PERIM_IDS = null; PERIM_LABELS = null;
+  try{
+    const u = await grist.docApi.fetchTable('Utilisateurs'); const n = (u.id||[]).length; let cls = '';
+    if(n===1) cls = (u.ClasseNom||[])[0] || '';
+    else if(n>1){ try{ await grist.docApi.fetchTable('Modeles_export'); return; }catch(e){ cls = 'Chefferie'; } }
+    const col = 'Perimetre_' + cls;
+    if(!cls || !structRows || !structRows.length || !(col in structRows[0])) return;
+    const ok = structRows.filter(r=>r[col]===true);
+    PERIM_IDS = new Set(ok.map(r=>String(r.id)));
+    PERIM_LABELS = new Set(ok.flatMap(r=>[r.libelle, r.code]).map(perimNorm).filter(Boolean));
+  }catch(e){ console.warn('[perimetre] périmètre des structures indisponible, menus non restreints :', e); PERIM_IDS = null; PERIM_LABELS = null; }
+}
+const inPerimLabel = l => !PERIM_LABELS || PERIM_LABELS.has(perimNorm(l));
+const inPerimId = id => !PERIM_IDS || PERIM_IDS.has(String(id));
+
 grist.ready({ requiredAccess:'full', columns:[] });
 let _started = false;
 grist.onRecords(() => { if (!_started) { _started = true; start(); } else if (ALLOWED) scheduleReload(); });
