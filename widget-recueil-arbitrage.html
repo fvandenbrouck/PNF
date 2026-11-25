@@ -26,6 +26,7 @@
 <!-- Version v3.12 : le choix du mode de versement (simulation / réel) n'est proposé qu'à l'Owner (sélecteur dans le bandeau, avec confirmation ; le passage en réel efface les marques de simulation) ; les autres profils voient seulement le bandeau « MODE TEST » -->
 <!-- Version v3.13 : la classe DGRH accède à l'Arbitrage (évaluation, corrections, instruction, fusions, export avec ou sans cotation) ; le versement dans le catalogue et l'enregistrement de modèles d'export partagés lui restent fermés -->
 <!-- Version v3.14 : gel du catalogue réservé à l'Owner — « Figer » marque toutes les propositions (colonnes Gele / Date_gel) qui passent en lecture seule (corrections, évaluation, instruction, fusions) ; le versement reste possible (seul le lien est écrit) ; « Dégeler » par l'Owner. La règle d'accès sur Gele, à poser dans Grist, rend le gel effectif hors du widget -->
+<!-- Version v3.28 : message d'accès réservé générique (les profils DS et DJEPVA, ajoutés à la matrice des droits le 25/11/2026, accèdent à l'Arbitrage sans changement de code) -->
 <!-- Version v3.27 : consolidation — champs obligatoires pour enregistrer : volet, titre, objectifs, action du schéma directeur, structure porteuse (marqués d'un *, liste des champs manquants dans le message de refus) -->
 <!-- Version v3.26 : consultation seule — sur une proposition où le profil n'a aucune procédure permise (hors périmètre, ou profil limité à Visualiser), la fiche n'affiche que la version déposée par le porteur (ni version consolidée, ni volet, ni analyse, ni instruction, ni versement) ; message de refus précisé quand le périmètre est bon mais que le droit manque -->
 <!-- Version v3.25 : droits d'arbitrage pilotés par deux matrices stockées dans Grist, sans plus aucun périmètre en dur dans le code : « Droits_arbitrage » (profil, référence à Classe × Visualiser / Consolider / Instruire / Verser) et colonnes « Perimetre_<profil> » de la table Structures (structure × profil : affichage par défaut et lieu d'exercice des droits). L'accès à la page est gouverné par Visualiser, l'Owner a tous les droits, refus par défaut si le profil n'a pas de ligne. La DGRH instruit (retenir ou non, fusionner) dans son périmètre mais ne verse pas (case Verser décochée) : la restriction « retenir seulement » de la v3.24 disparaît. Un nouveau profil s'ajoute sans toucher au code -->
@@ -869,7 +870,7 @@ async function start(){
     let n = 0; while (!grist.docApi && n < 20) { await new Promise(r => setTimeout(r, 100)); n++; }
     if (!(await checkAccess())) {
       document.getElementById('toolbar').style.display = 'none';
-      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée à la Chefferie, aux Responsables de suivi, aux Propriétaires et à la DGRH.</span></div>`; return;
+      document.getElementById('page').innerHTML = `<div class="empty"><p>Accès réservé</p><span>Cette page est réservée aux profils autorisés par la matrice des droits d’arbitrage (table « Droits_arbitrage »).</span></div>`; return;
     }
     await loadAll(); IS_OWNER = await detectOwner();
     PROFIL = IS_OWNER ? '' : (CLS || 'Chefferie'); RESTRICT = !IS_OWNER;           // CLS vide = non-Owner lisant toute la table Utilisateurs = Chefferie
