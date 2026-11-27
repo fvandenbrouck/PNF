@@ -452,14 +452,18 @@ async function readAccess(){
   return null;
 }
 function refuse(title, text){
-  document.getElementById('page').innerHTML = `<div class="empty"><p>${esc(title)}</p><span class="muted">${esc(text)}</span></div>`;
+  document.getElementById('page').innerHTML = `<div class="empty"><p>${esc(title)}</p>${text ? `<span class="muted">${esc(text)}</span>` : ''}</div>`;
 }
 let started = false;
 async function start(){
   if (started) return; started = true;
   try {
-    try { ACCESS = await readAccess(); } catch (e) { console.warn('[import] droits illisibles', e); ACCESS = null; }
-    if (!ACCESS) return refuse('Accès réservé', "L'import est réservé aux profils autorisés par la table « Droits_arbitrage ».");
+    try { ACCESS = await readAccess(); }
+    catch (e) {                                 // lecture refusée par Grist : ce n'est pas un refus de la matrice des droits
+      console.warn('[import] droits illisibles', e);
+      return refuse('Lecture du document impossible', "Vérifiez que ce widget a l'« Accès complet au document » (réglages du widget, dans Grist). Détail : " + (e.message || e));
+    }
+    if (!ACCESS) return refuse('Accès réservé');
     const [structs, actions, mods, formats, publics, params] = await Promise.all(['Structures', 'Actions_axes', 'Modalites', 'Formats', 'Publics', 'Parametres_recueil'].map(fetchRows));
     STRUCT = structs; ACTIONS = actions; MODALITES = mods; FORMATS = formats; PUBLICS = publics; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur]));
     await loadColumns(); await loadExisting();
