@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Import Excel des propositions PNF</title>
+<!-- Version v1 : import dans Propositions_PNF du modèle Excel de dépôt groupé (scripts/gen_modele_excel.py). Contrôle ligne par ligne, reconnaissance des publics, doublons, aperçu corrigeable, création seule. Droits : table Droits_arbitrage (Importer = structures du périmètre Perimetre_<profil> ; Importer_tout = toutes). Le classeur est lu dans le navigateur, sans bibliothèque externe. -->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<link href="fonts/fonts.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root { --navy:#1B3A6B; --bg:#F7F5F2; --white:#fff; --ink:#1a1208; --ink2:#4a3f2f; --ink3:#8a8070; --border:#E0D8CC; --lilas:#E8E8F5;
+  --danger:#8a2030; --danger-l:rgba(245,160,168,.28); --ok:#1a6b65; --ok-l:rgba(168,221,216,.35); --warn:#7a4a10; --warn-l:rgba(249,197,154,.35); }
+html, body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); color-scheme:light; font-size:13px; }
+.page { padding:14px; display:flex; flex-direction:column; gap:12px; max-width:1100px; margin:0 auto; }
+.panel { background:var(--white); border:1.5px solid var(--border); border-radius:12px; padding:12px 14px; min-width:0; }
+h2 { font-family:'Fraunces',serif; font-size:16px; color:var(--navy); margin-bottom:6px; }
+p { line-height:1.5; }
+.muted { color:var(--ink3); font-size:12px; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px; }
+.fld { display:flex; flex-direction:column; gap:3px; }
+.fld > label { font-size:10px; font-weight:700; color:var(--ink3); text-transform:uppercase; letter-spacing:.05em; }
+input, select, button { font-family:'DM Sans',sans-serif; font-size:12px; color-scheme:light; }
+input[type=date], input[type=file], select { color:var(--ink); background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:6px 8px; max-width:100%; }
+button { border-radius:8px; border:1.5px solid var(--navy); background:var(--white); color:var(--navy); padding:8px 14px; cursor:pointer; font-weight:700; }
+button.primary { background:var(--navy); color:#fff; }
+button:disabled { opacity:.45; cursor:default; }
+.msg { border-radius:8px; padding:8px 11px; margin-top:8px; line-height:1.5; }
+.msg.err { background:var(--danger-l); color:var(--danger); }
+.msg.warn { background:var(--warn-l); color:var(--warn); }
+.msg.ok { background:var(--ok-l); color:var(--ok); }
+.msg ul { padding-left:18px; }
+.line { border:1.5px solid var(--border); border-radius:10px; padding:9px 11px; background:var(--white); }
+.line.bad { border-color:#e3a0a8; }
+.line-head { display:flex; gap:9px; align-items:flex-start; }
+.line-head input { margin-top:3px; accent-color:var(--navy); width:15px; height:15px; flex:none; }
+.line-title { font-weight:700; overflow-wrap:anywhere; }
+.badge { display:inline-block; font-size:10px; font-weight:700; border-radius:999px; padding:2px 8px; margin-left:6px; white-space:nowrap; }
+.badge.ok { background:var(--ok-l); color:var(--ok); } .badge.warn { background:var(--warn-l); color:var(--warn); } .badge.err { background:var(--danger-l); color:var(--danger); }
+.pubs { margin-top:7px; display:flex; flex-direction:column; gap:4px; }
+.pub { display:flex; gap:7px; flex-wrap:wrap; align-items:center; font-size:12px; }
+.pub code { background:var(--lilas); border-radius:6px; padding:2px 7px; font-family:'DM Mono',monospace; font-size:11px; overflow-wrap:anywhere; }
+.pub.check select { border-color:#c8863c; background:var(--warn-l); }
+details > summary { cursor:pointer; color:var(--navy); font-size:12px; margin-top:6px; }
+dl { display:grid; grid-template-columns:minmax(120px,220px) minmax(0,1fr); gap:3px 10px; margin-top:6px; font-size:12px; }
+dt { color:var(--ink3); } dd { white-space:pre-wrap; overflow-wrap:anywhere; }
+.actions { position:sticky; bottom:0; background:var(--white); border-top:1px solid var(--border); padding:10px 14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.empty { text-align:center; padding:50px 16px; } .empty p { font-weight:700; font-size:15px; }
+@media (max-width:560px) { dl { grid-template-columns:minmax(0,1fr); } .pub select { width:100%; } }
+</style>
+</head>
+<body>
+<div class="page" id="page"><div class="empty"><span class="muted">Chargement…</span></div></div>
+<div class="actions" id="actions" hidden></div>
+
+<script>
+const PROP = 'Propositions_PNF';
+const REPORT_KEY = 'Report_d_une_action_prevue_initialement_au_PNF_de_l_annee_N_1';
+const MAX_FILE = 5 * 1024 * 1024, MAX_XML = 30 * 1024 * 1024, MAX_ROWS = 1000;
+// Valeurs de repli, remplacées par la définition des colonnes quand elle est lisible.
+const CHOICES_DEFAUT = {
+  Action_pluriannuelle:['Oui','Non'], [REPORT_KEY]:['Oui','Non'],
+  Periode:['Septembre - octobre 2027','Novembre - décembre 2027','Janvier - février 2028','Mars - avril 2028','Mai - juin 2028',"Au fil de l'année"],
+  Articulation_parcours:['Magistère','Mentor',"Ni l'un ni l'autre"],
+  Arr_besoins:['Oui','Non'], Arr_prerequis:['Oui','Non'], Arr_apports:['Oui','Non'], Arr_activite:['Oui','Non'], Arr_acquis:['Oui','Non'], Arr_programme:['Oui','Non','En partie'],
+  Orientation_SD:['Inter-disciplinaire','Inter-degrés','Intercatégorielle','Intermétiers','Interministérielle (Éducation nationale / Jeunesse et Sports)',"S'inscrit dans un parcours de formation",'Mutualisation interacadémique',"Formation d'adaptation à l'emploi","Formation continuée (3 premières années d'exercice)",'Certification ou diplomation']
+};
+const REQUIRED_DEFAUT = ['Email_contact','Structure_porteuse','Titre','Objectifs','Action_SD','Action_pluriannuelle',REPORT_KEY,'Periode','Public_cible','Duree_heures','Nb_sessions','Effectif_previsionnel','Arr_besoins','Arr_prerequis','Arr_apports','Arr_activite','Arr_acquis','Arr_programme'];
+const LABELS = {
+  Email_contact:'Adresse électronique', Structure_porteuse:'Structure porteuse', Titre:'Titre', Objectifs:'Objectifs', Contexte:'Contexte', Action_SD:'Action du schéma directeur',
+  Action_pluriannuelle:'Action pluriannuelle', [REPORT_KEY]:"Report de l'année précédente", Periode:'Période', Modalite:'Modalité', Format:'Modalité pédagogique',
+  Articulation_parcours:'Parcours Magistère / Mentor', Public_cible:'Public cible', Public_autre:'Précision « Autres »', Duree_heures:'Durée (heures)', Nb_sessions:'Nombre de sessions',
+  Effectif_previsionnel:'Effectif prévisionnel', Lieu:'Lieu', Arr_besoins:'Arrêté : évaluation des besoins', Arr_prerequis:'Arrêté : prérequis', Arr_apports:'Arrêté : apports',
+  Arr_activite:'Arrêté : mise en activité', Arr_acquis:'Arrêté : évaluation des acquis', Arr_programme:'Arrêté : programme transmis', Orientation_SD:'Orientations'
+};
+const TEXT_KEYS = ['Email_contact','Titre','Objectifs','Contexte','Lieu','Public_autre'];
+const REF_KEYS = { Structure_porteuse:1, Action_SD:1, Modalite:1, Format:1 };
+const CHOICE_KEYS = ['Action_pluriannuelle',REPORT_KEY,'Periode','Articulation_parcours','Arr_besoins','Arr_prerequis','Arr_apports','Arr_activite','Arr_acquis','Arr_programme'];
+
+// Abréviations et variantes connues des publics (clé normalisée → libellé de la table Publics). À compléter à l'usage.
+const SYNONYMES = {
+  'pe':'Professeurs des écoles', 'professeur d ecole':'Professeurs des écoles', 'professeur ecole':'Professeurs des écoles',
+  'perdir':'Personnels de direction', 'per dir':'Personnels de direction', 'personnel de direction':'Personnels de direction', 'chef d etablissement':'Personnels de direction',
+  'directeur ecole':"Directeurs d'école", 'directeur eafc':'Directeurs EAFC', 'directeur d eafc':'Directeurs EAFC',
+  'dasen':'DASEN / A-DASEN', 'a dasen':'DASEN / A-DASEN', 'ia dasen':'DASEN / A-DASEN', 'iaipr':'IA-IPR',
+  'ien premier degre':'IEN 1er degré', 'ien 1d':'IEN 1er degré', 'ien information orientation':'IEN IO', 'ien eg et':'IEN ET-EG',
+  'conseiller pedagogique de circonscription':'CPC', 'conseiller pedagogique departemental':'CPD', 'maitre formateur':'PEMF', 'professeur de ecole maitre formateur':'PEMF',
+  'psyen':'Psy-EN', 'psychologue de l education nationale':'Psy-EN',
+  'enseignant second degre':'Enseignants du 2nd degré', 'enseignant du second degre':'Enseignants du 2nd degré', 'enseignant 2nd degre':'Enseignants du 2nd degré',
+  'professeur du second degre':'Enseignants du 2nd degré', 'professeur du 2nd degre':'Enseignants du 2nd degré', 'plp':'Enseignants voie professionnelle',
+  'formateur inspe':'Formateurs INSPE', 'formateur academique':'Formateurs académiques', 'coordonnateur rep':'Coordonnateurs REP / REP+', 'coordinateur rep':'Coordonnateurs REP / REP+',
+  'coordonnateur mlds':'Coordonnateurs MLDS', 'referent defense':'Référents académiques défense', 'autre':'Autres'
+};
+
+let STRUCT = [], ACTIONS = [], MODALITES = [], FORMATS = [], PUBLICS = [], EXISTING = [], PARAMS = {};
+let CHOICES = { ...CHOICES_DEFAUT }, REQUIRED = new Set(REQUIRED_DEFAUT);
+let ACCESS = null;                                 // { profil, tout }
+let FILE_NAME = '', ROWS = [], FILE_WARNINGS = [], WRITING = false, REPORT = null, FILE_ERROR = '';
+let DATE_RECEPTION = '';
+
+/* ============================== utilitaires ============================== */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const refId = v => Array.isArray(v) ? (v[0] === 'R' ? v[2] : v[1]) : (typeof v === 'number' ? v : 0);
+function toRows(t){ const keys = Object.keys(t || {}); return (t.id || []).map((_, i) => Object.fromEntries(keys.map(k => [k, t[k][i]]))); }
+const fetchRows = async t => toRows(await grist.docApi.fetchTable(t));
+// Normalisation : casse, accents, ponctuation, espaces.
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/œ/g, 'oe').replace(/[^a-z0-9]+/g, ' ').trim();
+// Idem, en ignorant le pluriel (pour les publics).
+const normPub = s => norm(s).split(' ').map(w => w.length > 3 ? w.replace(/[sx]$/, '') : w).join(' ');
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+/* ============================== lecture du classeur (.xlsx) ============================== */
+async function unzip(buffer){
+  const view = new DataView(buffer), bytes = new Uint8Array(buffer);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 66000); i--) if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('Ce fichier n\'est pas un classeur Excel (.xlsx).');
+  const entries = {}; let pos = view.getUint32(eocd + 16, true);
+  for (let n = view.getUint16(eocd + 10, true); n > 0; n--) {
+    const method = view.getUint16(pos + 10, true), csize = view.getUint32(pos + 20, true), size = view.getUint32(pos + 24, true);
+    const nameLen = view.getUint16(pos + 28, true), extraLen = view.getUint16(pos + 30, true), commentLen = view.getUint16(pos + 32, true), local = view.getUint32(pos + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
+    entries[name] = { method, csize, size, local };
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  let total = 0;
+  return async name => {
+    const e = entries[name]; if (!e) return null;
+    const start = e.local + 30 + view.getUint16(e.local + 26, true) + view.getUint16(e.local + 28, true);
+    const data = bytes.subarray(start, start + e.csize);
+    let out = data;
+    if (e.method === 8) {
+      const reader = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+      const chunks = []; let len = 0;
+      for (;;) { const { done, value } = await reader.read(); if (done) break; len += value.length; if (total + len > MAX_XML) throw new Error('Classeur trop volumineux.'); chunks.push(value); }
+      out = new Uint8Array(len); let o = 0; chunks.forEach(c => { out.set(c, o); o += c.length; });
+    } else if (e.method !== 0) throw new Error('Compression du classeur non reconnue.');
+    total += out.length;
+    return new TextDecoder().decode(out);
+  };
+}
+const xml = text => new DOMParser().parseFromString(text, 'application/xml');
+const els = (node, name) => Array.from(node.getElementsByTagNameNS('*', name));
+// Texte d'une chaîne (simple ou enrichie), sans les annotations phonétiques.
+const richText = node => els(node, 't').filter(t => t.parentNode.localName !== 'rPh').map(t => t.textContent).join('');
+const colIndex = ref => ref.replace(/\d+$/, '').split('').reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0);
+
+/** Lit la feuille « Propositions » : { numéro de ligne → { numéro de colonne → texte } }. */
+async function readSheet(buffer){
+  const get = await unzip(buffer);
+  const wbText = await get('xl/workbook.xml'), relText = await get('xl/_rels/workbook.xml.rels');
+  if (!wbText || !relText) throw new Error('Ce fichier n\'est pas un classeur Excel (.xlsx).');
+  const sheet = els(xml(wbText), 'sheet').find(s => s.getAttribute('name') === 'Propositions');
+  if (!sheet) throw new Error('Feuille « Propositions » introuvable : utilisez le modèle de dépôt groupé.');
+  const rid = sheet.getAttribute('r:id') || sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+  const rel = els(xml(relText), 'Relationship').find(r => r.getAttribute('Id') === rid);
+  const target = rel.getAttribute('Target');
+  const sheetText = await get(target.startsWith('/') ? target.slice(1) : 'xl/' + target);
+  const sstText = await get('xl/sharedStrings.xml');
+  const strings = sstText ? els(xml(sstText), 'si').map(richText) : [];
+  const out = {};
+  els(xml(sheetText), 'c').forEach(c => {
+    const ref = c.getAttribute('r'); if (!ref) return;
+    const type = c.getAttribute('t'), v = els(c, 'v')[0];
+    let value = type === 'inlineStr' ? richText(c) : v ? v.textContent : '';
+    if (type === 's' && v) value = strings[Number(value)] ?? '';
+    value = String(value).replace(/_x000D_/g, '').replace(/\r\n?/g, '\n').trim();
+    if (!value) return;
+    const row = Number(ref.match(/\d+$/)[0]);
+    (out[row] = out[row] || {})[colIndex(ref)] = value;
+  });
+  return out;
+}
+
+/* ============================== reconnaissance des publics ============================== */
+function distance(a, b){                        // Damerau-Levenshtein (insertion, suppression, substitution, inversion)
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+  }
+  return d[a.length][b.length];
+}
+const autres = () => PUBLICS.find(p => norm(p.libelle) === 'autres');
+/** { id, how } : how = 'exact' | 'variante' | 'faute' | 'inconnu' (→ « Autres »). */
+function matchPublic(token){
+  const key = normPub(token), compact = key.replace(/ /g, '');
+  const exact = PUBLICS.find(p => normPub(p.libelle) === key) || PUBLICS.find(p => normPub(p.libelle).replace(/ /g, '') === compact);
+  if (exact) return { id: exact.id, how: 'exact' };
+  const syn = Object.entries(SYNONYMES).find(([k]) => normPub(k) === key);
+  if (syn) { const p = PUBLICS.find(x => norm(x.libelle) === norm(syn[1])); if (p) return { id: p.id, how: 'variante' }; }
+  // faute de frappe légère : un seul candidat, mêmes chiffres, mot assez long
+  const max = key.length >= 12 ? 2 : key.length >= 6 ? 1 : 0;
+  if (max) {
+    const digits = s => s.replace(/\D/g, '');
+    const near = PUBLICS.map(p => ({ p, d: distance(key, normPub(p.libelle)) })).filter(x => x.d <= max && digits(key) === digits(normPub(x.p.libelle))).sort((a, b) => a.d - b.d);
+    if (near.length && (near.length === 1 || near[0].d < near[1].d)) return { id: near[0].p.id, how: 'faute' };
+  }
+  return { id: autres()?.id || 0, how: 'inconnu' };
+}
+
+/* ============================== contrôle d'une ligne ============================== */
+function findStructure(text){
+  const n = norm(text);
+  return STRUCT.find(s => norm(`${s.code} — ${s.libelle}`) === n) || STRUCT.find(s => norm(s.code) === n);
+}
+function findAction(text){
+  const n = norm(text);
+  const exact = ACTIONS.find(a => norm(a.libelle) === n);
+  if (exact) return exact;
+  return /^\d{1,2}$/.test(n) ? ACTIONS.find(a => norm(a.libelle).split(' ')[0] === n) : undefined;
+}
+const inPerimeter = s => ACCESS.tout || s['Perimetre_' + ACCESS.profil] === true;
+
+function checkRow(num, cells){
+  const row = { num, raw: cells, values: {}, errors: [], warnings: [], publics: [], selected: false, duplicate: '' };
+  const err = (k, m) => row.errors.push(`${LABELS[k] || k} : ${m}`);
+  for (const key of Object.keys(LABELS)) {
+    if (key === 'Orientation_SD') continue;
+    const text = cells[key] || '';
+    if (!text) { if (REQUIRED.has(key)) err(key, 'réponse obligatoire manquante.'); continue; }
+    if (TEXT_KEYS.includes(key)) {
+      row.values[key] = text;
+      if (key === 'Email_contact' && !/^[^\s@;,]+@[^\s@;,]+\.[^\s@;,]+$/.test(text)) err(key, `adresse non valide (« ${text} »).`);
+    } else if (key in REF_KEYS) {
+      const found = key === 'Structure_porteuse' ? findStructure(text) : key === 'Action_SD' ? findAction(text)
+        : (key === 'Modalite' ? MODALITES : FORMATS).find(x => norm(x.libelle) === norm(text));
+      if (!found) err(key, `valeur hors liste (« ${text} »).`);
+      else { row.values[key] = found.id; if (key === 'Structure_porteuse') row.struct = found; }
+    } else if (CHOICE_KEYS.includes(key)) {
+      const found = (CHOICES[key] || []).find(c => norm(c) === norm(text));
+      if (found === undefined) err(key, `valeur hors liste (« ${text} »).`); else row.values[key] = found;
+    } else if (key === 'Public_cible') {
+      text.split(/[;\n]/).map(t => t.trim()).filter(Boolean).forEach(token => { const m = matchPublic(token); row.publics.push({ token, id: m.id, how: m.how }); });
+      if (!row.publics.length && REQUIRED.has(key)) err(key, 'réponse obligatoire manquante.');
+    } else {                                    // nombres
+      const clean = text.replace(/\s/g, '').replace(',', '.').replace(key === 'Duree_heures' ? /(h|heures?)$/i : /$^/, '');
+      const n = /^\d+(\.\d+)?$/.test(clean) ? Number(clean) : NaN;
+      if (!(n > 0)) err(key, `nombre attendu (« ${text} »).`);
+      else if (key !== 'Duree_heures' && !Number.isInteger(n)) err(key, `nombre entier attendu (« ${text} »).`);
+      else row.values[key] = n;
+    }
+  }
+  const orientations = [];
+  Object.keys(cells).filter(k => k.startsWith('Orientation_SD:')).forEach(k => {
+    const label = k.slice('Orientation_SD:'.length), mark = norm(cells[k]);
+    if (!cells[k] || mark === 'non') return;
+    const known = (CHOICES.Orientation_SD || []).find(c => norm(c) === norm(label));
+    if (!known) row.errors.push(`Orientation inconnue : « ${label} ».`);
+    else if (['x', 'oui', '1'].includes(mark) || ['✓', '✔', '☒'].includes(cells[k])) orientations.push(known);
+    else row.errors.push(`Orientation « ${label} » : mettre « x » ou laisser vide.`);
+  });
+  row.values.Orientation_SD = orientations;
+  if (row.struct && !inPerimeter(row.struct)) row.errors.push(`Structure « ${row.struct.code} » hors du périmètre de votre profil : à transmettre à la direction concernée ou à la chefferie.`);
+  return row;
+}
+
+function markDuplicates(){
+  const seen = new Map();
+  const key = (t, s) => `${s}|${norm(t)}`;
+  const base = new Map(EXISTING.map(p => [key(p.Titre, refId(p.Structure_porteuse)), p.id]));
+  ROWS.forEach(r => {
+    if (!r.values.Titre) return;
+    const k = key(r.values.Titre, r.values.Structure_porteuse);
+    if (base.has(k)) r.duplicate = `Même titre et même structure que la proposition n° ${base.get(k)} déjà enregistrée.`;
+    else if (seen.has(k)) r.duplicate = `Même titre et même structure que la ligne ${seen.get(k)} du fichier.`;
+    else seen.set(k, r.num);
+  });
+}
+
+async function handleFile(file){
+  FILE_ERROR = ''; ROWS = []; FILE_WARNINGS = []; REPORT = null; FILE_NAME = file.name;
+  try {
+    if (file.size > MAX_FILE) throw new Error('Fichier trop volumineux (5 Mo au maximum).');
+    const sheet = await readSheet(await file.arrayBuffer());
+    const keys = sheet[4] || {};
+    const present = new Set(Object.values(keys));
+    const missing = Object.keys(LABELS).filter(k => k !== 'Orientation_SD' && REQUIRED.has(k) && !present.has(k));
+    if (missing.length) throw new Error(`Ce fichier ne correspond pas au modèle de dépôt groupé (colonnes absentes : ${missing.map(k => LABELS[k]).join(', ')}).`);
+    const optional = Object.keys(LABELS).filter(k => k !== 'Orientation_SD' && !present.has(k));
+    if (optional.length) FILE_WARNINGS.push(`Colonnes absentes du fichier, qui resteront vides : ${optional.map(k => LABELS[k]).join(', ')}.`);
+    const unknown = Object.values(keys).filter(k => !(k in LABELS) && !k.startsWith('Orientation_SD:'));
+    if (unknown.length) FILE_WARNINGS.push(`Colonnes ignorées : ${unknown.join(', ')}.`);
+    const unkeyed = Object.keys(sheet).some(n => n >= 5 && Object.keys(sheet[n]).some(c => !(c in keys)));
+    if (unkeyed) FILE_WARNINGS.push('Des cellules hors des colonnes du modèle sont remplies : elles sont ignorées.');
+    const numbers = Object.keys(sheet).map(Number).filter(n => n >= 5).sort((a, b) => a - b);
+    const data = numbers.map(n => [n, Object.fromEntries(Object.entries(sheet[n]).filter(([c]) => c in keys).map(([c, v]) => [keys[c], v]))]).filter(([, c]) => Object.keys(c).length);
+    if (!data.length) throw new Error('Aucune proposition à partir de la ligne 5.');
+    if (data.length > MAX_ROWS) throw new Error(`Trop de lignes (${MAX_ROWS} au maximum).`);
+    await loadExisting();
+    if (EXISTING.some(p => p.Fichier_import === file.name)) FILE_WARNINGS.push(`Un fichier nommé « ${file.name} » a déjà été importé. Vérifiez les doublons signalés.`);
+    ROWS = data.map(([n, c]) => checkRow(n, c));
+    markDuplicates();
+    ROWS.forEach(r => { r.selected = !r.errors.length && !r.duplicate; });
+  } catch (e) { console.error(e); FILE_ERROR = e.message || String(e); ROWS = []; }
+  render();
+}
+
+/* ============================== écriture ============================== */
+function recordOf(row, stamp, reception){
+  const v = row.values;
+  const ids = [...new Set(row.publics.map(p => p.id).filter(Boolean))];
+  // les publics non reconnus classés dans « Autres » : le texte du porteur est conservé dans la précision
+  const kept = row.publics.filter(p => p.how === 'inconnu' && p.id === autres()?.id).map(p => p.token);
+  const precision = [v.Public_autre, ...kept].filter(Boolean).join(' ; ');
+  const rec = {
+    Public_cible: ids.length ? ['L', ...ids] : null, Public_autre: precision,
+    Orientation_SD: v.Orientation_SD.length ? ['L', ...v.Orientation_SD] : null,
+    Date_depot: reception, Origine: 'Import Excel', Fichier_import: FILE_NAME, Date_import: stamp
+  };
+  TEXT_KEYS.filter(k => k !== 'Public_autre').forEach(k => { rec[k] = v[k] || ''; });
+  Object.keys(REF_KEYS).forEach(k => { rec[k] = v[k] || 0; });
+  CHOICE_KEYS.forEach(k => { rec[k] = v[k] || ''; });
+  ['Duree_heures', 'Nb_sessions', 'Effectif_previsionnel'].forEach(k => { rec[k] = v[k] ?? null; });
+  return rec;
+}
+const selection = () => ROWS.filter(r => r.selected && !r.errors.length);
+
+async function doImport(){
+  if (WRITING) return;
+  const rows = selection();
+  if (!rows.length || !DATE_RECEPTION || DATE_RECEPTION > today()) return;
+  WRITING = true; render();
+  const stamp = Math.floor(Date.now() / 1000);
+  const reception = Math.floor(new Date(DATE_RECEPTION + 'T12:00:00').getTime() / 1000);
+  try {
+    await grist.docApi.applyUserActions(rows.map(r => ['AddRecord', PROP, null, recordOf(r, stamp, reception)]));
+    let created = [];
+    try { await loadExisting(); created = EXISTING.filter(p => p.Fichier_import === FILE_NAME && Math.round(p.Date_import) === stamp); } catch (e) { console.warn(e); }
+    REPORT = { file: FILE_NAME, asked: rows.length, ids: created.map(p => p.id), left: ROWS.filter(r => !rows.includes(r)).map(r => ({ num: r.num, titre: r.values.Titre || r.raw.Titre || '(sans titre)', why: r.errors.length ? r.errors.join(' ') : r.duplicate ? r.duplicate + ' Non retenue.' : 'Non retenue.' })) };
+    ROWS = []; FILE_WARNINGS = [];
+    DATE_RECEPTION = today();                   // une date modifiée ne vaut que pour le fichier importé
+  } catch (e) {
+    console.error(e);
+    FILE_ERROR = `Import refusé, aucune ligne n'a été créée : ${e.message || e}. Si le message évoque les règles d'accès, votre profil n'a pas le droit de créer des propositions.`;
+  } finally { WRITING = false; render(); }
+}
+
+/* ============================== affichage ============================== */
+function display(row, key){
+  const v = row.values[key];
+  if (v === undefined) return row.raw[key] || '';
+  if (key === 'Structure_porteuse') return STRUCT.find(x => x.id === v)?.code;
+  if (key === 'Action_SD') return ACTIONS.find(x => x.id === v)?.libelle;
+  if (key === 'Modalite') return MODALITES.find(x => x.id === v)?.libelle;
+  if (key === 'Format') return FORMATS.find(x => x.id === v)?.libelle;
+  return v;
+}
+const HOW = { exact:'reconnu', variante:'variante reconnue', faute:'faute de frappe ? à vérifier', inconnu:'non reconnu → « Autres »', manuel:'choisi par vous' };
+function renderPublics(r, i){
+  if (!r.publics.length) return '';
+  const options = id => `<option value="0"${!id ? ' selected' : ''}>(ignorer)</option>` + PUBLICS.map(p => `<option value="${p.id}"${p.id === id ? ' selected' : ''}>${esc(p.libelle)}</option>`).join('');
+  return `<div class="pubs">${r.publics.map((p, j) => `<div class="pub${p.how === 'faute' || p.how === 'inconnu' ? ' check' : ''}"><code>${esc(p.token)}</code> → <select data-pub="${i}:${j}" aria-label="Public retenu pour ${esc(p.token)}">${options(p.id)}</select> <span class="muted">${HOW[p.how]}</span></div>`).join('')}</div>`;
+}
+function renderRow(r, i){
+  const bad = r.errors.length > 0;
+  const check = r.publics.some(p => p.how === 'faute' || p.how === 'inconnu');
+  const badge = bad ? '<span class="badge err">Non importable</span>' : r.duplicate ? '<span class="badge warn">Doublon possible</span>' : check ? '<span class="badge warn">Public à vérifier</span>' : '<span class="badge ok">Prête</span>';
+  const noPublic = !bad && r.publics.length && !r.publics.some(p => p.id);
+  const detail = Object.keys(LABELS).filter(k => !['Titre', 'Public_cible', 'Orientation_SD'].includes(k) && r.raw[k])
+    .map(k => `<dt>${esc(LABELS[k])}</dt><dd>${esc(display(r, k))}</dd>`).join('')
+    + (r.values.Orientation_SD.length ? `<dt>Orientations</dt><dd>${esc(r.values.Orientation_SD.join('\n'))}</dd>` : '');
+  return `<div class="line${bad ? ' bad' : ''}">
+    <div class="line-head"><input type="checkbox" data-sel="${i}" ${r.selected ? 'checked' : ''} ${bad || noPublic ? 'disabled' : ''} aria-label="Importer la ligne ${r.num}">
+      <div style="min-width:0"><span class="line-title">Ligne ${r.num} · ${esc(r.values.Titre || r.raw.Titre || '(sans titre)')}</span>${badge}
+      <div class="muted">${esc(r.struct?.code || r.raw.Structure_porteuse || 'Structure non renseignée')}</div></div></div>
+    ${bad ? `<div class="msg err"><ul>${r.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
+    ${r.duplicate ? `<div class="msg warn">${esc(r.duplicate)} Cochez la ligne pour l'importer quand même.</div>` : ''}
+    ${noPublic ? '<div class="msg err">Aucun public retenu : choisissez-en au moins un.</div>' : ''}
+    ${renderPublics(r, i)}
+    <details><summary>Voir les réponses</summary><dl>${detail}</dl></details>
+  </div>`;
+}
+function render(){
+  const page = document.getElementById('page'), actions = document.getElementById('actions');
+  const open = new Set(Array.from(page.querySelectorAll('.line')).map((el, i) => el.querySelector('details')?.open ? i : -1));
+  const scope = ACCESS.tout ? 'toutes les structures' : `les structures du périmètre ${ACCESS.profil}`;
+  let html = `<div class="panel"><h2>Importer des propositions depuis Excel</h2>
+    <p>Déposez le modèle de dépôt groupé rempli par un porteur. Rien n'est écrit avant que vous ayez confirmé. Vous pouvez importer pour <b>${esc(scope)}</b>.</p>
+    <p class="muted">L'import crée de nouvelles propositions et ne modifie aucune proposition existante : les corrections se font dans l'Arbitrage.</p>
+    <div class="row">
+      <div class="fld"><label for="date">Date de réception du fichier</label><input type="date" id="date" max="${today()}" value="${esc(DATE_RECEPTION)}" ${WRITING ? 'disabled' : ''}></div>
+      <div class="fld"><label for="file">Fichier Excel (.xlsx)</label><input type="file" id="file" accept=".xlsx" ${WRITING ? 'disabled' : ''}></div>
+    </div>
+    ${PARAMS.date_limite && DATE_RECEPTION > PARAMS.date_limite ? '<div class="msg warn">Cette date de réception est postérieure à la date limite de dépôt.</div>' : ''}
+    ${FILE_ERROR ? `<div class="msg err">${esc(FILE_ERROR)}</div>` : ''}
+    ${FILE_WARNINGS.map(w => `<div class="msg warn">${esc(w)}</div>`).join('')}
+  </div>`;
+  if (REPORT) {
+    const ok = REPORT.ids.length === REPORT.asked;
+    html += `<div class="panel"><h2>Compte rendu</h2>
+      <div class="msg ${ok ? 'ok' : 'warn'}">${ok ? `${REPORT.asked} proposition(s) créée(s) depuis « ${esc(REPORT.file)} » : n° ${REPORT.ids.join(', ')}.`
+        : `${REPORT.asked} proposition(s) envoyée(s), mais ${REPORT.ids.length} retrouvée(s) à la relecture. Vérifiez dans l'Arbitrage avant tout nouvel import.`}</div>
+      ${REPORT.left.length ? `<p style="margin-top:10px"><b>Lignes non importées (${REPORT.left.length})</b></p><dl>${REPORT.left.map(l => `<dt>Ligne ${l.num}</dt><dd>${esc(l.titre)}\n${esc(l.why)}</dd>`).join('')}</dl>` : ''}
+    </div>`;
+  }
+  if (ROWS.length) html += ROWS.map(renderRow).join('');
+  page.innerHTML = html;
+  page.querySelectorAll('.line').forEach((el, i) => { if (open.has(i)) el.querySelector('details').open = true; });
+
+  const n = selection().length, bad = ROWS.filter(r => r.errors.length).length;
+  const dateOk = DATE_RECEPTION && DATE_RECEPTION <= today();
+  actions.hidden = !ROWS.length;
+  actions.innerHTML = ROWS.length ? `<button class="primary" id="go" ${!n || !dateOk || WRITING ? 'disabled' : ''}>${WRITING ? 'Import en cours…' : `Importer ${n} proposition(s)`}</button>
+    <span class="muted">${ROWS.length} ligne(s) lue(s), ${bad} non importable(s)${!dateOk ? ' · <b>saisissez la date de réception</b>' : ''}</span>` : '';
+
+  page.querySelector('#date').onchange = e => { DATE_RECEPTION = e.target.value; render(); };
+  page.querySelector('#file').onchange = e => { const f = e.target.files[0]; if (f) handleFile(f); };
+  page.querySelectorAll('[data-sel]').forEach(c => c.onchange = () => { ROWS[c.dataset.sel].selected = c.checked; render(); });
+  page.querySelectorAll('[data-pub]').forEach(s => s.onchange = () => {
+    const [i, j] = s.dataset.pub.split(':').map(Number), r = ROWS[i];
+    r.publics[j].id = Number(s.value); r.publics[j].how = 'manuel';
+    if (!r.publics.some(p => p.id)) r.selected = false; else if (!r.errors.length && !r.duplicate) r.selected = true;
+    render();
+  });
+  const go = document.getElementById('go'); if (go) go.onclick = () => {
+    // confirmation en deux temps (les boîtes de dialogue du navigateur peuvent être bloquées dans Grist)
+    if (go.dataset.armed) return doImport();
+    go.dataset.armed = '1'; go.textContent = `Confirmer la création de ${n} proposition(s)`;
+  };
+}
+
+/* ============================== chargement et droits ============================== */
+async function loadExisting(){ EXISTING = await fetchRows(PROP); }
+async function loadColumns(){
+  try {
+    const tid = (await fetchRows('_grist_Tables')).find(t => t.tableId === PROP).id;
+    const cols = (await fetchRows('_grist_Tables_column')).filter(c => c.parentId === tid);
+    const required = [];
+    cols.forEach(c => {
+      let w = {}; try { w = JSON.parse(c.widgetOptions || '{}'); } catch (e) { /* options illisibles */ }
+      if (c.colId in CHOICES_DEFAUT && w.choices?.length) CHOICES[c.colId] = w.choices;
+      if (w.formRequired && c.colId in LABELS) required.push(c.colId);
+    });
+    if (required.length) REQUIRED = new Set(required);
+  } catch (e) { console.warn('[import] définition des colonnes illisible, valeurs de repli utilisées', e); }
+}
+/** Droits : table Droits_arbitrage. Seuls l'Owner et la Chefferie lisent toute la table Utilisateurs. Refus par défaut. */
+async function readAccess(){
+  const users = await fetchRows('Utilisateurs');
+  const [droits, classes] = await Promise.all([fetchRows('Droits_arbitrage'), fetchRows('Classe')]);
+  const nameOf = Object.fromEntries(classes.map(c => [c.id, c.Type]));
+  const profil = users.length > 1 ? 'Chefferie' : users.length === 1 ? (users[0].ClasseNom || '') : '';
+  const row = droits.find(d => nameOf[refId(d.Profil)] === profil);
+  if (row && (row.Importer === true || row.Importer_tout === true)) return { profil, tout: row.Importer_tout === true };
+  if (users.length > 1) {          // l'Owner n'a pas besoin de ligne : une écriture sans changement sur Parametres_recueil n'aboutit que pour lui
+    const p = (await fetchRows('Parametres_recueil')).find(r => r.cle === 'mode_versement');
+    if (p) try { await grist.docApi.applyUserActions([['UpdateRecord', 'Parametres_recueil', p.id, { valeur: String(p.valeur ?? '') }]]); return { profil: 'Owner', tout: true }; } catch (e) { /* pas Owner */ }
+  }
+  return null;
+}
+function refuse(title, text){
+  document.getElementById('page').innerHTML = `<div class="empty"><p>${esc(title)}</p><span class="muted">${esc(text)}</span></div>`;
+}
+let started = false;
+async function start(){
+  if (started) return; started = true;
+  try {
+    try { ACCESS = await readAccess(); } catch (e) { console.warn('[import] droits illisibles', e); ACCESS = null; }
+    if (!ACCESS) return refuse('Accès réservé', "L'import est réservé aux profils autorisés par la table « Droits_arbitrage ».");
+    const [structs, actions, mods, formats, publics, params] = await Promise.all(['Structures', 'Actions_axes', 'Modalites', 'Formats', 'Publics', 'Parametres_recueil'].map(fetchRows));
+    STRUCT = structs; ACTIONS = actions; MODALITES = mods; FORMATS = formats; PUBLICS = publics; PARAMS = Object.fromEntries(params.map(r => [r.cle, r.valeur]));
+    await loadColumns(); await loadExisting();
+    if (!('DecompressionStream' in window)) return refuse('Navigateur trop ancien', 'La lecture des fichiers Excel demande un navigateur à jour.');
+    DATE_RECEPTION = today();                   // par défaut la date du jour, modifiable
+    render();
+  } catch (e) { console.error(e); refuse('Erreur de chargement', e.message || String(e)); }
+}
+grist.ready({ requiredAccess:'full', columns:[] });
+grist.onRecords(() => start());
+setTimeout(start, 800);
+</script>
+</body>
+</html>
